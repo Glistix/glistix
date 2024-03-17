@@ -1,4 +1,6 @@
 mod expression;
+#[cfg(test)]
+mod tests;
 
 use crate::analyse::TargetSupport;
 use crate::ast::{
