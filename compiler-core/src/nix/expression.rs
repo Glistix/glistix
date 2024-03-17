@@ -100,6 +100,11 @@ impl<'module> Generator<'module> {
                     None => Ok(head),
                 }
             }
+            TypedExpr::Pipeline {
+                assignments,
+                finally,
+                ..
+            } => self.pipeline(assignments, finally),
             TypedExpr::Block { statements, .. } => self.block(statements),
             TypedExpr::Var {
                 name, constructor, ..
@@ -149,24 +154,47 @@ impl<'module> Generator<'module> {
             return Ok(Document::Str(""));
         };
 
-        let assignments = Itertools::intersperse_with(
-            statements
-                .iter()
-                .take(statements.len().saturating_sub(1))
-                .map(|statement| self.statement(statement)),
-            || Ok(line()),
-        )
-        .collect::<Result<Vec<_>, _>>()?;
+        let assignments = statements
+            .iter()
+            .take(statements.len() - 1)
+            .map(|statement| self.statement(statement))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let body = self.expression_from_statement(trailing_statement)?;
+
+        self.let_in(assignments, body)
+    }
+
+    fn pipeline<'a>(
+        &mut self,
+        assignments: &'a [TypedAssignment],
+        finally: &'a TypedExpr,
+    ) -> Output<'a> {
+        let assignments = assignments
+            .iter()
+            .map(|assignment| self.assignment(assignment))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let body = self.expression(finally)?;
+
+        self.let_in(assignments, body)
+    }
+
+    fn let_in<'a>(
+        &mut self,
+        assignments: impl IntoIterator<Item = Document<'a>>,
+        body: Document<'a>,
+    ) -> Output<'a> {
+        let assignment_lines = Itertools::intersperse_with(assignments.into_iter(), line);
 
         Ok(docvec![
-            break_("", ""),
             "let",
             line(),
-            concat(assignments).nest(INDENT).group(),
+            concat(assignment_lines).nest(INDENT).group(),
             line(),
             "in",
             break_("", " "),
-            self.expression_from_statement(trailing_statement)?,
+            body,
         ])
     }
 
