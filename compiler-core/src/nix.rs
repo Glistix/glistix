@@ -35,27 +35,6 @@ impl<'module> Generator<'module> {
     pub fn compile(&mut self) -> Output<'module> {
         todo!()
     }
-
-    /// Generates a series of assignments for Nix.
-    pub fn let_in<'a>(
-        &mut self,
-        assignments: impl IntoIterator<Item = (&'a str, Document<'a>)>,
-        body: impl Documentable<'a>,
-    ) -> Output<'a> {
-        Ok(docvec![
-            "let",
-            break_("", " "),
-            concat(assignments.into_iter().map(|(name, value)| {
-                // FIXME: Escape name
-                docvec![name, "=", value, ";", line()]
-            }))
-            .nest(INDENT),
-            break_("", " "),
-            "in",
-            break_("", " "),
-            body
-        ])
-    }
 }
 
 pub fn module(

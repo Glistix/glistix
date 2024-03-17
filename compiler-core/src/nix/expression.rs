@@ -6,21 +6,21 @@ use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
 use crate::nix::{maybe_escape_identifier_doc, INDENT};
-use crate::pretty::{break_, Document, Documentable};
-use ecow::EcoString;
+use crate::pretty::{break_, concat, line, Document, Documentable};
+use crate::type_::{ValueConstructor, ValueConstructorVariant};
+use ecow::{eco_format, EcoString};
 use itertools::Itertools;
+use vec1::Vec1;
 
 /// Generates a Nix expression.
-struct Generator<'output, 'module> {
+struct Generator<'module> {
     module: &'module TypedModule,
     line_numbers: &'module LineNumbers,
     target_support: TargetSupport,
     current_scope_vars: im::HashMap<EcoString, usize>,
-    /// If this is not empty, we need to insert a 'let ... in'.
-    assignments: Vec<Document<'output>>,
 }
 
-impl<'output, 'module> Generator<'output, 'module> {
+impl<'module> Generator<'module> {
     pub fn new(
         module: &'module TypedModule,
         line_numbers: &'module LineNumbers,
@@ -32,7 +32,6 @@ impl<'output, 'module> Generator<'output, 'module> {
             line_numbers,
             target_support,
             current_scope_vars,
-            assignments: vec![],
         }
     }
 
@@ -54,14 +53,23 @@ impl<'output, 'module> Generator<'output, 'module> {
         self.local_var(name)
     }
 
-    fn statement(&mut self, statement: &'output TypedStatement) -> Output<'output> {
+    fn next_anonymous_var<'a>(&mut self) -> Document<'a> {
+        let name = "_''";
+        let next = self.current_scope_vars.get(name).map_or(0, |i| i + 1);
+        let _ = self.current_scope_vars.insert(eco_format!("{name}"), next);
+        Document::String(format!("{name}{next}"))
+    }
+
+    /// Every statement, in Nix, must be an assignment, even an expression.
+    fn statement<'a>(&mut self, statement: &'a TypedStatement) -> Output<'a> {
         match statement {
-            Statement::Expression(expression) => self.expression(expression),
-            Statement::Assignment(assignment) => {
-                let assignment = self.assignment(assignment)?;
-                self.assignments.push(assignment);
-                Ok(Document::Str(""))
+            Statement::Expression(expression) => {
+                let subject = self.expression(expression)?;
+                let name = self.next_anonymous_var();
+                // Convert expression to assignment with irrelevant name
+                self.assignment_line(name, subject)
             }
+            Statement::Assignment(assignment) => self.assignment(assignment),
             Statement::Use(_use) => {
                 unreachable!("Use must not be present for Nix generation")
             }
@@ -92,6 +100,10 @@ impl<'output, 'module> Generator<'output, 'module> {
                     None => Ok(head),
                 }
             }
+            TypedExpr::Block { statements, .. } => self.block(statements),
+            TypedExpr::Var {
+                name, constructor, ..
+            } => self.variable(name, constructor),
             _ => todo!(),
         }
     }
@@ -111,21 +123,115 @@ impl<'output, 'module> Generator<'output, 'module> {
             // Subject must be rendered before the variable for variable numbering
             let subject = self.expression(value)?;
             let nix_name = self.next_local_var(name);
-            return Ok(docvec![nix_name, " =", break_("", " "), subject, ";"]);
+            return self.assignment_line(nix_name, subject);
         }
 
         // Patterns
         todo!()
     }
 
+    fn assignment_line<'a>(&mut self, name: Document<'a>, value: Document<'a>) -> Output<'a> {
+        Ok(docvec![name, " =", break_("", " "), value, ";"])
+    }
+
+    fn block<'a>(&mut self, statements: &'a Vec1<TypedStatement>) -> Output<'a> {
+        if statements.len() == 1 {
+            self.expression_from_statement(statements.first())
+        } else {
+            self.statements(statements)
+        }
+    }
+
+    /// In Nix, statements are translated to 'let ... in' syntax.
+    fn statements<'a>(&mut self, statements: &'a [TypedStatement]) -> Output<'a> {
+        let Some(trailing_statement) = statements.last() else {
+            // TODO: can we unwrap?
+            return Ok(Document::Str(""));
+        };
+
+        let assignments = Itertools::intersperse_with(
+            statements
+                .iter()
+                .take(statements.len().saturating_sub(1))
+                .map(|statement| self.statement(statement)),
+            || Ok(line()),
+        )
+        .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(docvec![
+            break_("", ""),
+            "let",
+            line(),
+            concat(assignments).nest(INDENT).group(),
+            line(),
+            "in",
+            break_("", " "),
+            self.expression_from_statement(trailing_statement)?,
+        ])
+    }
+
+    fn variable<'a>(
+        &mut self,
+        name: &'a EcoString,
+        constructor: &'a ValueConstructor,
+    ) -> Output<'a> {
+        match &constructor.variant {
+            ValueConstructorVariant::LocalConstant { literal: _ } => {
+                todo!()
+            }
+            ValueConstructorVariant::Record { arity: _, .. } => {
+                todo!()
+            }
+            ValueConstructorVariant::ModuleFn { .. }
+            | ValueConstructorVariant::ModuleConstant { .. }
+            | ValueConstructorVariant::LocalVariable { .. } => Ok(self.local_var(name)),
+        }
+    }
+
+    /// Outputs the expression which would replace a statement if it were the
+    /// last one.
+    fn expression_from_statement<'a>(&mut self, statement: &'a TypedStatement) -> Output<'a> {
+        match statement {
+            Statement::Expression(expression) => self.expression(expression),
+
+            Statement::Assignment(assignment) => self.expression(assignment.value.as_ref()),
+
+            Statement::Use(_) => {
+                unreachable!("use statements must not be present for Nix generation")
+            }
+        }
+    }
+
     /// Some expressions in Nix may be displayed with spaces.
     /// Those expressions need to be wrapped in parentheses so that they aren't
     /// parsed as separate list elements or function call arguments, for example.
     pub fn wrap_expression_with_spaces<'a>(&mut self, expression: &'a TypedExpr) -> Output<'a> {
+        // TODO: Recheck
         match expression {
-            TypedExpr::Fn { .. }
+            TypedExpr::Block { statements, .. } if statements.len() == 1 => {
+                match statements.first() {
+                    Statement::Expression(expression) => {
+                        // A block with one expression is just that expression,
+                        // so wrap it only if needed.
+                        self.wrap_expression_with_spaces(expression)
+                    }
+                    Statement::Assignment(assignment) => {
+                        self.wrap_expression_with_spaces(assignment.value.as_ref())
+                    }
+                    Statement::Use(_) => {
+                        unreachable!("use statements must not be present for Nix generation")
+                    }
+                }
+            },
+
+            TypedExpr::Block { .. }
+            | TypedExpr::Pipeline { .. }
+            | TypedExpr::Fn { .. }
             | TypedExpr::Call { .. }
             | TypedExpr::BinOp { .. }
+            // Expands into 'if':
+            | TypedExpr::Case { .. }
+            // Expand into calls:
             | TypedExpr::TupleIndex { .. }
             | TypedExpr::Todo { .. }
             | TypedExpr::Panic { .. } => Ok(docvec!["(", self.expression(expression)?, ")"]),
