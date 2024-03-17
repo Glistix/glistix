@@ -1,16 +1,17 @@
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    Arg, CallArg, Statement, TypedArg, TypedAssignment, TypedExpr, TypedModule, TypedPattern,
-    TypedStatement,
+    Arg, BinOp, CallArg, Statement, TypedArg, TypedAssignment, TypedExpr, TypedModule,
+    TypedPattern, TypedStatement,
 };
 use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
 use crate::nix::{fun_args, maybe_escape_identifier_doc, INDENT};
 use crate::pretty::{break_, concat, join, line, Document, Documentable};
-use crate::type_::{ModuleValueConstructor, ValueConstructor, ValueConstructorVariant};
+use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
+use std::sync::Arc;
 use vec1::Vec1;
 
 /// Generates a Nix expression.
@@ -92,11 +93,9 @@ impl<'module> Generator<'module> {
                 match tail {
                     Some(tail) => Ok(docvec![
                         head,
-                        " ++",
-                        break_("", " "),
+                        " ++ ",
                         self.wrap_expression_with_spaces(tail)?
-                    ]
-                    .group()),
+                    ]),
 
                     None => Ok(head),
                 }
@@ -113,6 +112,10 @@ impl<'module> Generator<'module> {
 
             TypedExpr::Fn { args, body, .. } => self.fn_(args, body),
             TypedExpr::Call { fun, args, .. } => self.call(fun, args),
+
+            TypedExpr::BinOp {
+                name, left, right, ..
+            } => self.bin_op(name, left, right),
             _ => todo!(),
         }
     }
@@ -301,6 +304,59 @@ impl<'module> Generator<'module> {
             .group())
     }
 
+    fn bin_op<'a>(
+        &mut self,
+        name: &'a BinOp,
+        left: &'a TypedExpr,
+        right: &'a TypedExpr,
+    ) -> Output<'a> {
+        match name {
+            BinOp::And => self.print_bin_op(left, right, "&&"),
+            BinOp::Or => self.print_bin_op(left, right, "||"),
+            BinOp::LtInt | BinOp::LtFloat => self.print_bin_op(left, right, "<"),
+            BinOp::LtEqInt | BinOp::LtEqFloat => self.print_bin_op(left, right, "<="),
+            BinOp::Eq => self.equal(left, right, true),
+            BinOp::NotEq => self.equal(left, right, false),
+            BinOp::GtInt | BinOp::GtFloat => self.print_bin_op(left, right, ">"),
+            BinOp::GtEqInt | BinOp::GtEqFloat => self.print_bin_op(left, right, ">="),
+            BinOp::Concatenate | BinOp::AddInt | BinOp::AddFloat => {
+                self.print_bin_op(left, right, "+")
+            }
+            BinOp::SubInt | BinOp::SubFloat => self.print_bin_op(left, right, "-"),
+            BinOp::MultInt | BinOp::MultFloat => self.print_bin_op(left, right, "*"),
+            BinOp::RemainderInt => todo!("use remainder from prelude"),
+            BinOp::DivInt => todo!("possibly use div int from prelude"),
+            BinOp::DivFloat => todo!("possibly use div float from prelude"),
+        }
+    }
+
+    fn print_bin_op<'a>(
+        &mut self,
+        left: &'a TypedExpr,
+        right: &'a TypedExpr,
+        op: &'a str,
+    ) -> Output<'a> {
+        let left = self.wrap_expression_with_spaces(left)?;
+        let right = self.wrap_expression_with_spaces(right)?;
+        Ok(docvec!(left, " ", op, " ", right))
+    }
+
+    fn equal<'a>(
+        &mut self,
+        left: &'a TypedExpr,
+        right: &'a TypedExpr,
+        should_be_equal: bool,
+    ) -> Output<'a> {
+        // If it is a simple scalar type then we can use Nix's simple equality
+        if is_nix_scalar(left.type_()) {
+            return self.print_bin_op(left, right, if should_be_equal { "==" } else { "!=" });
+        }
+
+        // Other types must be compared using structural equality
+        todo!("track prelude equals call")
+        // Ok(self.prelude_equal_call(should_be_equal, left, right))
+    }
+
     /// Outputs the expression which would replace a statement if it were the
     /// last one.
     fn expression_from_statement<'a>(&mut self, statement: &'a TypedStatement) -> Output<'a> {
@@ -352,6 +408,11 @@ impl<'module> Generator<'module> {
             _ => self.expression(expression),
         }
     }
+}
+
+/// Types which are trivially comparable for equality.
+pub fn is_nix_scalar(t: Arc<Type>) -> bool {
+    t.is_int() || t.is_float() || t.is_bool() || t.is_nil() || t.is_string()
 }
 
 /// Generates a valid Nix string.
