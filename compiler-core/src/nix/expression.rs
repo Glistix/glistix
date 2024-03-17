@@ -1,13 +1,14 @@
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    Arg, Statement, TypedArg, TypedAssignment, TypedExpr, TypedModule, TypedPattern, TypedStatement,
+    Arg, CallArg, Statement, TypedArg, TypedAssignment, TypedExpr, TypedModule, TypedPattern,
+    TypedStatement,
 };
 use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
 use crate::nix::{fun_args, maybe_escape_identifier_doc, INDENT};
-use crate::pretty::{break_, concat, line, Document, Documentable};
-use crate::type_::{ValueConstructor, ValueConstructorVariant};
+use crate::pretty::{break_, concat, join, line, Document, Documentable};
+use crate::type_::{ModuleValueConstructor, ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
 use vec1::Vec1;
@@ -109,6 +110,9 @@ impl<'module> Generator<'module> {
             TypedExpr::Var {
                 name, constructor, ..
             } => self.variable(name, constructor),
+
+            TypedExpr::Fn { args, body, .. } => self.fn_(args, body),
+            TypedExpr::Call { fun, args, .. } => self.call(fun, args),
             _ => todo!(),
         }
     }
@@ -224,6 +228,50 @@ impl<'module> Generator<'module> {
             ValueConstructorVariant::ModuleFn { .. }
             | ValueConstructorVariant::ModuleConstant { .. }
             | ValueConstructorVariant::LocalVariable { .. } => Ok(self.local_var(name)),
+        }
+    }
+
+    fn call<'a>(&mut self, fun: &'a TypedExpr, arguments: &'a [CallArg<TypedExpr>]) -> Output<'a> {
+        let arguments = arguments
+            .iter()
+            .map(|element| self.wrap_expression_with_spaces(&element.value))
+            .try_collect()?;
+
+        self.call_with_doc_args(fun, arguments)
+    }
+
+    fn call_with_doc_args<'a>(
+        &mut self,
+        fun: &'a TypedExpr,
+        arguments: Vec<Document<'a>>,
+    ) -> Output<'a> {
+        match fun {
+            // Qualified record construction
+            TypedExpr::ModuleSelect {
+                constructor: ModuleValueConstructor::Record { name: _, .. },
+                module_alias: _,
+                ..
+            } => Ok(todo!("construct_record")),
+
+            // Record construction
+            TypedExpr::Var {
+                constructor:
+                    ValueConstructor {
+                        variant: ValueConstructorVariant::Record { .. },
+                        type_: _,
+                        ..
+                    },
+                name: _,
+                ..
+            } => {
+                todo!("construct_record, Ok/Err")
+            }
+
+            _ => {
+                let fun = self.wrap_expression_with_spaces(fun)?;
+                let arguments = join(arguments, break_("", " "));
+                Ok(docvec![fun, break_("", " "), arguments])
+            }
         }
     }
 
