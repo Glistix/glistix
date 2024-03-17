@@ -13,7 +13,7 @@ use itertools::Itertools;
 use vec1::Vec1;
 
 /// Generates a Nix expression.
-struct Generator<'module> {
+pub(crate) struct Generator<'module> {
     module: &'module TypedModule,
     line_numbers: &'module LineNumbers,
     target_support: TargetSupport,
@@ -227,7 +227,7 @@ impl<'module> Generator<'module> {
         }
     }
 
-    fn fn_<'a>(&mut self, arguments: &'a [TypedArg], body: &'a [TypedStatement]) -> Output<'a> {
+    pub fn fn_<'a>(&mut self, arguments: &'a [TypedArg], body: &'a [TypedStatement]) -> Output<'a> {
         let scope = self.current_scope_vars.clone();
         for name in arguments.iter().flat_map(Arg::get_variable_name) {
             let _ = self.current_scope_vars.insert(name.clone(), 0);
