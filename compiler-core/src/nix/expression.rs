@@ -207,17 +207,23 @@ impl<'module> Generator<'module> {
         assignments: impl IntoIterator<Item = Document<'a>>,
         body: Document<'a>,
     ) -> Output<'a> {
-        let assignment_lines = Itertools::intersperse_with(assignments.into_iter(), line);
-
         Ok(docvec![
-            "let",
             line(),
-            concat(assignment_lines).nest(INDENT).group(),
+            "let",
+            docvec![
+                line(),
+                join(
+                    assignments,
+                    line()
+                )
+            ]
+            .nest(INDENT)
+            .group(),
             line(),
             "in",
             break_("", " "),
             body,
-        ])
+        ].nest(INDENT))
     }
 
     fn variable<'a>(
