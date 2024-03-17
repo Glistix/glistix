@@ -140,7 +140,13 @@ impl<'module> Generator<'module> {
     }
 
     fn assignment_line<'a>(&mut self, name: Document<'a>, value: Document<'a>) -> Output<'a> {
-        Ok(docvec![name, " =", break_("", " "), value, ";"])
+        Ok(docvec![
+            name,
+            " =",
+            break_("", " "),
+            value.nest(INDENT),
+            ";"
+        ])
     }
 
     fn block<'a>(&mut self, statements: &'a Vec1<TypedStatement>) -> Output<'a> {
@@ -208,22 +214,12 @@ impl<'module> Generator<'module> {
         body: Document<'a>,
     ) -> Output<'a> {
         Ok(docvec![
-            line(),
+            break_("", ""),
             "let",
-            docvec![
-                line(),
-                join(
-                    assignments,
-                    line()
-                )
-            ]
-            .nest(INDENT)
-            .group(),
+            docvec![line(), join(assignments, line())].nest(INDENT),
             line(),
-            "in",
-            break_("", " "),
-            body,
-        ].nest(INDENT))
+            docvec!["in", break_("", " "), body].group(),
+        ])
     }
 
     fn variable<'a>(
