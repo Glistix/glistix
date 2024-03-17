@@ -182,8 +182,12 @@ fn wrap_args<'a, I>(args: I) -> Document<'a>
 where
     I: IntoIterator<Item = Document<'a>>,
 {
+    // Add spaces after all but the last argument.
     break_("", "")
-        .append(concat(args.into_iter().map(|arg| arg.append(": "))))
+        .append(join(
+            args.into_iter().map(|arg| arg.append(":")),
+            " ".to_doc(),
+        ))
         .append(break_("", ""))
         .group()
 }

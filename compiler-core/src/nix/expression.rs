@@ -159,14 +159,17 @@ impl<'module> Generator<'module> {
 
     /// In Nix, statements are translated to 'let ... in' syntax.
     fn statements<'a>(&mut self, statements: &'a [TypedStatement]) -> Output<'a> {
-        let Some(trailing_statement) = statements.last() else {
+        let Some((trailing_statement, assignments)) = statements.split_last() else {
             // TODO: can we unwrap?
             return Ok(Document::Str(""));
         };
 
-        let assignments = statements
+        if assignments.is_empty() {
+            return self.expression_from_statement(trailing_statement);
+        }
+
+        let assignments = assignments
             .iter()
-            .take(statements.len() - 1)
             .map(|statement| self.statement(statement))
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -180,6 +183,10 @@ impl<'module> Generator<'module> {
         assignments: &'a [TypedAssignment],
         finally: &'a TypedExpr,
     ) -> Output<'a> {
+        if assignments.is_empty() {
+            return self.expression(finally);
+        }
+
         // Entering a new scope
         let scope = self.current_scope_vars.clone();
         let assignments = assignments
