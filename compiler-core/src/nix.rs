@@ -1,11 +1,11 @@
 mod expression;
 
 use crate::analyse::TargetSupport;
-use crate::ast::TypedModule;
+use crate::ast::{TypedArg, TypedModule};
 use crate::docvec;
 use crate::javascript::Error;
 use crate::line_numbers::LineNumbers;
-use crate::pretty::{break_, concat, line, Document, Documentable};
+use crate::pretty::{break_, concat, join, line, Document, Documentable};
 use camino::Utf8Path;
 use ecow::EcoString;
 
@@ -54,6 +54,58 @@ pub fn module(
     Ok(document.to_pretty_string(80))
 }
 
+fn fun_args(args: &'_ [TypedArg]) -> Document<'_> {
+    let mut discards = 0;
+    wrap_args(args.iter().map(|a| match a.get_variable_name() {
+        None => {
+            let doc = if discards == 0 {
+                "_".to_doc()
+            } else {
+                Document::String(format!("_{discards}"))
+            };
+            discards += 1;
+            doc
+        }
+        Some(name) => maybe_escape_identifier_doc(name),
+    }))
+}
+
+fn wrap_args<'a, I>(args: I) -> Document<'a>
+where
+    I: IntoIterator<Item = Document<'a>>,
+{
+    break_("", "")
+        .append(concat(args.into_iter().map(|arg| arg.append(": "))))
+        .append(break_("", ""))
+        .group()
+}
+
+fn wrap_attr_set<'a>(
+    items: impl IntoIterator<Item = (Document<'a>, Option<Document<'a>>)>,
+) -> Document<'a> {
+    let mut empty = true;
+    let fields = items.into_iter().map(|(key, value)| {
+        empty = false;
+        match value {
+            Some(value) => docvec![key, " =", break_("", " "), value, ";"],
+            None => docvec!["inherit ", key.to_doc(), ";"],
+        }
+    });
+    let fields = join(fields, break_("", " "));
+
+    if empty {
+        "{}".to_doc()
+    } else {
+        docvec![
+            docvec!["{", break_("", " "), fields]
+                .nest(INDENT)
+                .append(break_("", " "))
+                .group(),
+            "}"
+        ]
+    }
+}
+
 fn is_usable_nix_identifier(word: &str) -> bool {
     !matches!(
         word,
@@ -72,7 +124,7 @@ fn is_usable_nix_identifier(word: &str) -> bool {
             | "true"
             | "false"
             | "null"
-            // Built-ins let us access fundamental functions anywhere
+            // This variable lets us access fundamental functions anywhere
             | "builtins"
     )
 }

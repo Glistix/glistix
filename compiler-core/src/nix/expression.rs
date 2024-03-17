@@ -1,11 +1,11 @@
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    Statement, TypedAssignment, TypedExpr, TypedModule, TypedPattern, TypedStatement,
+    Arg, Statement, TypedArg, TypedAssignment, TypedExpr, TypedModule, TypedPattern, TypedStatement,
 };
 use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
-use crate::nix::{maybe_escape_identifier_doc, INDENT};
+use crate::nix::{fun_args, maybe_escape_identifier_doc, INDENT};
 use crate::pretty::{break_, concat, line, Document, Documentable};
 use crate::type_::{ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
@@ -143,7 +143,13 @@ impl<'module> Generator<'module> {
         if statements.len() == 1 {
             self.expression_from_statement(statements.first())
         } else {
-            self.statements(statements)
+            // Entering a new scope
+            let scope = self.current_scope_vars.clone();
+            let output = self.statements(statements)?;
+
+            // Reset scope
+            self.current_scope_vars = scope;
+            Ok(output)
         }
     }
 
@@ -170,12 +176,17 @@ impl<'module> Generator<'module> {
         assignments: &'a [TypedAssignment],
         finally: &'a TypedExpr,
     ) -> Output<'a> {
+        // Entering a new scope
+        let scope = self.current_scope_vars.clone();
         let assignments = assignments
             .iter()
             .map(|assignment| self.assignment(assignment))
             .collect::<Result<Vec<_>, _>>()?;
 
         let body = self.expression(finally)?;
+
+        // Exiting scope
+        self.current_scope_vars = scope;
 
         self.let_in(assignments, body)
     }
@@ -214,6 +225,23 @@ impl<'module> Generator<'module> {
             | ValueConstructorVariant::ModuleConstant { .. }
             | ValueConstructorVariant::LocalVariable { .. } => Ok(self.local_var(name)),
         }
+    }
+
+    fn fn_<'a>(&mut self, arguments: &'a [TypedArg], body: &'a [TypedStatement]) -> Output<'a> {
+        let scope = self.current_scope_vars.clone();
+        for name in arguments.iter().flat_map(Arg::get_variable_name) {
+            let _ = self.current_scope_vars.insert(name.clone(), 0);
+        }
+
+        // Generate the function body
+        let result = self.statements(body);
+
+        // Reset scope
+        self.current_scope_vars = scope;
+
+        Ok(docvec!(fun_args(arguments), break_("", " "), result?)
+            .nest(INDENT)
+            .group())
     }
 
     /// Outputs the expression which would replace a statement if it were the
@@ -334,7 +362,7 @@ pub fn list<'a, Elements: IntoIterator<Item = Output<'a>>>(elements: Elements) -
         .to_doc();
     Ok(docvec![
         "[",
-        docvec![break_("", ""), elements].nest(INDENT),
+        docvec![break_("", " "), elements].nest(INDENT),
         break_("", " "),
         "]"
     ]
