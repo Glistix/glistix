@@ -98,6 +98,10 @@ impl<'module> Generator<'module> {
                     None => Ok(head),
                 }
             }
+
+            TypedExpr::Tuple { elems, .. } => self.tuple(elems),
+            TypedExpr::TupleIndex { tuple, index, .. } => self.tuple_index(tuple, *index),
+
             TypedExpr::Pipeline {
                 assignments,
                 finally,
@@ -318,7 +322,6 @@ impl<'module> Generator<'module> {
             // Expands into 'if':
             | TypedExpr::Case { .. }
             // Expand into calls:
-            | TypedExpr::TupleIndex { .. }
             | TypedExpr::Todo { .. }
             | TypedExpr::Panic { .. } => Ok(docvec!["(", self.expression(expression)?, ")"]),
 
@@ -492,6 +495,20 @@ impl Generator<'_> {
 
 /// Record-related methods.
 impl Generator<'_> {
+    fn tuple<'a>(&mut self, elements: &'a [TypedExpr]) -> Output<'a> {
+        let fields = elements
+            .iter()
+            .enumerate()
+            .map(|(i, element)| (Document::String(format!("_{i}")), self.expression(element)));
+
+        try_wrap_attr_set(fields)
+    }
+
+    fn tuple_index<'a>(&mut self, tuple: &'a TypedExpr, index: u64) -> Output<'a> {
+        let tuple = self.wrap_child_expression(tuple)?;
+        Ok(docvec![tuple, Document::String(format!("._{index}"))])
+    }
+
     fn record_access<'a>(&mut self, record: &'a TypedExpr, label: &'a str) -> Output<'a> {
         let record = self.wrap_child_expression(record)?;
         Ok(docvec![record, ".", maybe_quoted_attr_set_label(label)])
