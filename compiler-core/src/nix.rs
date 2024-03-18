@@ -4,14 +4,14 @@ mod tests;
 
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    CustomType, Definition, Function, Import, ModuleConstant, TypeAlias, TypedArg, TypedDefinition,
-    TypedFunction, TypedModule,
+    CustomType, Definition, Function, Import, ModuleConstant, Publicity, TypeAlias, TypedArg,
+    TypedConstant, TypedDefinition, TypedFunction, TypedModule,
 };
 use crate::build::Target;
 use crate::docvec;
 use crate::javascript::Error;
 use crate::line_numbers::LineNumbers;
-use crate::pretty::{break_, join, line, Document, Documentable};
+use crate::pretty::{break_, concat, join, line, Document, Documentable};
 use camino::Utf8Path;
 use ecow::EcoString;
 use itertools::Itertools;
@@ -43,22 +43,61 @@ impl<'module> Generator<'module> {
 
     pub fn compile(&mut self) -> Output<'module> {
         // Generate Nix code for each statement
-        let statements = self.collect_definitions().into_iter().chain(
-            self.module
-                .definitions
-                .iter()
-                .flat_map(|s| self.statement(s)),
-        );
+        let statements: Vec<_> = self
+            .collect_definitions()
+            .into_iter()
+            .chain(
+                self.module
+                    .definitions
+                    .iter()
+                    .flat_map(|s| self.statement(s)),
+            )
+            .collect();
 
-        let attr_set = try_wrap_attr_set(statements)?;
-        Ok(docvec![attr_set, line()])
+        // Exported statements. Those will be inherited in the exported dictionary.
+        let mut public_statements = statements
+            .iter()
+            .filter(|(public, _, _)| *public)
+            .map(|(_, name, _)| name)
+            .peekable();
+
+        let exports = if public_statements.peek().is_some() {
+            let exported_names = public_statements
+                .cloned()
+                .map(|name| docvec!(break_("", " "), name));
+
+            docvec![
+                "{",
+                break_("", " "),
+                "inherit",
+                concat(exported_names),
+                ";",
+                break_("", " "),
+                "}"
+            ]
+        } else {
+            "{}".to_doc()
+        };
+
+        // Assignment of top-level module names, exported or not.
+        let assignments: Vec<_> = statements
+            .into_iter()
+            .map(|(_, name, value)| value.map(|value| expression::assignment_line(name, value)))
+            .try_collect()?;
+
+        if assignments.is_empty() {
+            Ok(docvec![exports, line()])
+        } else {
+            Ok(docvec![expression::let_in(assignments, exports), line()])
+        }
     }
 
     /// Outputs the name and the value of the module item.
+    /// The boolean is true if the item is public (exported).
     pub fn statement<'a>(
         &mut self,
         statement: &'a TypedDefinition,
-    ) -> Option<(Document<'a>, Output<'a>)> {
+    ) -> Option<(bool, Document<'a>, Output<'a>)> {
         match statement {
             Definition::TypeAlias(TypeAlias { .. }) => None,
 
@@ -69,11 +108,11 @@ impl<'module> Generator<'module> {
             Definition::CustomType(CustomType { .. }) => None,
 
             Definition::ModuleConstant(ModuleConstant {
-                public,
+                publicity,
                 name,
                 value,
                 ..
-            }) => todo!(),
+            }) => Some(self.module_constant(*publicity, name.as_ref(), value)),
 
             Definition::Function(function) => {
                 // If there's an external JavaScript implementation then it will be imported,
@@ -94,17 +133,17 @@ impl<'module> Generator<'module> {
         }
     }
 
-    fn collect_definitions<'a>(&mut self) -> Vec<(Document<'a>, Output<'a>)> {
+    fn collect_definitions<'a>(&mut self) -> Vec<(bool, Document<'a>, Output<'a>)> {
         self.module
             .definitions
             .iter()
             .flat_map(|statement| match statement {
                 Definition::CustomType(CustomType {
-                    public,
+                    publicity,
                     constructors,
                     opaque,
                     ..
-                }) => todo!(), // self.custom_type_definition(constructors, *public, *opaque),
+                }) => todo!(), // self.custom_type_definition(constructors, *publicity, *opaque),
 
                 Definition::Function(Function { .. })
                 | Definition::TypeAlias(TypeAlias { .. })
@@ -114,10 +153,23 @@ impl<'module> Generator<'module> {
             .collect()
     }
 
+    fn module_constant<'a>(
+        &mut self,
+        publicity: Publicity,
+        name: &'a str,
+        value: &'a TypedConstant,
+    ) -> (bool, Document<'a>, Output<'a>) {
+        (
+            !publicity.is_private(),
+            maybe_escape_identifier_doc(name),
+            expression::constant_expression(&mut self.tracker, value),
+        )
+    }
+
     fn module_function<'a>(
         &mut self,
         function: &'a TypedFunction,
-    ) -> Option<(Document<'a>, Output<'a>)> {
+    ) -> Option<(bool, Document<'a>, Output<'a>)> {
         let mut generator = expression::Generator::new(
             self.module,
             self.line_numbers,
@@ -126,7 +178,7 @@ impl<'module> Generator<'module> {
             &mut self.tracker,
         );
 
-        let name = function.name.as_ref().to_doc();
+        let name = maybe_escape_identifier_doc(function.name.as_ref());
 
         // A module-level function, in Nix, will have the exact same syntax as a lambda function.
         let result = match generator.fn_(function.arguments.as_slice(), &function.body) {
@@ -141,10 +193,10 @@ impl<'module> Generator<'module> {
             }
 
             // Some other error case which will be returned to the user.
-            Err(error) => return Some(("".to_doc(), Err(error))),
+            Err(error) => return Some((!function.publicity.is_private(), "".to_doc(), Err(error))),
         };
 
-        Some((name, Ok(result)))
+        Some((!function.publicity.is_private(), name, Ok(result)))
     }
 }
 
