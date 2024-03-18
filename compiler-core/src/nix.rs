@@ -52,7 +52,7 @@ impl<'module> Generator<'module> {
                     .iter()
                     .flat_map(|s| self.statement(s)),
             )
-            .collect();
+            .try_collect()?;
 
         // Exported statements. Those will be inherited in the exported dictionary.
         let mut public_statements = statements
@@ -82,13 +82,16 @@ impl<'module> Generator<'module> {
         // Assignment of top-level module names, exported or not.
         let assignments: Vec<_> = statements
             .into_iter()
-            .map(|(_, name, value)| value.map(|value| expression::assignment_line(name, value)))
-            .try_collect()?;
+            .map(|(_, name, value)| expression::assignment_line(name, value))
+            .collect();
 
         if assignments.is_empty() {
             Ok(docvec![exports, line()])
         } else {
-            Ok(docvec![expression::let_in(assignments, exports), line()])
+            Ok(docvec![
+                expression::let_in(assignments, exports).group(),
+                line()
+            ])
         }
     }
 
@@ -97,7 +100,7 @@ impl<'module> Generator<'module> {
     pub fn statement<'a>(
         &mut self,
         statement: &'a TypedDefinition,
-    ) -> Option<(bool, Document<'a>, Output<'a>)> {
+    ) -> Option<Result<(bool, Document<'a>, Document<'a>), Error>> {
         match statement {
             Definition::TypeAlias(TypeAlias { .. }) => None,
 
@@ -133,7 +136,9 @@ impl<'module> Generator<'module> {
         }
     }
 
-    fn collect_definitions<'a>(&mut self) -> Vec<(bool, Document<'a>, Output<'a>)> {
+    fn collect_definitions<'a>(
+        &mut self,
+    ) -> Vec<Result<(bool, Document<'a>, Document<'a>), Error>> {
         self.module
             .definitions
             .iter()
@@ -158,18 +163,18 @@ impl<'module> Generator<'module> {
         publicity: Publicity,
         name: &'a str,
         value: &'a TypedConstant,
-    ) -> (bool, Document<'a>, Output<'a>) {
-        (
+    ) -> Result<(bool, Document<'a>, Document<'a>), Error> {
+        Ok((
             !publicity.is_private(),
             maybe_escape_identifier_doc(name),
-            expression::constant_expression(&mut self.tracker, value),
-        )
+            expression::constant_expression(&mut self.tracker, value)?,
+        ))
     }
 
     fn module_function<'a>(
         &mut self,
         function: &'a TypedFunction,
-    ) -> Option<(bool, Document<'a>, Output<'a>)> {
+    ) -> Option<Result<(bool, Document<'a>, Document<'a>), Error>> {
         let mut generator = expression::Generator::new(
             self.module,
             self.line_numbers,
@@ -189,14 +194,14 @@ impl<'module> Generator<'module> {
             // and the target support is not enforced. In this case we do not error, instead
             // returning nothing which will cause no function to be generated.
             Err(error) if error.is_unsupported() && !self.target_support.is_enforced() => {
-                return None
+                return None;
             }
 
             // Some other error case which will be returned to the user.
-            Err(error) => return Some((!function.publicity.is_private(), "".to_doc(), Err(error))),
+            Err(error) => return Some(Err(error)),
         };
 
-        Some((!function.publicity.is_private(), name, Ok(result)))
+        Some(Ok((!function.publicity.is_private(), name, result)))
     }
 }
 
