@@ -87,15 +87,11 @@ impl<'module> Generator<'module> {
                 let head = list(
                     elements
                         .iter()
-                        .map(|element| self.wrap_expression_with_spaces(element)),
+                        .map(|element| self.wrap_child_expression(element)),
                 )?;
 
                 match tail {
-                    Some(tail) => Ok(docvec![
-                        head,
-                        " ++ ",
-                        self.wrap_expression_with_spaces(tail)?
-                    ]),
+                    Some(tail) => Ok(docvec![head, " ++ ", self.wrap_child_expression(tail)?]),
 
                     None => Ok(head),
                 }
@@ -122,6 +118,8 @@ impl<'module> Generator<'module> {
             TypedExpr::BinOp {
                 name, left, right, ..
             } => self.bin_op(name, left, right),
+            TypedExpr::NegateBool { value, .. } => self.negate_with("!", value),
+            TypedExpr::NegateInt { value, .. } => self.negate_with("-", value),
             _ => todo!(),
         }
     }
@@ -249,59 +247,6 @@ impl<'module> Generator<'module> {
         }
     }
 
-    fn bin_op<'a>(
-        &mut self,
-        name: &'a BinOp,
-        left: &'a TypedExpr,
-        right: &'a TypedExpr,
-    ) -> Output<'a> {
-        match name {
-            BinOp::And => self.print_bin_op(left, right, "&&"),
-            BinOp::Or => self.print_bin_op(left, right, "||"),
-            BinOp::LtInt | BinOp::LtFloat => self.print_bin_op(left, right, "<"),
-            BinOp::LtEqInt | BinOp::LtEqFloat => self.print_bin_op(left, right, "<="),
-            BinOp::Eq => self.equal(left, right, true),
-            BinOp::NotEq => self.equal(left, right, false),
-            BinOp::GtInt | BinOp::GtFloat => self.print_bin_op(left, right, ">"),
-            BinOp::GtEqInt | BinOp::GtEqFloat => self.print_bin_op(left, right, ">="),
-            BinOp::Concatenate | BinOp::AddInt | BinOp::AddFloat => {
-                self.print_bin_op(left, right, "+")
-            }
-            BinOp::SubInt | BinOp::SubFloat => self.print_bin_op(left, right, "-"),
-            BinOp::MultInt | BinOp::MultFloat => self.print_bin_op(left, right, "*"),
-            BinOp::RemainderInt => todo!("use remainder from prelude"),
-            BinOp::DivInt => todo!("possibly use div int from prelude"),
-            BinOp::DivFloat => todo!("possibly use div float from prelude"),
-        }
-    }
-
-    fn print_bin_op<'a>(
-        &mut self,
-        left: &'a TypedExpr,
-        right: &'a TypedExpr,
-        op: &'a str,
-    ) -> Output<'a> {
-        let left = self.wrap_expression_with_spaces(left)?;
-        let right = self.wrap_expression_with_spaces(right)?;
-        Ok(docvec!(left, " ", op, " ", right))
-    }
-
-    fn equal<'a>(
-        &mut self,
-        left: &'a TypedExpr,
-        right: &'a TypedExpr,
-        should_be_equal: bool,
-    ) -> Output<'a> {
-        // If it is a simple scalar type then we can use Nix's simple equality
-        if is_nix_scalar(left.type_()) {
-            return self.print_bin_op(left, right, if should_be_equal { "==" } else { "!=" });
-        }
-
-        // Other types must be compared using structural equality
-        todo!("track prelude equals call")
-        // Ok(self.prelude_equal_call(should_be_equal, left, right))
-    }
-
     /// Outputs the expression which would replace a statement if it were the
     /// last one.
     fn expression_from_statement<'a>(&mut self, statement: &'a TypedStatement) -> Output<'a> {
@@ -319,7 +264,10 @@ impl<'module> Generator<'module> {
     /// Some expressions in Nix may be displayed with spaces.
     /// Those expressions need to be wrapped in parentheses so that they aren't
     /// parsed as separate list elements or function call arguments, for example.
-    pub fn wrap_expression_with_spaces<'a>(&mut self, expression: &'a TypedExpr) -> Output<'a> {
+    /// This function wraps the expression in parentheses if it would have spaces in
+    /// its representation or if it could generate a potentially ambiguous
+    /// expansion (such as with [`TypedExpr::NegateInt`]).
+    pub fn wrap_child_expression<'a>(&mut self, expression: &'a TypedExpr) -> Output<'a> {
         // TODO: Recheck
         match expression {
             TypedExpr::Block { statements, .. } if statements.len() == 1 => {
@@ -327,10 +275,10 @@ impl<'module> Generator<'module> {
                     Statement::Expression(expression) => {
                         // A block with one expression is just that expression,
                         // so wrap it only if needed.
-                        self.wrap_expression_with_spaces(expression)
+                        self.wrap_child_expression(expression)
                     }
                     Statement::Assignment(assignment) => {
-                        self.wrap_expression_with_spaces(assignment.value.as_ref())
+                        self.wrap_child_expression(assignment.value.as_ref())
                     }
                     Statement::Use(_) => {
                         unreachable!("use statements must not be present for Nix generation")
@@ -343,14 +291,24 @@ impl<'module> Generator<'module> {
                 finally,
                 ..
             } if assignments.is_empty() => {
-                self.wrap_expression_with_spaces(finally)
+                self.wrap_child_expression(finally)
             }
+
+            // Negative numbers can trip up the Nix parser in some positions,
+            // such as lists:
+            TypedExpr::Int { value, .. }
+            | TypedExpr::Float { value, .. } if value.starts_with('-') => {
+                Ok(docvec!["(", self.expression(expression)?, ")"])
+            },
 
             TypedExpr::Block { .. }
             | TypedExpr::Pipeline { .. }
             | TypedExpr::Fn { .. }
             | TypedExpr::Call { .. }
             | TypedExpr::BinOp { .. }
+            // Negated values are invalid in some positions, such as lists:
+            | TypedExpr::NegateBool { .. }
+            | TypedExpr::NegateInt { .. }
             // Expands into 'if':
             | TypedExpr::Case { .. }
             // Expand into calls:
@@ -368,7 +326,7 @@ impl Generator<'_> {
     fn call<'a>(&mut self, fun: &'a TypedExpr, arguments: &'a [CallArg<TypedExpr>]) -> Output<'a> {
         let arguments = arguments
             .iter()
-            .map(|argument| self.wrap_expression_with_spaces(&argument.value))
+            .map(|argument| self.wrap_child_expression(&argument.value))
             .try_collect()?;
 
         self.call_with_doc_args(fun, arguments)
@@ -402,7 +360,7 @@ impl Generator<'_> {
             }
 
             _ => {
-                let fun = self.wrap_expression_with_spaces(fun)?;
+                let fun = self.wrap_child_expression(fun)?;
                 let arguments = join(arguments, break_("", " "));
                 Ok(docvec![fun, break_("", " "), arguments])
             }
@@ -463,6 +421,66 @@ impl Generator<'_> {
 
         // TODO: Insert module and line
         docvec!["builtins.throw", break_("", " "), message.clone()]
+    }
+}
+
+// Operators.
+impl Generator<'_> {
+    fn bin_op<'a>(
+        &mut self,
+        name: &'a BinOp,
+        left: &'a TypedExpr,
+        right: &'a TypedExpr,
+    ) -> Output<'a> {
+        match name {
+            BinOp::And => self.print_bin_op(left, right, "&&"),
+            BinOp::Or => self.print_bin_op(left, right, "||"),
+            BinOp::LtInt | BinOp::LtFloat => self.print_bin_op(left, right, "<"),
+            BinOp::LtEqInt | BinOp::LtEqFloat => self.print_bin_op(left, right, "<="),
+            BinOp::Eq => self.equal(left, right, true),
+            BinOp::NotEq => self.equal(left, right, false),
+            BinOp::GtInt | BinOp::GtFloat => self.print_bin_op(left, right, ">"),
+            BinOp::GtEqInt | BinOp::GtEqFloat => self.print_bin_op(left, right, ">="),
+            BinOp::Concatenate | BinOp::AddInt | BinOp::AddFloat => {
+                self.print_bin_op(left, right, "+")
+            }
+            BinOp::SubInt | BinOp::SubFloat => self.print_bin_op(left, right, "-"),
+            BinOp::MultInt | BinOp::MultFloat => self.print_bin_op(left, right, "*"),
+            BinOp::RemainderInt => todo!("use remainder from prelude"),
+            BinOp::DivInt => todo!("possibly use div int from prelude"),
+            BinOp::DivFloat => todo!("possibly use div float from prelude"),
+        }
+    }
+
+    fn print_bin_op<'a>(
+        &mut self,
+        left: &'a TypedExpr,
+        right: &'a TypedExpr,
+        op: &'a str,
+    ) -> Output<'a> {
+        let left = self.wrap_child_expression(left)?;
+        let right = self.wrap_child_expression(right)?;
+        Ok(docvec!(left, " ", op, " ", right))
+    }
+
+    fn equal<'a>(
+        &mut self,
+        left: &'a TypedExpr,
+        right: &'a TypedExpr,
+        should_be_equal: bool,
+    ) -> Output<'a> {
+        // If it is a simple scalar type then we can use Nix's simple equality
+        if is_nix_scalar(left.type_()) {
+            return self.print_bin_op(left, right, if should_be_equal { "==" } else { "!=" });
+        }
+
+        // Other types must be compared using structural equality
+        todo!("track prelude equals call")
+        // Ok(self.prelude_equal_call(should_be_equal, left, right))
+    }
+
+    fn negate_with<'a>(&mut self, with: &'static str, value: &'a TypedExpr) -> Output<'a> {
+        Ok(docvec!(with, self.wrap_child_expression(value)?))
     }
 }
 
