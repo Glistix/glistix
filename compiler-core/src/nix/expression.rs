@@ -160,9 +160,7 @@ impl<'module> Generator<'module> {
         Ok(docvec![
             name,
             " =",
-            break_("", " "),
-            value.nest(INDENT),
-            ";"
+            docvec![break_("", " "), value, ";"].nest(INDENT).group()
         ])
     }
 
