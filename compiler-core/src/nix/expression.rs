@@ -113,7 +113,7 @@ impl<'module> Generator<'module> {
             } => self.variable(name, constructor),
 
             TypedExpr::Fn { args, body, .. } => self.fn_(args, body),
-            TypedExpr::Call { fun, args, .. } => self.call(fun, args),
+            TypedExpr::Call { fun, args, .. } => self.call(fun, args, false),
             TypedExpr::Panic {
                 location, message, ..
             } => self.panic(location, message.as_deref()),
@@ -243,8 +243,8 @@ impl<'module> Generator<'module> {
     ) -> Output<'a> {
         match &constructor.variant {
             ValueConstructorVariant::LocalConstant { literal } => constant_expression(literal),
-            ValueConstructorVariant::Record { arity, .. } => {
-                Ok(self.record_constructor(constructor.type_.clone(), None, name, *arity))
+            ValueConstructorVariant::Record { .. } => {
+                Ok(self.record_constructor(constructor.type_.clone(), None, name))
             }
             ValueConstructorVariant::ModuleFn { .. }
             | ValueConstructorVariant::ModuleConstant { .. }
@@ -309,8 +309,9 @@ impl<'module> Generator<'module> {
             TypedExpr::Block { .. }
             | TypedExpr::Pipeline { .. }
             | TypedExpr::Fn { .. }
-            | TypedExpr::Call { .. }
+            // Expand into binary operators (x OP y):
             | TypedExpr::BinOp { .. }
+            | TypedExpr::RecordUpdate { .. }
             // Negated values are invalid in some positions, such as lists:
             | TypedExpr::NegateBool { .. }
             | TypedExpr::NegateInt { .. }
@@ -320,6 +321,38 @@ impl<'module> Generator<'module> {
             | TypedExpr::Todo { .. }
             | TypedExpr::Panic { .. } => Ok(docvec!["(", self.expression(expression)?, ")"]),
 
+            TypedExpr::Call { fun, args, .. } => {
+                if args.is_empty() {
+                    // When the args are empty, only the function or
+                    // constructor remains. Therefore, parentheses might or
+                    // might be necessary, depending on which expression is
+                    // used for the function or constructor. We thus delegate
+                    // this job to 'self.call' by informing that it is in a
+                    // child expression position.
+                    self.call(fun, args, true)
+                } else {
+                    // There's at least one argument, so the call will
+                    // certainly have spaces.
+                    Ok(docvec!["(", self.expression(expression)?, ")"])
+                }
+            }
+
+            TypedExpr::Var {
+                constructor: ValueConstructor {
+                    variant: ValueConstructorVariant::LocalConstant {
+                        literal: Constant::Record { args, .. }
+                    },
+                    ..
+                },
+                ..
+            } if !args.is_empty() => {
+                // Expands into a call to the record's constructor.
+                // The arguments aren't empty, so there will be spaces.
+                // When they are indeed empty, it's just a reference to the
+                // record's constructor, either by name or by 'module.name'.
+                Ok(docvec!["(", self.expression(expression)?, ")"])
+            },
+
             _ => self.expression(expression),
         }
     }
@@ -327,52 +360,67 @@ impl<'module> Generator<'module> {
 
 /// Function-related code generation.
 impl Generator<'_> {
-    fn call<'a>(&mut self, fun: &'a TypedExpr, arguments: &'a [CallArg<TypedExpr>]) -> Output<'a> {
+    fn call<'a>(
+        &mut self,
+        fun: &'a TypedExpr,
+        arguments: &'a [CallArg<TypedExpr>],
+        in_child_position: bool,
+    ) -> Output<'a> {
         let arguments = arguments
             .iter()
             .map(|argument| self.wrap_child_expression(&argument.value))
             .try_collect()?;
 
-        self.call_with_doc_args(fun, arguments)
+        self.call_with_doc_args(fun, arguments, in_child_position)
     }
 
     fn call_with_doc_args<'a>(
         &mut self,
         fun: &'a TypedExpr,
         arguments: Vec<Document<'a>>,
+        in_child_position: bool,
     ) -> Output<'a> {
         match fun {
             // Qualified record construction
             TypedExpr::ModuleSelect {
-                constructor: ModuleValueConstructor::Record { name: _, .. },
-                module_alias: _,
+                constructor: ModuleValueConstructor::Record { name, .. },
+                module_alias,
                 ..
-            } => Ok(todo!("construct_record")),
+            } => Ok(construct_record(Some(module_alias), name, arguments)),
 
             // Record construction
             TypedExpr::Var {
                 constructor:
                     ValueConstructor {
                         variant: ValueConstructorVariant::Record { .. },
-                        type_: _,
+                        type_,
                         ..
                     },
-                name: _,
+                name,
                 ..
             } => {
-                todo!("construct_record, Ok/Err")
+                if type_.is_result_constructor() {
+                    todo!("track result")
+                    // if name == "Ok" {
+                    //     self.tracker.ok_used = true;
+                    // } else if name == "Error" {
+                    //     self.tracker.error_used = true;
+                    // }
+                }
+                Ok(construct_record(None, name, arguments))
             }
 
             _ => {
-                // Don't break after the function call if there are no arguments.
-                let argument_break = if arguments.is_empty() {
-                    nil()
-                } else {
-                    break_("", " ")
-                };
+                if arguments.is_empty() {
+                    return if in_child_position {
+                        self.wrap_child_expression(fun)
+                    } else {
+                        self.expression(fun)
+                    };
+                }
                 let fun = self.wrap_child_expression(fun)?;
                 let arguments = join(arguments, break_("", " "));
-                Ok(docvec![fun, argument_break, arguments])
+                Ok(docvec![fun, break_("", " "), arguments])
             }
         }
     }
@@ -540,10 +588,9 @@ impl Generator<'_> {
         type_: Arc<Type>,
         qualifier: Option<&'a str>,
         name: &'a str,
-        arity: u16,
     ) -> Document<'a> {
         if qualifier.is_none() && type_.is_result_constructor() {
-            todo!("result")
+            todo!("tracker/result")
             // if name == "Ok" {
             //     self.tracker.ok_used = true;
             // } else if name == "Error" {
@@ -556,27 +603,12 @@ impl Generator<'_> {
             "false".to_doc()
         } else if type_.is_nil() {
             "null".to_doc()
-        } else if arity == 0 {
-            todo!("custom types")
-            // match qualifier {
-            //     Some(module) => docvec!["new $", module, ".", name, "()"],
-            //     None => docvec!["new ", name, "()"],
-            // }
         } else {
-            todo!("custom types")
-            // let vars = (0..arity).map(|i| Document::String(format!("var{i}")));
-            // let body = docvec![
-            //     "return ",
-            //     construct_record(qualifier, name, vars.clone()),
-            //     ";"
-            // ];
-            // docvec!(
-            //     docvec!(wrap_args(vars), " => {", break_("", " "), body)
-            //         .nest(INDENT)
-            //         .append(break_("", " "))
-            //         .group(),
-            //     "}",
-            // )
+            // Use the record constructor directly.
+            match qualifier {
+                Some(_module) => todo!("module"), // docvec!["new $", module, ".", name, "()"],
+                None => name.to_doc(),
+            }
         }
     }
 }
@@ -604,13 +636,9 @@ pub(crate) fn constant_expression(expression: &TypedConstant) -> Output<'_> {
         Constant::Record { typ, .. } if typ.is_nil() => Ok("null".to_doc()),
 
         Constant::Record {
-            tag,
-            typ,
-            args,
-            module,
-            ..
+            tag, args, module, ..
         } => {
-            todo!()
+            // TODO: Track Result
             // if typ.is_result() {
             //     if tag == "Ok" {
             //         tracker.ok_used = true;
@@ -618,14 +646,15 @@ pub(crate) fn constant_expression(expression: &TypedConstant) -> Output<'_> {
             //         tracker.error_used = true;
             //     }
             // }
-            // let field_values: Vec<_> = args
-            //     .iter()
-            //     .map(|arg| constant_expression(tracker, &arg.value))
-            //     .try_collect()?;
-            // Ok(construct_record(module.as_deref(), tag, field_values))
+            let field_values = args
+                .iter()
+                .map(|arg| constant_expression(&arg.value))
+                .try_collect()?;
+
+            Ok(construct_record(module.as_deref(), tag, field_values))
         }
 
-        Constant::BitArray { segments, .. } => todo!(),
+        Constant::BitArray { segments: _, .. } => todo!("bitarray"),
 
         Constant::Var { name, module, .. } => Ok({
             match module {
@@ -634,6 +663,30 @@ pub(crate) fn constant_expression(expression: &TypedConstant) -> Output<'_> {
             }
         }),
     }
+}
+
+/// A record in Nix is represented with the following format:
+///
+/// ```nix
+/// { __gleam_tag' = "Ctor", field_name = value, field2_name = value, ... }
+/// ```
+fn construct_record<'a>(
+    module: Option<&'a str>,
+    name: &'a str,
+    arguments: Vec<Document<'a>>,
+) -> Document<'a> {
+    let name = if let Some(_module) = module {
+        todo!("modules")
+    } else {
+        name.to_doc()
+    };
+
+    if arguments.is_empty() {
+        return name.to_doc();
+    }
+
+    let arguments = join(arguments, break_("", " "));
+    docvec![name, " ", arguments]
 }
 
 /// Generates a valid Nix string.
