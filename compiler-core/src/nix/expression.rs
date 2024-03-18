@@ -9,7 +9,7 @@ use crate::line_numbers::LineNumbers;
 use crate::nix::{
     fun_args, is_nix_keyword, maybe_escape_identifier_doc, try_wrap_attr_set, INDENT,
 };
-use crate::pretty::{break_, join, line, Document, Documentable};
+use crate::pretty::{break_, join, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
@@ -229,10 +229,9 @@ impl<'module> Generator<'module> {
         body: Document<'a>,
     ) -> Output<'a> {
         Ok(docvec![
-            break_("", ""),
             "let",
-            docvec![line(), join(assignments, line())].nest(INDENT),
-            line(),
+            docvec![break_("", " "), join(assignments, break_("", " "))].nest(INDENT),
+            break_("", " "),
             docvec!["in", break_("", " "), body].group(),
         ])
     }
