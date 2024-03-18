@@ -1,7 +1,7 @@
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    Arg, BinOp, CallArg, SrcSpan, Statement, TypedArg, TypedAssignment, TypedExpr, TypedModule,
-    TypedPattern, TypedRecordUpdateArg, TypedStatement,
+    Arg, BinOp, CallArg, Constant, SrcSpan, Statement, TypedArg, TypedAssignment, TypedConstant,
+    TypedExpr, TypedModule, TypedPattern, TypedRecordUpdateArg, TypedStatement,
 };
 use crate::docvec;
 use crate::javascript::Output;
@@ -242,11 +242,9 @@ impl<'module> Generator<'module> {
         constructor: &'a ValueConstructor,
     ) -> Output<'a> {
         match &constructor.variant {
-            ValueConstructorVariant::LocalConstant { literal: _ } => {
-                todo!()
-            }
-            ValueConstructorVariant::Record { arity: _, .. } => {
-                todo!()
+            ValueConstructorVariant::LocalConstant { literal } => constant_expression(literal),
+            ValueConstructorVariant::Record { arity, .. } => {
+                Ok(self.record_constructor(constructor.type_.clone(), None, name, *arity))
             }
             ValueConstructorVariant::ModuleFn { .. }
             | ValueConstructorVariant::ModuleConstant { .. }
@@ -506,12 +504,7 @@ impl Generator<'_> {
 /// Record-related methods.
 impl Generator<'_> {
     fn tuple<'a>(&mut self, elements: &'a [TypedExpr]) -> Output<'a> {
-        let fields = elements
-            .iter()
-            .enumerate()
-            .map(|(i, element)| (Document::String(format!("_{i}")), self.expression(element)));
-
-        try_wrap_attr_set(fields)
+        tuple(elements.iter().map(|element| self.expression(element)))
     }
 
     fn tuple_index<'a>(&mut self, tuple: &'a TypedExpr, index: u64) -> Output<'a> {
@@ -541,11 +534,106 @@ impl Generator<'_> {
         let set = try_wrap_attr_set(fields)?;
         Ok(docvec![record, " // ", set])
     }
+
+    fn record_constructor<'a>(
+        &mut self,
+        type_: Arc<Type>,
+        qualifier: Option<&'a str>,
+        name: &'a str,
+        arity: u16,
+    ) -> Document<'a> {
+        if qualifier.is_none() && type_.is_result_constructor() {
+            todo!("result")
+            // if name == "Ok" {
+            //     self.tracker.ok_used = true;
+            // } else if name == "Error" {
+            //     self.tracker.error_used = true;
+            // }
+        }
+        if type_.is_bool() && name == "True" {
+            "true".to_doc()
+        } else if type_.is_bool() {
+            "false".to_doc()
+        } else if type_.is_nil() {
+            "null".to_doc()
+        } else if arity == 0 {
+            todo!("custom types")
+            // match qualifier {
+            //     Some(module) => docvec!["new $", module, ".", name, "()"],
+            //     None => docvec!["new ", name, "()"],
+            // }
+        } else {
+            todo!("custom types")
+            // let vars = (0..arity).map(|i| Document::String(format!("var{i}")));
+            // let body = docvec![
+            //     "return ",
+            //     construct_record(qualifier, name, vars.clone()),
+            //     ";"
+            // ];
+            // docvec!(
+            //     docvec!(wrap_args(vars), " => {", break_("", " "), body)
+            //         .nest(INDENT)
+            //         .append(break_("", " "))
+            //         .group(),
+            //     "}",
+            // )
+        }
+    }
 }
 
 /// Types which are trivially comparable for equality.
 pub fn is_nix_scalar(t: Arc<Type>) -> bool {
     t.is_int() || t.is_float() || t.is_bool() || t.is_nil() || t.is_string()
+}
+
+pub(crate) fn constant_expression(expression: &TypedConstant) -> Output<'_> {
+    match expression {
+        Constant::Int { value, .. } => Ok(int(value)),
+        Constant::Float { value, .. } => Ok(float(value)),
+        Constant::String { value, .. } => Ok(string(value)),
+        Constant::Tuple { elements, .. } => tuple(elements.iter().map(constant_expression)),
+
+        Constant::List { elements, .. } => list(elements.iter().map(constant_expression)),
+
+        Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
+            Ok("true".to_doc())
+        }
+        Constant::Record { typ, name, .. } if typ.is_bool() && name == "False" => {
+            Ok("false".to_doc())
+        }
+        Constant::Record { typ, .. } if typ.is_nil() => Ok("null".to_doc()),
+
+        Constant::Record {
+            tag,
+            typ,
+            args,
+            module,
+            ..
+        } => {
+            todo!()
+            // if typ.is_result() {
+            //     if tag == "Ok" {
+            //         tracker.ok_used = true;
+            //     } else {
+            //         tracker.error_used = true;
+            //     }
+            // }
+            // let field_values: Vec<_> = args
+            //     .iter()
+            //     .map(|arg| constant_expression(tracker, &arg.value))
+            //     .try_collect()?;
+            // Ok(construct_record(module.as_deref(), tag, field_values))
+        }
+
+        Constant::BitArray { segments, .. } => todo!(),
+
+        Constant::Var { name, module, .. } => Ok({
+            match module {
+                None => name.to_doc(),
+                Some(_module) => todo!("module notation"), // docvec!["$", module, ".", name],
+            }
+        }),
+    }
 }
 
 /// Generates a valid Nix string.
@@ -618,6 +706,15 @@ pub fn list<'a, Elements: IntoIterator<Item = Output<'a>>>(elements: Elements) -
         "]"
     ]
     .group())
+}
+
+pub fn tuple<'a>(elements: impl IntoIterator<Item = Output<'a>>) -> Output<'a> {
+    let fields = elements
+        .into_iter()
+        .enumerate()
+        .map(|(i, element)| (Document::String(format!("_{i}")), element));
+
+    try_wrap_attr_set(fields)
 }
 
 /// If the label would be a keyword, it is quoted.
