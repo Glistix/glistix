@@ -199,7 +199,11 @@ fn wrap_attr_set<'a>(
     let fields = items.into_iter().map(|(key, value)| {
         empty = false;
         match value {
-            Some(value) => docvec![key, " =", break_("", " "), value, ";"],
+            Some(value) => docvec![
+                key,
+                " =",
+                docvec![break_("", " "), value, ";"].nest(INDENT).group()
+            ],
             None => docvec!["inherit ", key.to_doc(), ";"],
         }
     });
@@ -221,9 +225,13 @@ fn wrap_attr_set<'a>(
 fn try_wrap_attr_set<'a>(
     items: impl IntoIterator<Item = (Document<'a>, Output<'a>)>,
 ) -> Output<'a> {
-    let fields = items
-        .into_iter()
-        .map(|(key, value)| Ok(docvec![key, " =", break_("", " "), value?, ";"]));
+    let fields = items.into_iter().map(|(key, value)| {
+        Ok(docvec![
+            key,
+            " =",
+            docvec![break_("", " "), value?, ";"].nest(INDENT).group()
+        ])
+    });
     let fields: Vec<_> = Itertools::intersperse(fields, Ok(break_("", " "))).try_collect()?;
 
     Ok(docvec![
