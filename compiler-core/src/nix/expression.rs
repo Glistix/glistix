@@ -9,7 +9,7 @@ use crate::line_numbers::LineNumbers;
 use crate::nix::{
     fun_args, is_nix_keyword, maybe_escape_identifier_doc, try_wrap_attr_set, INDENT,
 };
-use crate::pretty::{break_, join, Document, Documentable};
+use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
@@ -366,9 +366,15 @@ impl Generator<'_> {
             }
 
             _ => {
+                // Don't break after the function call if there are no arguments.
+                let argument_break = if arguments.is_empty() {
+                    nil()
+                } else {
+                    break_("", " ")
+                };
                 let fun = self.wrap_child_expression(fun)?;
                 let arguments = join(arguments, break_("", " "));
-                Ok(docvec![fun, break_("", " "), arguments])
+                Ok(docvec![fun, argument_break, arguments])
             }
         }
     }
@@ -385,7 +391,14 @@ impl Generator<'_> {
         // Reset scope
         self.current_scope_vars = scope;
 
-        Ok(docvec!(fun_args(arguments), break_("", " "), result?)
+        // Don't break after the function call if there are no arguments.
+        let argument_break = if arguments.is_empty() {
+            nil()
+        } else {
+            break_("", " ")
+        };
+
+        Ok(docvec!(fun_args(arguments), argument_break, result?)
             .nest(INDENT)
             .group())
     }
