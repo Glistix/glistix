@@ -332,6 +332,14 @@ impl<'module> Generator<'module> {
                 }
             },
 
+            TypedExpr::Pipeline {
+                assignments,
+                finally,
+                ..
+            } if assignments.is_empty() => {
+                self.wrap_expression_with_spaces(finally)
+            }
+
             TypedExpr::Block { .. }
             | TypedExpr::Pipeline { .. }
             | TypedExpr::Fn { .. }
