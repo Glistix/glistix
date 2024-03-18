@@ -22,6 +22,7 @@ struct Generator<'module> {
     module: &'module TypedModule,
     line_numbers: &'module LineNumbers,
     target_support: TargetSupport,
+    tracker: UsageTracker,
 }
 
 pub type Output<'a> = Result<Document<'a>, Error>;
@@ -36,23 +37,17 @@ impl<'module> Generator<'module> {
             module,
             line_numbers,
             target_support,
+            tracker: UsageTracker::default(),
         }
     }
 
     pub fn compile(&mut self) -> Output<'module> {
-        let mut generator = expression::Generator::new(
-            self.module,
-            self.line_numbers,
-            self.target_support,
-            im::HashMap::default(),
-        );
-
         // Generate Nix code for each statement
         let statements = self.collect_definitions().into_iter().chain(
             self.module
                 .definitions
                 .iter()
-                .flat_map(|s| self.statement(&mut generator, s)),
+                .flat_map(|s| self.statement(s)),
         );
 
         let attr_set = try_wrap_attr_set(statements)?;
@@ -62,7 +57,6 @@ impl<'module> Generator<'module> {
     /// Outputs the name and the value of the module item.
     pub fn statement<'a>(
         &mut self,
-        generator: &mut expression::Generator<'module>,
         statement: &'a TypedDefinition,
     ) -> Option<(Document<'a>, Output<'a>)> {
         match statement {
@@ -95,7 +89,7 @@ impl<'module> Generator<'module> {
                     return None;
                 }
 
-                self.module_function(generator, function)
+                self.module_function(function)
             }
         }
     }
@@ -122,10 +116,19 @@ impl<'module> Generator<'module> {
 
     fn module_function<'a>(
         &mut self,
-        generator: &mut expression::Generator<'module>,
         function: &'a TypedFunction,
     ) -> Option<(Document<'a>, Output<'a>)> {
+        let mut generator = expression::Generator::new(
+            self.module,
+            self.line_numbers,
+            self.target_support,
+            im::HashMap::default(),
+            &mut self.tracker,
+        );
+
         let name = function.name.as_ref().to_doc();
+
+        // A module-level function, in Nix, will have the exact same syntax as a lambda function.
         let result = match generator.fn_(function.arguments.as_slice(), &function.body) {
             // No error, let's continue!
             Ok(body) => body,
@@ -292,4 +295,23 @@ fn maybe_escape_identifier_doc(word: &str) -> Document<'_> {
     } else {
         Document::String(escape_identifier(word))
     }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct UsageTracker {
+    pub ok_used: bool,
+    // pub list_used: bool,
+    // pub prepend_used: bool,
+    pub error_used: bool,
+    pub int_remainder_used: bool,
+    // pub make_error_used: bool,
+    // pub custom_type_used: bool,
+    // pub int_division_used: bool,
+    // pub float_division_used: bool,
+    // pub object_equality_used: bool,
+    // pub bit_array_literal_used: bool,
+    // pub sized_integer_segment_used: bool,
+    // pub string_bit_array_segment_used: bool,
+    // pub codepoint_bit_array_segment_used: bool,
+    // pub float_bit_array_segment_used: bool,
 }

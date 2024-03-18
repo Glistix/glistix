@@ -7,7 +7,7 @@ use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
 use crate::nix::{
-    fun_args, is_nix_keyword, maybe_escape_identifier_doc, try_wrap_attr_set, INDENT,
+    fun_args, is_nix_keyword, maybe_escape_identifier_doc, try_wrap_attr_set, UsageTracker, INDENT,
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
@@ -22,6 +22,9 @@ pub(crate) struct Generator<'module> {
     line_numbers: &'module LineNumbers,
     target_support: TargetSupport,
     current_scope_vars: im::HashMap<EcoString, usize>,
+    // We register whether these features are used within an expression so that
+    // the module generator can output a suitable function if it is needed.
+    tracker: &'module mut UsageTracker,
 }
 
 impl<'module> Generator<'module> {
@@ -30,12 +33,14 @@ impl<'module> Generator<'module> {
         line_numbers: &'module LineNumbers,
         target_support: TargetSupport,
         current_scope_vars: im::HashMap<EcoString, usize>,
+        tracker: &'module mut UsageTracker,
     ) -> Self {
         Self {
             module,
             line_numbers,
             target_support,
             current_scope_vars,
+            tracker,
         }
     }
 
@@ -242,7 +247,9 @@ impl<'module> Generator<'module> {
         constructor: &'a ValueConstructor,
     ) -> Output<'a> {
         match &constructor.variant {
-            ValueConstructorVariant::LocalConstant { literal } => constant_expression(literal),
+            ValueConstructorVariant::LocalConstant { literal } => {
+                constant_expression(self.tracker, literal)
+            }
             ValueConstructorVariant::Record { .. } => {
                 Ok(self.record_constructor(constructor.type_.clone(), None, name))
             }
@@ -400,12 +407,11 @@ impl Generator<'_> {
                 ..
             } => {
                 if type_.is_result_constructor() {
-                    todo!("track result")
-                    // if name == "Ok" {
-                    //     self.tracker.ok_used = true;
-                    // } else if name == "Error" {
-                    //     self.tracker.error_used = true;
-                    // }
+                    if name == "Ok" {
+                        self.tracker.ok_used = true;
+                    } else if name == "Error" {
+                        self.tracker.error_used = true;
+                    }
                 }
                 Ok(construct_record(None, name, arguments))
             }
@@ -590,12 +596,11 @@ impl Generator<'_> {
         name: &'a str,
     ) -> Document<'a> {
         if qualifier.is_none() && type_.is_result_constructor() {
-            todo!("tracker/result")
-            // if name == "Ok" {
-            //     self.tracker.ok_used = true;
-            // } else if name == "Error" {
-            //     self.tracker.error_used = true;
-            // }
+            if name == "Ok" {
+                self.tracker.ok_used = true;
+            } else if name == "Error" {
+                self.tracker.error_used = true;
+            }
         }
         if type_.is_bool() && name == "True" {
             "true".to_doc()
@@ -618,14 +623,21 @@ pub fn is_nix_scalar(t: Arc<Type>) -> bool {
     t.is_int() || t.is_float() || t.is_bool() || t.is_nil() || t.is_string()
 }
 
-pub(crate) fn constant_expression(expression: &TypedConstant) -> Output<'_> {
+pub(crate) fn constant_expression<'a>(
+    tracker: &mut UsageTracker,
+    expression: &'a TypedConstant,
+) -> Output<'a> {
     match expression {
         Constant::Int { value, .. } => Ok(int(value)),
         Constant::Float { value, .. } => Ok(float(value)),
         Constant::String { value, .. } => Ok(string(value)),
-        Constant::Tuple { elements, .. } => tuple(elements.iter().map(constant_expression)),
+        Constant::Tuple { elements, .. } => {
+            tuple(elements.iter().map(|e| constant_expression(tracker, e)))
+        }
 
-        Constant::List { elements, .. } => list(elements.iter().map(constant_expression)),
+        Constant::List { elements, .. } => {
+            list(elements.iter().map(|e| constant_expression(tracker, e)))
+        }
 
         Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
             Ok("true".to_doc())
@@ -636,19 +648,22 @@ pub(crate) fn constant_expression(expression: &TypedConstant) -> Output<'_> {
         Constant::Record { typ, .. } if typ.is_nil() => Ok("null".to_doc()),
 
         Constant::Record {
-            tag, args, module, ..
+            tag,
+            typ,
+            args,
+            module,
+            ..
         } => {
-            // TODO: Track Result
-            // if typ.is_result() {
-            //     if tag == "Ok" {
-            //         tracker.ok_used = true;
-            //     } else {
-            //         tracker.error_used = true;
-            //     }
-            // }
+            if typ.is_result() {
+                if tag == "Ok" {
+                    tracker.ok_used = true;
+                } else {
+                    tracker.error_used = true;
+                }
+            }
             let field_values = args
                 .iter()
-                .map(|arg| constant_expression(&arg.value))
+                .map(|arg| constant_expression(tracker, &arg.value))
                 .try_collect()?;
 
             Ok(construct_record(module.as_deref(), tag, field_values))
