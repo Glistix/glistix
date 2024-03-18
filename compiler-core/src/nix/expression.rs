@@ -243,67 +243,6 @@ impl<'module> Generator<'module> {
         }
     }
 
-    fn call<'a>(&mut self, fun: &'a TypedExpr, arguments: &'a [CallArg<TypedExpr>]) -> Output<'a> {
-        let arguments = arguments
-            .iter()
-            .map(|element| self.wrap_expression_with_spaces(&element.value))
-            .try_collect()?;
-
-        self.call_with_doc_args(fun, arguments)
-    }
-
-    fn call_with_doc_args<'a>(
-        &mut self,
-        fun: &'a TypedExpr,
-        arguments: Vec<Document<'a>>,
-    ) -> Output<'a> {
-        match fun {
-            // Qualified record construction
-            TypedExpr::ModuleSelect {
-                constructor: ModuleValueConstructor::Record { name: _, .. },
-                module_alias: _,
-                ..
-            } => Ok(todo!("construct_record")),
-
-            // Record construction
-            TypedExpr::Var {
-                constructor:
-                    ValueConstructor {
-                        variant: ValueConstructorVariant::Record { .. },
-                        type_: _,
-                        ..
-                    },
-                name: _,
-                ..
-            } => {
-                todo!("construct_record, Ok/Err")
-            }
-
-            _ => {
-                let fun = self.wrap_expression_with_spaces(fun)?;
-                let arguments = join(arguments, break_("", " "));
-                Ok(docvec![fun, break_("", " "), arguments])
-            }
-        }
-    }
-
-    pub fn fn_<'a>(&mut self, arguments: &'a [TypedArg], body: &'a [TypedStatement]) -> Output<'a> {
-        let scope = self.current_scope_vars.clone();
-        for name in arguments.iter().flat_map(Arg::get_variable_name) {
-            let _ = self.current_scope_vars.insert(name.clone(), 0);
-        }
-
-        // Generate the function body
-        let result = self.statements(body);
-
-        // Reset scope
-        self.current_scope_vars = scope;
-
-        Ok(docvec!(fun_args(arguments), break_("", " "), result?)
-            .nest(INDENT)
-            .group())
-    }
-
     fn bin_op<'a>(
         &mut self,
         name: &'a BinOp,
@@ -407,6 +346,70 @@ impl<'module> Generator<'module> {
 
             _ => self.expression(expression),
         }
+    }
+}
+
+/// Function-related code generation.
+impl Generator<'_> {
+    fn call<'a>(&mut self, fun: &'a TypedExpr, arguments: &'a [CallArg<TypedExpr>]) -> Output<'a> {
+        let arguments = arguments
+            .iter()
+            .map(|element| self.wrap_expression_with_spaces(&element.value))
+            .try_collect()?;
+
+        self.call_with_doc_args(fun, arguments)
+    }
+
+    fn call_with_doc_args<'a>(
+        &mut self,
+        fun: &'a TypedExpr,
+        arguments: Vec<Document<'a>>,
+    ) -> Output<'a> {
+        match fun {
+            // Qualified record construction
+            TypedExpr::ModuleSelect {
+                constructor: ModuleValueConstructor::Record { name: _, .. },
+                module_alias: _,
+                ..
+            } => Ok(todo!("construct_record")),
+
+            // Record construction
+            TypedExpr::Var {
+                constructor:
+                    ValueConstructor {
+                        variant: ValueConstructorVariant::Record { .. },
+                        type_: _,
+                        ..
+                    },
+                name: _,
+                ..
+            } => {
+                todo!("construct_record, Ok/Err")
+            }
+
+            _ => {
+                let fun = self.wrap_expression_with_spaces(fun)?;
+                let arguments = join(arguments, break_("", " "));
+                Ok(docvec![fun, break_("", " "), arguments])
+            }
+        }
+    }
+
+    pub fn fn_<'a>(&mut self, arguments: &'a [TypedArg], body: &'a [TypedStatement]) -> Output<'a> {
+        let scope = self.current_scope_vars.clone();
+        for name in arguments.iter().flat_map(Arg::get_variable_name) {
+            let _ = self.current_scope_vars.insert(name.clone(), 0);
+        }
+
+        // Generate the function body
+        let result = self.statements(body);
+
+        // Reset scope
+        self.current_scope_vars = scope;
+
+        Ok(docvec!(fun_args(arguments), break_("", " "), result?)
+            .nest(INDENT)
+            .group())
     }
 }
 
