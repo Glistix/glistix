@@ -235,6 +235,14 @@ fn try_wrap_attr_set<'a>(
     ])
 }
 
+fn is_nix_keyword(word: &str) -> bool {
+    matches!(
+        word,
+        // Keywords and reserved words
+        "if" | "then" | "else" | "assert" | "with" | "let" | "in" | "rec" | "inherit" | "or"
+    )
+}
+
 fn is_usable_nix_identifier(word: &str) -> bool {
     !matches!(
         word,

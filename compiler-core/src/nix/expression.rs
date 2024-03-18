@@ -1,12 +1,14 @@
 use crate::analyse::TargetSupport;
 use crate::ast::{
     Arg, BinOp, CallArg, SrcSpan, Statement, TypedArg, TypedAssignment, TypedExpr, TypedModule,
-    TypedPattern, TypedStatement,
+    TypedPattern, TypedRecordUpdateArg, TypedStatement,
 };
 use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
-use crate::nix::{fun_args, maybe_escape_identifier_doc, INDENT};
+use crate::nix::{
+    fun_args, is_nix_keyword, maybe_escape_identifier_doc, try_wrap_attr_set, INDENT,
+};
 use crate::pretty::{break_, join, line, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
@@ -120,6 +122,10 @@ impl<'module> Generator<'module> {
             } => self.bin_op(name, left, right),
             TypedExpr::NegateBool { value, .. } => self.negate_with("!", value),
             TypedExpr::NegateInt { value, .. } => self.negate_with("-", value),
+
+            TypedExpr::RecordAccess { label, record, .. } => self.record_access(record, label),
+            TypedExpr::RecordUpdate { spread, args, .. } => self.record_update(spread, args),
+
             _ => todo!(),
         }
     }
@@ -484,6 +490,32 @@ impl Generator<'_> {
     }
 }
 
+/// Record-related methods.
+impl Generator<'_> {
+    fn record_access<'a>(&mut self, record: &'a TypedExpr, label: &'a str) -> Output<'a> {
+        let record = self.wrap_child_expression(record)?;
+        Ok(docvec![record, ".", maybe_quoted_attr_set_label(label)])
+    }
+
+    fn record_update<'a>(
+        &mut self,
+        record: &'a TypedExpr,
+        updates: &'a [TypedRecordUpdateArg],
+    ) -> Output<'a> {
+        let record = self.wrap_child_expression(record)?;
+        let fields = updates
+            .iter()
+            .map(|TypedRecordUpdateArg { label, value, .. }| {
+                (
+                    maybe_quoted_attr_set_label(label),
+                    self.wrap_child_expression(value),
+                )
+            });
+        let set = try_wrap_attr_set(fields)?;
+        Ok(docvec![record, " // ", set])
+    }
+}
+
 /// Types which are trivially comparable for equality.
 pub fn is_nix_scalar(t: Arc<Type>) -> bool {
     t.is_int() || t.is_float() || t.is_bool() || t.is_nil() || t.is_string()
@@ -559,4 +591,15 @@ pub fn list<'a, Elements: IntoIterator<Item = Output<'a>>>(elements: Elements) -
         "]"
     ]
     .group())
+}
+
+/// If the label would be a keyword, it is quoted.
+/// Assumes the label is a valid Gleam identifier, thus doesn't check for other
+/// invalid attribute names.
+pub fn maybe_quoted_attr_set_label(label: &str) -> Document<'_> {
+    if is_nix_keyword(label) {
+        string(label)
+    } else {
+        label.to_doc()
+    }
 }
