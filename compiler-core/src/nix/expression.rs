@@ -1,13 +1,13 @@
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    Arg, BinOp, CallArg, Statement, TypedArg, TypedAssignment, TypedExpr, TypedModule,
+    Arg, BinOp, CallArg, SrcSpan, Statement, TypedArg, TypedAssignment, TypedExpr, TypedModule,
     TypedPattern, TypedStatement,
 };
 use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
 use crate::nix::{fun_args, maybe_escape_identifier_doc, INDENT};
-use crate::pretty::{break_, concat, join, line, Document, Documentable};
+use crate::pretty::{break_, join, line, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
@@ -112,6 +112,12 @@ impl<'module> Generator<'module> {
 
             TypedExpr::Fn { args, body, .. } => self.fn_(args, body),
             TypedExpr::Call { fun, args, .. } => self.call(fun, args),
+            TypedExpr::Panic {
+                location, message, ..
+            } => self.panic(location, message.as_deref()),
+            TypedExpr::Todo {
+                location, message, ..
+            } => self.todo(location, message.as_deref()),
 
             TypedExpr::BinOp {
                 name, left, right, ..
@@ -362,7 +368,7 @@ impl Generator<'_> {
     fn call<'a>(&mut self, fun: &'a TypedExpr, arguments: &'a [CallArg<TypedExpr>]) -> Output<'a> {
         let arguments = arguments
             .iter()
-            .map(|element| self.wrap_expression_with_spaces(&element.value))
+            .map(|argument| self.wrap_expression_with_spaces(&argument.value))
             .try_collect()?;
 
         self.call_with_doc_args(fun, arguments)
@@ -418,6 +424,45 @@ impl Generator<'_> {
         Ok(docvec!(fun_args(arguments), break_("", " "), result?)
             .nest(INDENT)
             .group())
+    }
+
+    fn todo<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
+        let message = match message {
+            Some(m) => self.expression(m)?,
+            None => string("This has not yet been implemented"),
+        };
+
+        Ok(self.throw_error("todo", &message, *location, vec![]))
+    }
+
+    fn panic<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
+        let message = match message {
+            Some(m) => self.expression(m)?,
+            None => string("panic expression evaluated"),
+        };
+
+        Ok(self.throw_error("todo", &message, *location, vec![]))
+    }
+
+    fn throw_error<'a, Fields>(
+        &mut self,
+        _error_name: &'a str,
+        message: &Document<'a>,
+        _location: SrcSpan,
+        _fields: Fields,
+    ) -> Document<'a>
+    where
+        Fields: IntoIterator<Item = (&'a str, Document<'a>)>,
+    {
+        // let module = self.module.name.clone().to_doc().surround('"', '"');
+        // TODO: Function name
+        // let line = self.line_numbers.line_number(location.start).to_doc();
+
+        // TODO: Use prelude error, pass fields
+        // let fields = wrap_attr_set(fields.into_iter().map(|(k, v)| (k.to_doc(), Some(v))));
+
+        // TODO: Insert module and line
+        docvec!["builtins.throw", break_("", " "), message.clone()]
     }
 }
 

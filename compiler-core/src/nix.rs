@@ -11,7 +11,7 @@ use crate::build::Target;
 use crate::docvec;
 use crate::javascript::Error;
 use crate::line_numbers::LineNumbers;
-use crate::pretty::{break_, concat, join, line, lines, Document, Documentable};
+use crate::pretty::{break_, join, line, Document, Documentable};
 use camino::Utf8Path;
 use ecow::EcoString;
 use itertools::Itertools;
