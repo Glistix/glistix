@@ -10,6 +10,7 @@ use crate::{
 use camino::Utf8Path;
 
 mod basic;
+mod modules;
 
 pub static CURRENT_PACKAGE: &str = "thepackage";
 
