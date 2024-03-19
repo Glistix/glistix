@@ -796,10 +796,10 @@ pub fn path(value: &str) -> Cow<'_, str> {
                 Cow::Owned(sanitized) => {
                     Cow::Owned(format!("{new_prefix}{current_prefix}{sanitized}{suffix}"))
                 }
-                Cow::Borrowed(value) if new_prefix.is_empty() && suffix.is_empty() => {
+                Cow::Borrowed(_) if new_prefix.is_empty() && suffix.is_empty() => {
                     Cow::Borrowed(value)
                 }
-                Cow::Borrowed(value) => Cow::Owned(format!("{new_prefix}{value}{suffix}")),
+                Cow::Borrowed(_) => Cow::Owned(format!("{new_prefix}{value}{suffix}")),
             }
         }
     }
