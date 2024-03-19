@@ -1053,7 +1053,8 @@ pub fn let_in<'a>(
         ]
         .nest(INDENT),
         break_("", " "),
-        docvec!["in", break_("", " "), body].group(),
+        "in",
+        docvec![break_("", " "), body].nest(INDENT).group(),
     ]
 }
 
