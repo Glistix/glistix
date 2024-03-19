@@ -7,8 +7,8 @@ use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
 use crate::nix::{
-    fun_args, is_nix_keyword, maybe_escape_identifier_doc, module_var_name_doc, try_wrap_attr_set,
-    UsageTracker, INDENT,
+    fn_call, fun_args, is_nix_keyword, maybe_escape_identifier_doc, module_var_name_doc,
+    try_wrap_attr_set, UsageTracker, INDENT,
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
@@ -414,8 +414,7 @@ impl Generator<'_> {
                     };
                 }
                 let fun = self.wrap_child_expression(fun)?;
-                let arguments = join(arguments, break_("", " "));
-                Ok(docvec![fun, break_("", " "), arguments])
+                Ok(fn_call(fun, arguments))
             }
         }
     }
@@ -480,7 +479,7 @@ impl Generator<'_> {
         // let fields = wrap_attr_set(fields.into_iter().map(|(k, v)| (k.to_doc(), Some(v))));
 
         // TODO: Insert module and line
-        docvec!["builtins.throw", break_("", " "), message.clone()]
+        fn_call("builtins.throw".to_doc(), [message.clone()])
     }
 }
 
@@ -506,10 +505,32 @@ impl Generator<'_> {
             }
             BinOp::SubInt | BinOp::SubFloat => self.print_bin_op(left, right, "-"),
             BinOp::MultInt | BinOp::MultFloat => self.print_bin_op(left, right, "*"),
-            BinOp::RemainderInt => todo!("use remainder from prelude"),
-            BinOp::DivInt => todo!("possibly use div int from prelude"),
-            BinOp::DivFloat => todo!("possibly use div float from prelude"),
+            BinOp::RemainderInt => self.remainder_int(left, right),
+            BinOp::DivInt => self.div_int(left, right),
+            BinOp::DivFloat => self.div_float(left, right),
         }
+    }
+
+    fn div_int<'a>(&mut self, left: &'a TypedExpr, right: &'a TypedExpr) -> Output<'a> {
+        let left = self.wrap_child_expression(left)?;
+        let right = self.wrap_child_expression(right)?;
+        self.tracker.int_division_used = true;
+        // TODO: Consider using qualified import here and below
+        Ok(fn_call("divide_int".to_doc(), [left, right]))
+    }
+
+    fn remainder_int<'a>(&mut self, left: &'a TypedExpr, right: &'a TypedExpr) -> Output<'a> {
+        let left = self.wrap_child_expression(left)?;
+        let right = self.wrap_child_expression(right)?;
+        self.tracker.int_remainder_used = true;
+        Ok(fn_call("remainder_int".to_doc(), [left, right]))
+    }
+
+    fn div_float<'a>(&mut self, left: &'a TypedExpr, right: &'a TypedExpr) -> Output<'a> {
+        let left = self.wrap_child_expression(left)?;
+        let right = self.wrap_child_expression(right)?;
+        self.tracker.float_division_used = true;
+        Ok(fn_call("divide_float".to_doc(), [left, right]))
     }
 
     fn print_bin_op<'a>(
@@ -614,7 +635,11 @@ impl Generator<'_> {
     ) -> Document<'a> {
         match constructor {
             ModuleValueConstructor::Fn { .. } | ModuleValueConstructor::Constant { .. } => {
-                docvec!(module_var_name_doc(module), ".", maybe_escape_identifier_doc(label))
+                docvec!(
+                    module_var_name_doc(module),
+                    ".",
+                    maybe_escape_identifier_doc(label)
+                )
             }
 
             ModuleValueConstructor::Record { name, type_, .. } => {
@@ -702,12 +727,7 @@ fn construct_record<'a>(
         name.to_doc()
     };
 
-    if arguments.is_empty() {
-        return name.to_doc();
-    }
-
-    let arguments = join(arguments, break_("", " "));
-    docvec![name, " ", arguments]
+    fn_call(name, arguments)
 }
 
 /// Generates a valid Nix string.

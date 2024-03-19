@@ -508,6 +508,16 @@ where
         .group()
 }
 
+/// Generates a function call in Nix:
+///
+/// ```nix
+/// fun arg1 arg2 arg3
+/// ```
+fn fn_call<'a>(fun: Document<'a>, args: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
+    let args = concat(args.into_iter().map(|arg| break_("", " ").append(arg)));
+    docvec![fun, args]
+}
+
 fn inherit<'a>(items: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
     let spaced_items = items.into_iter().map(|name| docvec!(break_("", " "), name));
 
@@ -635,8 +645,8 @@ pub(crate) struct UsageTracker {
     pub int_remainder_used: bool,
     // pub make_error_used: bool,
     // pub custom_type_used: bool,
-    // pub int_division_used: bool,
-    // pub float_division_used: bool,
+    pub int_division_used: bool,
+    pub float_division_used: bool,
     // pub object_equality_used: bool,
     // pub bit_array_literal_used: bool,
     // pub sized_integer_segment_used: bool,
