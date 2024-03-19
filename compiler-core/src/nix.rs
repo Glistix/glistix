@@ -108,7 +108,7 @@ impl<'module> Generator<'module> {
             Ok(docvec![exports, line()])
         } else {
             Ok(docvec![
-                expression::let_in(assignments, exports).group(),
+                expression::let_in(assignments, exports, true).group(),
                 line()
             ])
         }

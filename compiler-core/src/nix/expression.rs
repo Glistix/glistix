@@ -193,7 +193,7 @@ impl<'module> Generator<'module> {
 
         let body = self.expression_from_statement(trailing_statement)?;
 
-        Ok(let_in(assignments, body))
+        Ok(let_in(assignments, body, false))
     }
 
     fn pipeline<'a>(
@@ -217,7 +217,7 @@ impl<'module> Generator<'module> {
         // Exiting scope
         self.current_scope_vars = scope;
 
-        Ok(let_in(assignments, body))
+        Ok(let_in(assignments, body, false))
     }
 
     fn variable<'a>(
@@ -790,10 +790,21 @@ pub fn assignment_line<'a>(name: Document<'a>, value: Document<'a>) -> Document<
 pub fn let_in<'a>(
     assignments: impl IntoIterator<Item = Document<'a>>,
     body: Document<'a>,
+    extra_assign_break: bool,
 ) -> Document<'a> {
+    let extra_assign_break = if extra_assign_break {
+        break_("", "")
+    } else {
+        nil()
+    };
+
     docvec![
         "let",
-        docvec![break_("", " "), join(assignments, break_("", " "))].nest(INDENT),
+        docvec![
+            break_("", " "),
+            join(assignments, break_("", " ").append(extra_assign_break))
+        ]
+        .nest(INDENT),
         break_("", " "),
         docvec!["in", break_("", " "), body].group(),
     ]
