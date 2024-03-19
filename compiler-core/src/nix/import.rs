@@ -46,11 +46,12 @@ impl<'a> Imports<'a> {
     /// Finishes import declarations.
     /// Returns assignments to perform and names to export.
     pub fn finish(self) -> (Document<'a>, HashSet<String>) {
-        let imports = concat(
+        let imports = join(
             self.imports
                 .into_values()
                 .sorted_by(|a, b| a.path.cmp(&b.path))
                 .map(Import::into_doc),
+            break_("", " "),
         );
 
         (imports, self.exports)
@@ -85,7 +86,7 @@ impl<'a> Import<'a> {
             self.aliases.into_iter().sorted().map(|alias| {
                 // Alias is equivalent to just importing again:
                 // alias = import path;
-                super::expression::assignment_line(
+                expression::assignment_line(
                     Document::String(maybe_escape_identifier_string(&alias)),
                     docvec!["builtins.import ", path.clone()],
                 )
@@ -133,7 +134,7 @@ impl<'a> Import<'a> {
                     aliased_members.into_iter().map(|member| {
                         // Generate:
                         // `alias = (import ...).name;\n`
-                        super::expression::assignment_line(
+                        expression::assignment_line(
                             member.alias.to_doc(),
                             docvec![import_source.clone(), ".", member.name],
                         )
@@ -223,9 +224,10 @@ fn finish() {
 
     assert_eq!(
         crate::pretty::line()
-            .append(imports.finish().0)
+            .append(imports.finish().0.group())
             .to_pretty_string(40),
         r#"
+
 wibble =
   builtins.import ./multiple/times;
 wobble =
@@ -242,8 +244,7 @@ inherit
   four;
 onee = (builtins.import ./other).one;
 twoo = (builtins.import ./other).two;
-inherit (builtins.import ./zzz) one two;
-"#
-        .to_string()
+inherit (builtins.import ./zzz) one two;"#
+            .to_string()
     );
 }
