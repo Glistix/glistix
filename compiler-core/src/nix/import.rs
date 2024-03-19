@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 
-use crate::nix::{inherit, maybe_escape_identifier_string};
+use crate::nix::{expression, inherit, maybe_escape_identifier_string};
 use crate::pretty::{break_, join, nil};
 use crate::{
     docvec,
@@ -27,17 +27,18 @@ impl<'a> Imports<'a> {
         let _ = self.exports.insert(export);
     }
 
-    // TODO: Sanitization
     pub fn register_module(
         &mut self,
         path: String,
         aliases: impl IntoIterator<Item = String>,
         unqualified_imports: impl IntoIterator<Item = Member<'a>>,
     ) {
+        // Sanitize path
+        let path = expression::path(&path);
         let import = self
             .imports
-            .entry(path.clone())
-            .or_insert_with(|| Import::new(path));
+            .entry(path.clone().to_string())
+            .or_insert_with(|| Import::new(path.to_string()));
         import.aliases.extend(aliases);
         import.unqualified.extend(unqualified_imports)
     }
