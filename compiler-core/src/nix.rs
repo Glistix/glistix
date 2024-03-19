@@ -30,6 +30,16 @@ struct Generator<'module> {
 
 pub type Output<'a> = Result<Document<'a>, Error>;
 
+/// Some declaration at the top-level of a module.
+struct ModuleDeclaration<'a> {
+    /// If the variable being declared must be exported by this module.
+    exported: bool,
+    /// The name of the variable being declared.
+    name: Document<'a>,
+    /// The value of the variable being declared.
+    value: Document<'a>,
+}
+
 impl<'module> Generator<'module> {
     pub fn new(
         line_numbers: &'module LineNumbers,
@@ -64,14 +74,14 @@ impl<'module> Generator<'module> {
             .try_collect()?;
 
         // Exported statements. Those will be inherited in the exported dictionary.
-        let mut public_statements = statements
+        let mut exported_names = statements
             .iter()
-            .filter(|(public, _, _)| *public)
-            .map(|(_, name, _)| name)
+            .filter(|declaration| declaration.exported)
+            .map(|declaration| &declaration.name)
             .peekable();
 
-        let exports = if public_statements.peek().is_some() {
-            let exported_names = public_statements
+        let exports = if exported_names.peek().is_some() {
+            let exported_names = exported_names
                 .cloned()
                 .map(|name| docvec!(break_("", " "), name));
 
@@ -91,7 +101,7 @@ impl<'module> Generator<'module> {
         // Assignment of top-level module names, exported or not.
         let assignments: Vec<_> = statements
             .into_iter()
-            .map(|(_, name, value)| expression::assignment_line(name, value))
+            .map(|declaration| expression::assignment_line(declaration.name, declaration.value))
             .collect();
 
         if assignments.is_empty() {
@@ -109,7 +119,7 @@ impl<'module> Generator<'module> {
     pub fn statement<'a>(
         &mut self,
         statement: &'a TypedDefinition,
-    ) -> Option<Result<(bool, Document<'a>, Document<'a>), Error>> {
+    ) -> Option<Result<ModuleDeclaration<'a>, Error>> {
         match statement {
             Definition::TypeAlias(TypeAlias { .. }) => None,
 
@@ -145,9 +155,7 @@ impl<'module> Generator<'module> {
         }
     }
 
-    fn collect_definitions(
-        &mut self,
-    ) -> Vec<Result<(bool, Document<'module>, Document<'module>), Error>> {
+    fn collect_definitions(&mut self) -> Vec<Result<ModuleDeclaration<'module>, Error>> {
         self.module
             .definitions
             .iter()
@@ -172,18 +180,18 @@ impl<'module> Generator<'module> {
         publicity: Publicity,
         name: &'a str,
         value: &'a TypedConstant,
-    ) -> Result<(bool, Document<'a>, Document<'a>), Error> {
-        Ok((
-            !publicity.is_private(),
-            maybe_escape_identifier_doc(name),
-            expression::constant_expression(&mut self.tracker, value)?,
-        ))
+    ) -> Result<ModuleDeclaration<'a>, Error> {
+        Ok(ModuleDeclaration {
+            exported: !publicity.is_private(),
+            name: maybe_escape_identifier_doc(name),
+            value: expression::constant_expression(&mut self.tracker, value)?,
+        })
     }
 
     fn module_function<'a>(
         &mut self,
         function: &'a TypedFunction,
-    ) -> Option<Result<(bool, Document<'a>, Document<'a>), Error>> {
+    ) -> Option<Result<ModuleDeclaration<'a>, Error>> {
         let mut generator = expression::Generator::new(
             self.module,
             self.line_numbers,
@@ -195,7 +203,7 @@ impl<'module> Generator<'module> {
         let name = maybe_escape_identifier_doc(function.name.as_ref());
 
         // A module-level function, in Nix, will have the exact same syntax as a lambda function.
-        let result = match generator.fn_(function.arguments.as_slice(), &function.body) {
+        let def_body = match generator.fn_(function.arguments.as_slice(), &function.body) {
             // No error, let's continue!
             Ok(body) => body,
 
@@ -210,7 +218,11 @@ impl<'module> Generator<'module> {
             Err(error) => return Some(Err(error)),
         };
 
-        Some(Ok((!function.publicity.is_private(), name, result)))
+        Some(Ok(ModuleDeclaration {
+            exported: !function.publicity.is_private(),
+            name,
+            value: def_body,
+        }))
     }
 
     fn custom_type_definition<'a>(
@@ -218,7 +230,7 @@ impl<'module> Generator<'module> {
         constructors: &'a [TypedRecordConstructor],
         publicity: Publicity,
         opaque: bool,
-    ) -> Vec<Result<(bool, Document<'a>, Document<'a>), Error>> {
+    ) -> Vec<Result<ModuleDeclaration<'a>, Error>> {
         // If there's no constructors then there's nothing to do here.
         if constructors.is_empty() {
             return vec![];
@@ -235,7 +247,7 @@ impl<'module> Generator<'module> {
         constructor: &'a TypedRecordConstructor,
         publicity: Publicity,
         opaque: bool,
-    ) -> (bool, Document<'a>, Document<'a>) {
+    ) -> ModuleDeclaration<'a> {
         fn parameter((i, arg): (usize, &TypedRecordConstructorArg)) -> Document<'_> {
             arg.label
                 .as_ref()
@@ -246,9 +258,14 @@ impl<'module> Generator<'module> {
         let should_export = !(publicity.is_private() || opaque);
         let name = maybe_escape_identifier_doc(&constructor.name);
         let tag_field = ("__gleam_tag'".to_doc(), Some(string(&constructor.name)));
+
         if constructor.arguments.is_empty() {
             let result = wrap_attr_set([tag_field]);
-            return (should_export, name, result);
+            return ModuleDeclaration {
+                exported: should_export,
+                name,
+                value: result,
+            };
         }
 
         let args = wrap_args(constructor.arguments.iter().enumerate().map(parameter));
@@ -266,7 +283,11 @@ impl<'module> Generator<'module> {
             .nest(INDENT)
             .group();
 
-        (should_export, name, constructor_fun)
+        ModuleDeclaration {
+            exported: should_export,
+            name,
+            value: constructor_fun,
+        }
     }
 
     fn register_in_scope(&mut self, name: &str) {
