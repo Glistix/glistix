@@ -1,18 +1,20 @@
 mod expression;
+mod import;
 #[cfg(test)]
 mod tests;
 
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    CustomType, Definition, Function, Import, ModuleConstant, Publicity, TypeAlias, TypedArg,
-    TypedConstant, TypedDefinition, TypedFunction, TypedModule, TypedRecordConstructor,
-    TypedRecordConstructorArg,
+    AssignName, CustomType, Definition, Function, Import, ModuleConstant, Publicity, SrcSpan,
+    TypeAlias, TypedArg, TypedConstant, TypedDefinition, TypedFunction, TypedModule,
+    TypedRecordConstructor, TypedRecordConstructorArg, UnqualifiedImport,
 };
 use crate::build::Target;
 use crate::docvec;
 use crate::javascript::Error;
 use crate::line_numbers::LineNumbers;
 use crate::nix::expression::string;
+use crate::nix::import::{Imports, Member};
 use crate::pretty::{break_, concat, join, line, Document, Documentable};
 use camino::Utf8Path;
 use ecow::EcoString;
@@ -26,6 +28,8 @@ struct Generator<'module> {
     target_support: TargetSupport,
     module_scope: im::HashMap<EcoString, usize>,
     tracker: UsageTracker,
+    /// Used when determining relative import paths.
+    current_module_name_segments_count: usize,
 }
 
 pub type Output<'a> = Result<Document<'a>, Error>;
@@ -46,22 +50,28 @@ impl<'module> Generator<'module> {
         module: &'module TypedModule,
         target_support: TargetSupport,
     ) -> Self {
+        let current_module_name_segments_count = module.name.split('/').count();
+
         Self {
             module,
             line_numbers,
             target_support,
             module_scope: im::HashMap::new(),
             tracker: UsageTracker::default(),
+            current_module_name_segments_count,
         }
     }
 
     pub fn compile(&mut self) -> Output<'module> {
+        // Determine Nix import code to generate.
+        let imports = self.collect_imports();
+
         // Determine what names are defined in the module scope so we know to
         // rename any variables that are defined within functions using the same
         // names.
         self.register_module_definitions_in_scope();
 
-        // Generate Nix code for each statement
+        // Generate Nix code for each statement.
         let statements: Vec<_> = self
             .collect_definitions()
             .into_iter()
@@ -73,24 +83,27 @@ impl<'module> Generator<'module> {
             )
             .try_collect()?;
 
-        // Exported statements. Those will be inherited in the exported dictionary.
-        let mut exported_names = statements
-            .iter()
-            .filter(|declaration| declaration.exported)
-            .map(|declaration| &declaration.name)
+        let no_imports = imports.is_empty();
+        let (import_lines, exported_names) = imports.finish();
+
+        // Exported names. Those will be `inherit`ed in the final exported dictionary.
+        let mut exported_names = exported_names
+            .into_iter()
+            .map(Document::String)
+            .chain(
+                statements
+                    .iter()
+                    .filter(|declaration| declaration.exported)
+                    .map(|declaration| &declaration.name)
+                    .cloned(),
+            )
             .peekable();
 
         let exports = if exported_names.peek().is_some() {
-            let exported_names = exported_names
-                .cloned()
-                .map(|name| docvec!(break_("", " "), name));
-
             docvec![
                 "{",
                 break_("", " "),
-                "inherit",
-                concat(exported_names),
-                ";",
+                inherit(exported_names),
                 break_("", " "),
                 "}"
             ]
@@ -104,11 +117,22 @@ impl<'module> Generator<'module> {
             .map(|declaration| expression::assignment_line(declaration.name, declaration.value))
             .collect();
 
-        if assignments.is_empty() {
+        // Finish up the module.
+        if no_imports && assignments.is_empty() {
             Ok(docvec![exports, line()])
-        } else {
+        } else if no_imports {
             Ok(docvec![
                 expression::let_in(assignments, exports, true).group(),
+                line()
+            ])
+        } else {
+            Ok(docvec![
+                expression::let_in(
+                    std::iter::once(import_lines).chain(assignments),
+                    exports,
+                    true
+                )
+                .group(),
                 line()
             ])
         }
@@ -314,6 +338,129 @@ impl<'module> Generator<'module> {
     }
 }
 
+/// Import-related methods.
+impl<'module> Generator<'module> {
+    fn collect_imports(&mut self) -> Imports<'module> {
+        let mut imports = Imports::new();
+
+        for statement in &self.module.definitions {
+            match statement {
+                Definition::Import(Import {
+                    module,
+                    as_name,
+                    unqualified_values: unqualified,
+                    package,
+                    ..
+                }) => {
+                    self.register_import(&mut imports, package, module, as_name, unqualified);
+                }
+
+                Definition::Function(Function {
+                    name,
+                    publicity,
+                    external_javascript: Some((module, function)),
+                    ..
+                }) => {
+                    self.register_external_function(
+                        &mut imports,
+                        *publicity,
+                        name,
+                        module,
+                        function,
+                    );
+                }
+
+                Definition::Function(Function { .. })
+                | Definition::TypeAlias(TypeAlias { .. })
+                | Definition::CustomType(CustomType { .. })
+                | Definition::ModuleConstant(ModuleConstant { .. }) => (),
+            }
+        }
+
+        imports
+    }
+
+    fn import_path<'a>(&self, package: &'a str, module: &'a str) -> String {
+        // TODO: strip shared prefixed between current module and imported
+        // module to avoid descending and climbing back out again
+        if package == self.module.type_info.package || package.is_empty() {
+            // Same package
+            match self.current_module_name_segments_count {
+                1 => format!("./{module}.nix"),
+                _ => {
+                    let prefix = "../".repeat(self.current_module_name_segments_count - 1);
+                    format!("{prefix}{module}.nix")
+                }
+            }
+        } else {
+            // Different package
+            let prefix = "../".repeat(self.current_module_name_segments_count);
+            format!("{prefix}{package}/{module}.nix")
+        }
+    }
+
+    fn register_import<'a>(
+        &mut self,
+        imports: &mut Imports<'a>,
+        package: &'a str,
+        module: &'a str,
+        as_name: &'a Option<(AssignName, SrcSpan)>,
+        unqualified: &'a [UnqualifiedImport],
+    ) {
+        let get_name = |module: &'a str| {
+            module
+                .split('/')
+                .last()
+                .expect("Nix generator could not identify imported module name.")
+        };
+
+        let (discarded, module_name) = match as_name {
+            None => (false, get_name(module)),
+            Some((AssignName::Discard(_), _)) => (true, get_name(module)),
+            Some((AssignName::Variable(name), _)) => (false, name.as_str()),
+        };
+
+        let module_name = module_var_name(module_name);
+        let path = self.import_path(package, module);
+        let unqualified_imports = unqualified.iter().map(|i| {
+            let alias = i.as_name.as_ref().map(|n| {
+                self.register_in_scope(n);
+                maybe_escape_identifier_doc(n)
+            });
+            let name = maybe_escape_identifier_doc(&i.name);
+            Member { name, alias }
+        });
+
+        let aliases = if discarded { vec![] } else { vec![module_name] };
+        imports.register_module(path, aliases, unqualified_imports);
+    }
+
+    fn register_external_function<'a>(
+        &mut self,
+        imports: &mut Imports<'a>,
+        publicity: Publicity,
+        name: &'a str,
+        module: &'a str,
+        fun: &'a str,
+    ) {
+        let needs_escaping = !is_usable_nix_identifier(name);
+        let member = Member {
+            name: fun.to_doc(),
+            alias: if name == fun && !needs_escaping {
+                None
+            } else if needs_escaping {
+                Some(Document::String(escape_identifier(name)))
+            } else {
+                Some(name.to_doc())
+            },
+        };
+        if publicity.is_importable() {
+            imports.register_export(maybe_escape_identifier_string(name))
+        }
+        imports.register_module(module.to_string(), [], [member]);
+    }
+}
+
 pub fn module(
     module: &TypedModule,
     line_numbers: &LineNumbers,
@@ -359,6 +506,18 @@ where
         ))
         .append(break_("", ""))
         .group()
+}
+
+fn inherit<'a>(items: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
+    let spaced_items = items.into_iter().map(|name| docvec!(break_("", " "), name));
+
+    // Note: an 'inherit' without items is valid Nix syntax.
+    docvec!["inherit", concat(spaced_items).nest(INDENT).group(), ";"]
+}
+
+/// Generates the variable name in Nix for the given module.
+fn module_var_name(name: &str) -> String {
+    format!("mod''{}", maybe_escape_identifier_string(name))
 }
 
 fn wrap_attr_set<'a>(
