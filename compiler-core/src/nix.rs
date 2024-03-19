@@ -24,6 +24,7 @@ struct Generator<'module> {
     module: &'module TypedModule,
     line_numbers: &'module LineNumbers,
     target_support: TargetSupport,
+    module_scope: im::HashMap<EcoString, usize>,
     tracker: UsageTracker,
 }
 
@@ -39,11 +40,17 @@ impl<'module> Generator<'module> {
             module,
             line_numbers,
             target_support,
+            module_scope: im::HashMap::new(),
             tracker: UsageTracker::default(),
         }
     }
 
     pub fn compile(&mut self) -> Output<'module> {
+        // Determine what names are defined in the module scope so we know to
+        // rename any variables that are defined within functions using the same
+        // names.
+        self.register_module_definitions_in_scope();
+
         // Generate Nix code for each statement
         let statements: Vec<_> = self
             .collect_definitions()
@@ -181,7 +188,7 @@ impl<'module> Generator<'module> {
             self.module,
             self.line_numbers,
             self.target_support,
-            im::HashMap::default(),
+            self.module_scope.clone(),
             &mut self.tracker,
         );
 
@@ -260,6 +267,29 @@ impl<'module> Generator<'module> {
             .group();
 
         (should_export, name, constructor_fun)
+    }
+
+    fn register_in_scope(&mut self, name: &str) {
+        let _ = self.module_scope.insert(name.into(), 0);
+    }
+
+    fn register_module_definitions_in_scope(&mut self) {
+        for statement in self.module.definitions.iter() {
+            match statement {
+                Definition::ModuleConstant(ModuleConstant { name, .. })
+                | Definition::Function(Function { name, .. }) => self.register_in_scope(name),
+
+                Definition::Import(Import {
+                    unqualified_values: unqualified,
+                    ..
+                }) => unqualified
+                    .iter()
+                    .for_each(|unq_import| self.register_in_scope(unq_import.used_name())),
+
+                Definition::TypeAlias(TypeAlias { .. })
+                | Definition::CustomType(CustomType { .. }) => (),
+            }
+        }
     }
 }
 
