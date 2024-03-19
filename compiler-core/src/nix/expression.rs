@@ -515,22 +515,23 @@ impl Generator<'_> {
         let left = self.wrap_child_expression(left)?;
         let right = self.wrap_child_expression(right)?;
         self.tracker.int_division_used = true;
-        // TODO: Consider using qualified import here and below
-        Ok(fn_call("divide_int".to_doc(), [left, right]))
+        // This name can't be shadowed, as user variables must be in lowercase
+        // or (for types) PascalCase.
+        Ok(fn_call("divideInt".to_doc(), [left, right]))
     }
 
     fn remainder_int<'a>(&mut self, left: &'a TypedExpr, right: &'a TypedExpr) -> Output<'a> {
         let left = self.wrap_child_expression(left)?;
         let right = self.wrap_child_expression(right)?;
         self.tracker.int_remainder_used = true;
-        Ok(fn_call("remainder_int".to_doc(), [left, right]))
+        Ok(fn_call("remainderInt".to_doc(), [left, right]))
     }
 
     fn div_float<'a>(&mut self, left: &'a TypedExpr, right: &'a TypedExpr) -> Output<'a> {
         let left = self.wrap_child_expression(left)?;
         let right = self.wrap_child_expression(right)?;
         self.tracker.float_division_used = true;
-        Ok(fn_call("divide_float".to_doc(), [left, right]))
+        Ok(fn_call("divideFloat".to_doc(), [left, right]))
     }
 
     fn print_bin_op<'a>(

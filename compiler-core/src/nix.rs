@@ -16,6 +16,7 @@ use crate::line_numbers::LineNumbers;
 use crate::nix::expression::string;
 use crate::nix::import::{Imports, Member};
 use crate::pretty::{break_, concat, join, line, Document, Documentable};
+use crate::type_::PRELUDE_MODULE_NAME;
 use camino::Utf8Path;
 use ecow::EcoString;
 use itertools::Itertools;
@@ -64,7 +65,7 @@ impl<'module> Generator<'module> {
 
     pub fn compile(&mut self) -> Output<'module> {
         // Determine Nix import code to generate.
-        let imports = self.collect_imports();
+        let mut imports = self.collect_imports();
 
         // Determine what names are defined in the module scope so we know to
         // rename any variables that are defined within functions using the same
@@ -82,6 +83,8 @@ impl<'module> Generator<'module> {
                     .flat_map(|s| self.statement(s)),
             )
             .try_collect()?;
+
+        self.register_used_prelude_functions(&mut imports);
 
         let no_imports = imports.is_empty();
         let (import_lines, exported_names) = imports.finish();
@@ -458,6 +461,74 @@ impl<'module> Generator<'module> {
             imports.register_export(maybe_escape_identifier_string(name))
         }
         imports.register_module(module.to_string(), [], [member]);
+    }
+
+    /// Add prelude imports based on the used functions.
+    fn register_used_prelude_functions(&mut self, imports: &mut Imports<'_>) {
+        let path = self.import_path(&self.module.type_info.package, PRELUDE_MODULE_NAME);
+        let mut register_prelude_member = |name: &'static str, alias: Option<&'static str>| {
+            let member = Member {
+                name: name.to_doc(),
+                alias: alias.map(|a| a.to_doc()),
+            };
+            imports.register_module(path.clone(), [], [member]);
+        };
+
+        if self.tracker.ok_used {
+            register_prelude_member("Ok", None);
+        };
+
+        if self.tracker.error_used {
+            register_prelude_member("Error", None);
+        };
+
+        // if self.tracker.list_used {
+        //     self.register_prelude_usage(&mut imports, "toList", None);
+        // };
+
+        // if self.tracker.prepend_used {
+        //     self.register_prelude_usage(&mut imports, "prepend", Some("$prepend"));
+        // };
+
+        // if self.tracker.make_error_used {
+        //     self.register_prelude_usage(&mut imports, "makeError", None);
+        // };
+
+        if self.tracker.int_remainder_used {
+            register_prelude_member("remainderInt", None);
+        };
+
+        if self.tracker.float_division_used {
+            register_prelude_member("divideFloat", None);
+        };
+
+        if self.tracker.int_division_used {
+            register_prelude_member("divideInt", None);
+        };
+
+        // if self.tracker.object_equality_used {
+        //     self.register_prelude_usage(&mut imports, "isEqual", None);
+        // };
+
+        // if self.tracker.bit_array_literal_used {
+        //     self.register_prelude_usage(&mut imports, "toBitArray", None);
+        // };
+        //
+        // if self.tracker.sized_integer_segment_used {
+        //     self.register_prelude_usage(&mut imports, "sizedInt", None);
+        // };
+        //
+        // if self.tracker.string_bit_array_segment_used {
+        //     self.register_prelude_usage(&mut imports, "stringBits", None);
+        // };
+        //
+        // if self.tracker.codepoint_bit_array_segment_used {
+        //     self.register_prelude_usage(&mut imports, "codepointBits", None);
+        // };
+        //
+        // if self.tracker.float_bit_array_segment_used {
+        //     self.register_prelude_usage(&mut imports, "float64Bits", None);
+        // };
     }
 }
 
