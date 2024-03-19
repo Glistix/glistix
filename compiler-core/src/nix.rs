@@ -105,10 +105,10 @@ impl<'module> Generator<'module> {
 
         let exports = if exported_names.peek().is_some() {
             docvec![
-                "{",
-                break_("", " "),
-                inherit(exported_names),
-                break_("", " "),
+                docvec!["{", break_("", " "), inherit(exported_names)]
+                    .nest(INDENT)
+                    .append(break_("", " "))
+                    .group(),
                 "}"
             ]
         } else {

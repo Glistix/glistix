@@ -335,7 +335,7 @@ impl<'module> Generator<'module> {
             } else if is_final_clause {
                 doc.append(break_("", " "))
                     .append("else")
-                    .append(docvec!(break_("", " "), body).nest(INDENT))
+                    .append(docvec!(break_("", " "), body).nest(INDENT).group())
             } else {
                 doc.append(if is_first_clause {
                     "if".to_doc()
@@ -344,7 +344,7 @@ impl<'module> Generator<'module> {
                 })
                 .append(docvec!(break_("", " "), condition).nest(INDENT).group())
                 .append(docvec!(break_("", " "), "then"))
-                .append(docvec!(break_("", " "), body).nest(INDENT))
+                .append(docvec!(break_("", " "), body).nest(INDENT).group())
             };
         }
 
