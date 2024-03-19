@@ -26,6 +26,7 @@ use ecow::EcoString;
 use std::collections::HashSet;
 use std::{collections::HashMap, fmt::write, time::SystemTime};
 
+use crate::codegen::Nix;
 use camino::{Utf8Path, Utf8PathBuf};
 
 use super::{ErlangAppCodegenConfiguration, TargetCodegenConfiguration, Telemetry};
@@ -287,6 +288,9 @@ where
             TargetCodegenConfiguration::Erlang { app_file } => {
                 self.perform_erlang_codegen(modules, app_file.as_ref())
             }
+            TargetCodegenConfiguration::Nix { prelude_location } => {
+                self.perform_nix_codegen(modules, prelude_location)
+            }
         }
     }
 
@@ -352,6 +356,24 @@ where
 
         JavaScript::new(&self.out, typescript, prelude_location, self.target_support)
             .render(&self.io, modules)?;
+
+        if self.copy_native_files {
+            self.copy_project_native_files(&self.out, &mut written)?;
+        } else {
+            tracing::debug!("skipping_native_file_copying");
+        }
+
+        Ok(())
+    }
+
+    fn perform_nix_codegen(
+        &mut self,
+        modules: &[Module],
+        prelude_location: &Utf8Path,
+    ) -> Result<(), Error> {
+        let mut written = HashSet::new();
+
+        Nix::new(&self.out, prelude_location, self.target_support).render(&self.io, modules)?;
 
         if self.copy_native_files {
             self.copy_project_native_files(&self.out, &mut written)?;

@@ -528,6 +528,11 @@ where
                 // This path is relative to each package output directory
                 prelude_location: Utf8PathBuf::from("../prelude.mjs"),
             },
+
+            Target::Nix => super::TargetCodegenConfiguration::Nix {
+                // This path is relative to each package output directory
+                prelude_location: Utf8PathBuf::from("../prelude.nix"),
+            },
         };
 
         let mut compiler = PackageCompiler::new(

@@ -251,6 +251,12 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     #[error("The --javascript-prelude flag must be given when compiling to JavaScript")]
     JavaScriptPreludeRequired,
 
+    #[error("The --nix-prelude flag must be given when compiling to Nix")]
+    NixPreludeRequired,
+
+    #[error("It is not yet possible to `gleam run` a Nix project")]
+    CannotRunNix,
+
     #[error("The modules {unfinished:?} contain todo expressions and so cannot be published")]
     CannotPublishTodo { unfinished: Vec<EcoString> },
 
@@ -2539,6 +2545,58 @@ implementation but the function name `{function}` is not valid."
                     }
                 }
 
+                TypeError::InvalidExternalNixModule {
+                    location,
+                    name,
+                    module,
+                } => {
+                    let text = wrap_format!(
+                        "The function `{name}` has an external Nix \
+implementation but the module path `{module}` is not valid."
+                    );
+                    Diagnostic {
+                        title: "Invalid Nix module".into(),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: None,
+                                span: *location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![],
+                        }),
+                    }
+                }
+
+                TypeError::InvalidExternalNixFunction {
+                    location,
+                    name,
+                    function,
+                } => {
+                    let text = wrap_format!(
+                        "The function `{name}` has an external Nix \
+implementation but the function name `{function}` is not valid."
+                    );
+                    Diagnostic {
+                        title: "Invalid Nix function".into(),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: None,
+                                span: *location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![],
+                        }),
+                    }
+                }
+
                 TypeError::InexhaustiveLetAssignment { location, missing } => {
                     let mut text: String =
                         "This assignment uses a pattern that does not match all possible
@@ -2610,6 +2668,7 @@ and there is no implementation for the {} target.\n",
                         match current_target {
                             Target::Erlang => "Erlang",
                             Target::JavaScript => "JavaScript",
+                            Target::Nix => "Nix",
                         }
                     );
                     let hint = wrap("Did you mean to build for a different target?");
@@ -2638,6 +2697,7 @@ and there is no implementation for the {} target.\n",
                     let target = match target {
                         Target::Erlang => "Erlang",
                         Target::JavaScript => "JavaScript",
+                        Target::Nix => "Nix",
                     };
                     let text = wrap_format!(
                         "The `{name}` function is public but doesn't have an \
@@ -3129,6 +3189,10 @@ but you are using v{gleam_version}.",
                         "You can not set a runtime for Erlang. Did you mean to target JavaScript?"
                             .into(),
                     ),
+                    Target::Nix => Some(
+                        "You can not set a runtime for Nix. Did you mean to target JavaScript?"
+                            .into(),
+                    ),
                 };
 
                 Diagnostic {
@@ -3144,6 +3208,22 @@ but you are using v{gleam_version}.",
                 title: "JavaScript prelude required".into(),
                 text: "The --javascript-prelude flag must be given when compiling to JavaScript."
                     .into(),
+                level: Level::Error,
+                location: None,
+                hint: None,
+            },
+
+            Error::NixPreludeRequired => Diagnostic {
+                title: "Nix prelude required".into(),
+                text: "The --nix-prelude flag must be given when compiling to Nix.".into(),
+                level: Level::Error,
+                location: None,
+                hint: None,
+            },
+
+            Error::CannotRunNix => Diagnostic {
+                title: "Cannot run Nix".into(),
+                text: "It is not yet possible to `gleam run` a Nix project.".into(),
                 level: Level::Error,
                 location: None,
                 hint: None,

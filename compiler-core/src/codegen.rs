@@ -6,7 +6,7 @@ use crate::{
     io::FileSystemWriter,
     javascript,
     line_numbers::LineNumbers,
-    Result,
+    nix, Result,
 };
 use itertools::Itertools;
 use std::fmt::Debug;
@@ -233,6 +233,66 @@ impl<'a> JavaScript<'a> {
             self.typescript,
         );
         tracing::debug!(name = ?js_name, "Generated js module");
+        writer.write(&path, &output?)
+    }
+}
+
+#[derive(Debug)]
+pub struct Nix<'a> {
+    output_directory: &'a Utf8Path,
+    prelude_location: &'a Utf8Path,
+    target_support: TargetSupport,
+}
+
+impl<'a> Nix<'a> {
+    pub fn new(
+        output_directory: &'a Utf8Path,
+        prelude_location: &'a Utf8Path,
+        target_support: TargetSupport,
+    ) -> Self {
+        Self {
+            prelude_location,
+            output_directory,
+            target_support,
+        }
+    }
+
+    pub fn render(&self, writer: &impl FileSystemWriter, modules: &[Module]) -> Result<()> {
+        for module in modules {
+            let nix_name = module.name.clone();
+            self.nix_module(writer, module, &nix_name)?
+        }
+        self.write_prelude(writer)?;
+        Ok(())
+    }
+
+    fn write_prelude(&self, writer: &impl FileSystemWriter) -> Result<()> {
+        let rexport = format!(
+            "builtins.import {};\n",
+            nix::expression::path(self.prelude_location.as_str())
+        );
+        writer.write(&self.output_directory.join("gleam.nix"), &rexport)?;
+
+        Ok(())
+    }
+
+    fn nix_module(
+        &self,
+        writer: &impl FileSystemWriter,
+        module: &Module,
+        nix_name: &str,
+    ) -> Result<()> {
+        let name = format!("{nix_name}.nix");
+        let path = self.output_directory.join(name);
+        let line_numbers = LineNumbers::new(&module.code);
+        let output = nix::module(
+            &module.ast,
+            &line_numbers,
+            &module.input_path,
+            &module.code,
+            self.target_support,
+        );
+        tracing::debug!(name = ?nix_name, "Generated nix module");
         writer.write(&path, &output?)
     }
 }

@@ -484,8 +484,10 @@ impl ValueConstructorVariant {
                 gleam: true,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
+                can_run_on_nix: true,
                 uses_javascript_externals: false,
                 uses_erlang_externals: false,
+                uses_nix_externals: false,
             },
 
             ValueConstructorVariant::ModuleFn {

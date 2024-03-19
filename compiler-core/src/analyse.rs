@@ -599,6 +599,7 @@ fn register_value_from_function(
         documentation,
         external_erlang,
         external_javascript,
+        external_nix,
         deprecation,
         end_position: _,
         body: _,
@@ -607,6 +608,7 @@ fn register_value_from_function(
     } = f;
     assert_unique_name(names, name, *location)?;
     assert_valid_javascript_external(name, external_javascript.as_ref(), *location)?;
+    assert_valid_nix_external(name, external_nix.as_ref(), *location)?;
 
     let mut builder = FieldMapBuilder::new(args.len() as u32);
     for arg in args.iter() {
@@ -617,7 +619,9 @@ fn register_value_from_function(
 
     // When external implementations are present then the type annotations
     // must be given in full, so we disallow holes in the annotations.
-    hydrator.permit_holes(external_erlang.is_none() && external_javascript.is_none());
+    hydrator.permit_holes(
+        external_erlang.is_none() && external_javascript.is_none() && external_nix.is_none(),
+    );
 
     let arg_types = args
         .iter()
@@ -627,8 +631,12 @@ fn register_value_from_function(
     let typ = fn_(arg_types, return_type);
     let _ = hydrators.insert(name.clone(), hydrator);
 
-    let external =
-        target_function_implementation(environment.target, external_erlang, external_javascript);
+    let external = target_function_implementation(
+        environment.target,
+        external_erlang,
+        external_javascript,
+        external_nix,
+    );
     let (impl_module, impl_function) = implementation_names(external, module_name, name);
     let variant = ValueConstructorVariant::ModuleFn {
         documentation: documentation.clone(),
@@ -683,6 +691,44 @@ fn assert_valid_javascript_external(
     Ok(())
 }
 
+fn assert_valid_nix_external(
+    function_name: &EcoString,
+    external_nix: Option<&(EcoString, EcoString)>,
+    location: SrcSpan,
+) -> Result<(), Error> {
+    use regex::Regex;
+
+    static MODULE: OnceLock<Regex> = OnceLock::new();
+    static FUNCTION: OnceLock<Regex> = OnceLock::new();
+
+    let (module, function) = match external_nix {
+        None => return Ok(()),
+        Some(external) => external,
+    };
+    // TODO(NIX): Consider allowing arbitrary paths, incl. <...> notation
+    if !MODULE
+        .get_or_init(|| Regex::new("^[a-zA-Z0-9\\./:_-]+$").expect("regex"))
+        .is_match(module)
+    {
+        return Err(Error::InvalidExternalNixModule {
+            location,
+            module: module.clone(),
+            name: function_name.clone(),
+        });
+    }
+    if !FUNCTION
+        .get_or_init(|| Regex::new("^[a-zA-Z_][a-zA-Z0-9_'-]*$").expect("regex"))
+        .is_match(function)
+    {
+        return Err(Error::InvalidExternalNixFunction {
+            location,
+            function: function.clone(),
+            name: function_name.clone(),
+        });
+    }
+    Ok(())
+}
+
 fn infer_function(
     f: Function<(), ast::UntypedExpr>,
     environment: &mut Environment<'_>,
@@ -701,6 +747,7 @@ fn infer_function(
         deprecation,
         external_erlang,
         external_javascript,
+        external_nix,
         return_type: (),
         implementations: _,
     } = f;
@@ -715,11 +762,22 @@ fn infer_function(
         .expect("Preregistered type for fn was not a fn");
 
     // Find the external implementation for the current target, if one has been given.
-    let external = target_function_implementation(target, &external_erlang, &external_javascript);
+    let external = target_function_implementation(
+        target,
+        &external_erlang,
+        &external_javascript,
+        &external_nix,
+    );
     let (impl_module, impl_function) = implementation_names(external, module_name, &name);
 
     // The function must have at least one implementation somewhere.
-    ensure_function_has_an_implementation(&body, &external_erlang, &external_javascript, location)?;
+    ensure_function_has_an_implementation(
+        &body,
+        &external_erlang,
+        &external_javascript,
+        &external_nix,
+        location,
+    )?;
 
     if external.is_some() {
         // There was an external implementation, so type annotations are
@@ -733,6 +791,7 @@ fn infer_function(
         has_body: !body.first().is_placeholder(),
         has_erlang_external: external_erlang.is_some(),
         has_javascript_external: external_javascript.is_some(),
+        has_nix_external: external_nix.is_some(),
     };
 
     // Infer the type using the preregistered args + return types as a starting point
@@ -804,6 +863,7 @@ fn infer_function(
         body,
         external_erlang,
         external_javascript,
+        external_nix,
         implementations,
     }))
 }
@@ -827,10 +887,12 @@ fn target_function_implementation<'a>(
     target: Target,
     external_erlang: &'a Option<(EcoString, EcoString)>,
     external_javascript: &'a Option<(EcoString, EcoString)>,
+    external_nix: &'a Option<(EcoString, EcoString)>,
 ) -> &'a Option<(EcoString, EcoString)> {
     match target {
         Target::Erlang => external_erlang,
         Target::JavaScript => external_javascript,
+        Target::Nix => external_nix,
     }
 }
 
@@ -838,10 +900,13 @@ fn ensure_function_has_an_implementation(
     body: &Vec1<UntypedStatement>,
     external_erlang: &Option<(EcoString, EcoString)>,
     external_javascript: &Option<(EcoString, EcoString)>,
+    external_nix: &Option<(EcoString, EcoString)>,
     location: SrcSpan,
 ) -> Result<(), Error> {
-    match (external_erlang, external_javascript) {
-        (None, None) if body.first().is_placeholder() => Err(Error::NoImplementation { location }),
+    match (external_erlang, external_javascript, external_nix) {
+        (None, None, None) if body.first().is_placeholder() => {
+            Err(Error::NoImplementation { location })
+        }
         _ => Ok(()),
     }
 }
@@ -1059,6 +1124,7 @@ fn infer_module_constant(
             has_body: true,
             has_erlang_external: false,
             has_javascript_external: false,
+            has_nix_external: false,
         },
     );
     let typed_expr = expr_typer.infer_const(&annotation, *value)?;
@@ -1242,6 +1308,7 @@ fn generalise_function(
         return_type,
         external_erlang,
         external_javascript,
+        external_nix,
         implementations,
     } = function;
 
@@ -1255,8 +1322,12 @@ fn generalise_function(
     let type_ = type_::generalise(typ);
 
     // Insert the function into the module's interface
-    let external =
-        target_function_implementation(environment.target, &external_erlang, &external_javascript);
+    let external = target_function_implementation(
+        environment.target,
+        &external_erlang,
+        &external_javascript,
+        &external_nix,
+    );
     let (impl_module, impl_function) = implementation_names(external, module_name, &name);
 
     let variant = ValueConstructorVariant::ModuleFn {
@@ -1298,6 +1369,7 @@ fn generalise_function(
         body,
         external_erlang,
         external_javascript,
+        external_nix,
         implementations,
     })
 }

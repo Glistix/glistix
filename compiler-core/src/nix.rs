@@ -1,4 +1,4 @@
-mod expression;
+pub(crate) mod expression;
 mod import;
 mod pattern;
 #[cfg(test)]
@@ -362,7 +362,7 @@ impl<'module> Generator<'module> {
                 Definition::Function(Function {
                     name,
                     publicity,
-                    external_javascript: Some((module, function)),
+                    external_nix: Some((module, function)),
                     ..
                 }) => {
                     self.register_external_function(
