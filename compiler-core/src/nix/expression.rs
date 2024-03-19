@@ -296,6 +296,15 @@ impl<'module> Generator<'module> {
 
             let condition;
             match pattern {
+                Pattern::Int { value, .. } => {
+                    condition = docvec!(subject.clone(), " == ", int(value));
+                }
+                Pattern::Float { value, .. } => {
+                    condition = docvec!(subject.clone(), " == ", float(value));
+                }
+                Pattern::String { value, .. } => {
+                    condition = docvec!(subject.clone(), " == ", string(value));
+                }
                 Pattern::Constructor { name, type_, .. } if type_.is_bool() => {
                     condition = if name == "True" {
                         subject.clone()
@@ -305,11 +314,16 @@ impl<'module> Generator<'module> {
                 }
                 Pattern::Constructor {
                     name,
+                    type_,
                     arguments,
                     with_spread,
                     ..
                 } if arguments.is_empty() && !with_spread => {
-                    condition = docvec!(subject.clone(), ".__gleam_tag' == ", string(name))
+                    condition = if type_.is_nil() {
+                        docvec!(subject.clone(), " == null")
+                    } else {
+                        docvec!(subject.clone(), ".__gleam_tag' == ", string(name))
+                    }
                 }
                 Pattern::Discard { .. } => condition = "true".to_doc(),
                 _ => todo!("partial support for case"),
