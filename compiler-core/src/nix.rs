@@ -5,12 +5,14 @@ mod tests;
 use crate::analyse::TargetSupport;
 use crate::ast::{
     CustomType, Definition, Function, Import, ModuleConstant, Publicity, TypeAlias, TypedArg,
-    TypedConstant, TypedDefinition, TypedFunction, TypedModule,
+    TypedConstant, TypedDefinition, TypedFunction, TypedModule, TypedRecordConstructor,
+    TypedRecordConstructorArg,
 };
 use crate::build::Target;
 use crate::docvec;
 use crate::javascript::Error;
 use crate::line_numbers::LineNumbers;
+use crate::nix::expression::string;
 use crate::pretty::{break_, concat, join, line, Document, Documentable};
 use camino::Utf8Path;
 use ecow::EcoString;
@@ -136,9 +138,9 @@ impl<'module> Generator<'module> {
         }
     }
 
-    fn collect_definitions<'a>(
+    fn collect_definitions(
         &mut self,
-    ) -> Vec<Result<(bool, Document<'a>, Document<'a>), Error>> {
+    ) -> Vec<Result<(bool, Document<'module>, Document<'module>), Error>> {
         self.module
             .definitions
             .iter()
@@ -148,7 +150,7 @@ impl<'module> Generator<'module> {
                     constructors,
                     opaque,
                     ..
-                }) => todo!(), // self.custom_type_definition(constructors, *publicity, *opaque),
+                }) => self.custom_type_definition(constructors, *publicity, *opaque),
 
                 Definition::Function(Function { .. })
                 | Definition::TypeAlias(TypeAlias { .. })
@@ -202,6 +204,62 @@ impl<'module> Generator<'module> {
         };
 
         Some(Ok((!function.publicity.is_private(), name, result)))
+    }
+
+    fn custom_type_definition<'a>(
+        &mut self,
+        constructors: &'a [TypedRecordConstructor],
+        publicity: Publicity,
+        opaque: bool,
+    ) -> Vec<Result<(bool, Document<'a>, Document<'a>), Error>> {
+        // If there's no constructors then there's nothing to do here.
+        if constructors.is_empty() {
+            return vec![];
+        }
+
+        constructors
+            .iter()
+            .map(|constructor| Ok(self.record_definition(constructor, publicity, opaque)))
+            .collect()
+    }
+
+    fn record_definition<'a>(
+        &self,
+        constructor: &'a TypedRecordConstructor,
+        publicity: Publicity,
+        opaque: bool,
+    ) -> (bool, Document<'a>, Document<'a>) {
+        fn parameter((i, arg): (usize, &TypedRecordConstructorArg)) -> Document<'_> {
+            arg.label
+                .as_ref()
+                .map(|s| maybe_escape_identifier_doc(s))
+                .unwrap_or_else(|| Document::String(format!("x{i}")))
+        }
+
+        let should_export = !(publicity.is_private() || opaque);
+        let name = maybe_escape_identifier_doc(&constructor.name);
+        let tag_field = ("__gleam_tag'".to_doc(), Some(string(&constructor.name)));
+        if constructor.arguments.is_empty() {
+            let result = wrap_attr_set([tag_field]);
+            return (should_export, name, result);
+        }
+
+        let args = wrap_args(constructor.arguments.iter().enumerate().map(parameter));
+        let returned_fields = constructor.arguments.iter().enumerate().map(|(i, arg)| {
+            let parameter = parameter((i, arg));
+            if let Some(label) = &arg.label {
+                (label.to_doc(), Some(parameter))
+            } else {
+                (Document::String(format!("_{i}")), Some(parameter))
+            }
+        });
+
+        let returned_set = wrap_attr_set(std::iter::once(tag_field).chain(returned_fields));
+        let constructor_fun = docvec!(args, break_("", " "), returned_set)
+            .nest(INDENT)
+            .group();
+
+        (should_export, name, constructor_fun)
     }
 }
 
