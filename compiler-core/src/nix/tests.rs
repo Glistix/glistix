@@ -1,4 +1,5 @@
 use crate::ast::TypedModule;
+use crate::config::PackageConfig;
 use crate::type_::PRELUDE_MODULE_NAME;
 use crate::{
     analyse::TargetSupport,
@@ -62,20 +63,24 @@ pub fn compile(src: &str, deps: Vec<(&str, &str, &str)>) -> TypedModule {
     let mut direct_dependencies = std::collections::HashMap::from_iter(vec![]);
 
     deps.iter().for_each(|(dep_package, dep_name, dep_src)| {
+        let mut dep_config = PackageConfig::default();
+        dep_config.name = (*dep_package).into();
         let parsed = crate::parse::parse_module(dep_src).expect("dep syntax error");
         let mut ast = parsed.module;
         ast.name = (*dep_name).into();
+        let line_numbers = LineNumbers::new(dep_src);
         let dep = crate::analyse::infer_module::<()>(
-            // TODO: Change
-            Target::JavaScript,
+            Target::Nix,
             &ids,
             ast,
             Origin::Src,
-            &((*dep_package).into()),
             &modules,
             &TypeWarningEmitter::null(),
             &std::collections::HashMap::new(),
             TargetSupport::Enforced,
+            line_numbers,
+            &dep_config,
+            "".into(),
         )
         .expect("should successfully infer");
         let _ = modules.insert((*dep_name).into(), dep.type_info);
@@ -85,17 +90,22 @@ pub fn compile(src: &str, deps: Vec<(&str, &str, &str)>) -> TypedModule {
     let parsed = crate::parse::parse_module(src).expect("syntax error");
     let mut ast = parsed.module;
     ast.name = "my/mod".into();
+    let line_numbers = LineNumbers::new(src);
+    let mut config = PackageConfig::default();
+    config.name = "thepackage".into();
+
     crate::analyse::infer_module::<()>(
-        // TODO: Change
-        Target::JavaScript,
+        Target::Nix,
         &ids,
         ast,
         Origin::Src,
-        &"thepackage".into(),
         &modules,
         &TypeWarningEmitter::null(),
         &direct_dependencies,
         TargetSupport::NotEnforced,
+        line_numbers,
+        &config,
+        "".into(),
     )
     .expect("should successfully infer")
 }
