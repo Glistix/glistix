@@ -1,5 +1,6 @@
 mod expression;
 mod import;
+mod pattern;
 #[cfg(test)]
 mod tests;
 

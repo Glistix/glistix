@@ -1,13 +1,14 @@
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    Arg, BinOp, CallArg, Constant, SrcSpan, Statement, TypedArg, TypedAssignment, TypedConstant,
-    TypedExpr, TypedModule, TypedPattern, TypedRecordUpdateArg, TypedStatement,
+    Arg, BinOp, CallArg, Constant, Pattern, SrcSpan, Statement, TypedArg, TypedAssignment,
+    TypedClause, TypedConstant, TypedExpr, TypedModule, TypedPattern, TypedRecordUpdateArg,
+    TypedStatement,
 };
 use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
 use crate::nix::{
-    fn_call, fun_args, is_nix_keyword, maybe_escape_identifier_doc, module_var_name_doc,
+    fn_call, fun_args, is_nix_keyword, maybe_escape_identifier_doc, module_var_name_doc, pattern,
     try_wrap_attr_set, UsageTracker, INDENT,
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
@@ -144,8 +145,10 @@ impl<'module> Generator<'module> {
                 ..
             } => Ok(self.module_select(module_alias, label, constructor)),
 
+            TypedExpr::Case {
+                subjects, clauses, ..
+            } => self.case(subjects, clauses),
             TypedExpr::BitArray { .. } => todo!("bitarray"),
-            TypedExpr::Case { .. } => todo!("case"),
         }
     }
 
@@ -246,6 +249,108 @@ impl<'module> Generator<'module> {
             | ValueConstructorVariant::ModuleConstant { .. }
             | ValueConstructorVariant::LocalVariable { .. } => Ok(self.local_var(name)),
         }
+    }
+
+    fn case<'a>(
+        &mut self,
+        subject_values: &'a [TypedExpr],
+        clauses: &'a [TypedClause],
+    ) -> Output<'a> {
+        let (subjects, subject_assignments): (Vec<_>, Vec<_>) =
+            pattern::assign_subjects(self, subject_values)
+                .into_iter()
+                .unzip();
+
+        let mut doc = nil();
+
+        if subjects.len() > 1 {
+            todo!("partial support for case");
+        }
+
+        let Some(subject) = subjects.into_iter().next() else {
+            todo!("partial support for case");
+        };
+
+        let total_patterns: usize = clauses
+            .iter()
+            .map(|c| c.alternative_patterns.len())
+            .sum::<usize>()
+            + clauses.len();
+
+        // A case has many clauses `pattern -> consequence`
+        for (clause_number, clause) in clauses.iter().enumerate() {
+            if !clause.alternative_patterns.is_empty() || clause.guard.is_some() {
+                todo!("partial support for case");
+            }
+            let pattern = &clause.pattern;
+            if pattern.len() > 1 {
+                todo!("partial support for case");
+            }
+            let Some(pattern) = pattern.first() else {
+                continue;
+            };
+            let clause_number = clause_number + 1;
+            let is_final_clause = clause_number == total_patterns;
+            let is_first_clause = clause_number == 1;
+            let is_only_clause = is_final_clause && is_first_clause;
+
+            let condition;
+            match pattern {
+                Pattern::Constructor { name, type_, .. } if type_.is_bool() => {
+                    condition = if name == "True" {
+                        subject.clone()
+                    } else {
+                        docvec!("!", subject.clone())
+                    };
+                }
+                Pattern::Constructor {
+                    name,
+                    arguments,
+                    with_spread,
+                    ..
+                } if arguments.is_empty() && !with_spread => {
+                    condition = docvec!(subject.clone(), ".__gleam_tag' == ", string(name))
+                }
+                Pattern::Discard { .. } => condition = "true".to_doc(),
+                _ => todo!("partial support for case"),
+            }
+
+            let body = self.expression(&clause.then)?;
+
+            doc = if is_only_clause {
+                // If this is the only clause and there are no checks then we can
+                // render just the body as the case does nothing
+                doc.append(body)
+            } else if is_final_clause {
+                doc.append(break_("", " "))
+                    .append("else")
+                    .append(docvec!(break_("", " "), body).nest(INDENT))
+            } else {
+                doc.append(if is_first_clause {
+                    "if".to_doc()
+                } else {
+                    docvec!(break_("", " "), "else if")
+                })
+                .append(docvec!(break_("", " "), condition).nest(INDENT).group())
+                .append(docvec!(break_("", " "), "then"))
+                .append(docvec!(break_("", " "), body).nest(INDENT))
+            };
+        }
+
+        // If there is a subject name given create a variable to hold it for
+        // use in patterns
+        let subject_assignments: Vec<_> = subject_assignments
+            .into_iter()
+            .zip(subject_values)
+            .flat_map(|(assignment_name, value)| assignment_name.map(|name| (name, value)))
+            .map(|(name, value)| Ok(assignment_line(name, self.expression(value)?)))
+            .try_collect()?;
+
+        Ok(if subject_assignments.is_empty() {
+            doc
+        } else {
+            let_in(subject_assignments, doc, false)
+        })
     }
 
     /// Outputs the expression which would replace a statement if it were the
