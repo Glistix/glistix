@@ -6,7 +6,7 @@ use crate::nix::{expression, inherit, maybe_escape_identifier_string};
 use crate::pretty::{break_, join, nil};
 use crate::{
     docvec,
-    pretty::{concat, Document, Documentable},
+    pretty::{Document, Documentable},
 };
 
 /// A collection of Nix import statements from Gleam imports and from

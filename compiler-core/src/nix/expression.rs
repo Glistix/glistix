@@ -7,7 +7,8 @@ use crate::docvec;
 use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
 use crate::nix::{
-    fun_args, is_nix_keyword, maybe_escape_identifier_doc, try_wrap_attr_set, UsageTracker, INDENT,
+    fun_args, is_nix_keyword, maybe_escape_identifier_doc, module_var_name_doc, try_wrap_attr_set,
+    UsageTracker, INDENT,
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
@@ -136,7 +137,15 @@ impl<'module> Generator<'module> {
             TypedExpr::RecordAccess { label, record, .. } => self.record_access(record, label),
             TypedExpr::RecordUpdate { spread, args, .. } => self.record_update(spread, args),
 
-            _ => todo!(),
+            TypedExpr::ModuleSelect {
+                module_alias,
+                label,
+                constructor,
+                ..
+            } => Ok(self.module_select(module_alias, label, constructor)),
+
+            TypedExpr::BitArray { .. } => todo!("bitarray"),
+            TypedExpr::Case { .. } => todo!("case"),
         }
     }
 
@@ -591,8 +600,25 @@ impl Generator<'_> {
         } else {
             // Use the record constructor directly.
             match qualifier {
-                Some(_module) => todo!("module"), // docvec!["new $", module, ".", name, "()"],
+                Some(module) => docvec![module_var_name_doc(module), ".", name],
                 None => name.to_doc(),
+            }
+        }
+    }
+
+    fn module_select<'a>(
+        &mut self,
+        module: &'a str,
+        label: &'a str,
+        constructor: &'a ModuleValueConstructor,
+    ) -> Document<'a> {
+        match constructor {
+            ModuleValueConstructor::Fn { .. } | ModuleValueConstructor::Constant { .. } => {
+                docvec!(module_var_name_doc(module), ".", maybe_escape_identifier_doc(label))
+            }
+
+            ModuleValueConstructor::Record { name, type_, .. } => {
+                self.record_constructor(type_.clone(), Some(module), name)
             }
         }
     }
@@ -654,7 +680,7 @@ pub(crate) fn constant_expression<'a>(
         Constant::Var { name, module, .. } => Ok({
             match module {
                 None => name.to_doc(),
-                Some(_module) => todo!("module notation"), // docvec!["$", module, ".", name],
+                Some(module) => docvec![module_var_name_doc(module), ".", name],
             }
         }),
     }
@@ -670,8 +696,8 @@ fn construct_record<'a>(
     name: &'a str,
     arguments: Vec<Document<'a>>,
 ) -> Document<'a> {
-    let name = if let Some(_module) = module {
-        todo!("modules")
+    let name = if let Some(module) = module {
+        docvec![module_var_name_doc(module), ".", name]
     } else {
         name.to_doc()
     };

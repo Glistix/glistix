@@ -520,6 +520,10 @@ fn module_var_name(name: &str) -> String {
     format!("mod''{}", maybe_escape_identifier_string(name))
 }
 
+fn module_var_name_doc(name: &str) -> Document<'_> {
+    docvec!("mod''", maybe_escape_identifier_doc(name))
+}
+
 fn wrap_attr_set<'a>(
     items: impl IntoIterator<Item = (Document<'a>, Option<Document<'a>>)>,
 ) -> Document<'a> {
