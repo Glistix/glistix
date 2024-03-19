@@ -294,40 +294,37 @@ impl<'module> Generator<'module> {
             let is_first_clause = clause_number == 1;
             let is_only_clause = is_final_clause && is_first_clause;
 
-            let condition;
-            match pattern {
+            let condition = match pattern {
                 Pattern::Int { value, .. } => {
-                    condition = docvec!(subject.clone(), " == ", int(value));
+                    docvec!(subject.clone(), " == ", int(value))
                 }
                 Pattern::Float { value, .. } => {
-                    condition = docvec!(subject.clone(), " == ", float(value));
+                    docvec!(subject.clone(), " == ", float(value))
                 }
                 Pattern::String { value, .. } => {
-                    condition = docvec!(subject.clone(), " == ", string(value));
+                    docvec!(subject.clone(), " == ", string(value))
                 }
                 Pattern::Constructor { name, type_, .. } if type_.is_bool() => {
-                    condition = if name == "True" {
+                    if name == "True" {
                         subject.clone()
                     } else {
                         docvec!("!", subject.clone())
-                    };
+                    }
+                }
+                Pattern::Constructor { type_, .. } if type_.is_nil() => {
+                    docvec!(subject.clone(), " == null")
                 }
                 Pattern::Constructor {
                     name,
-                    type_,
                     arguments,
                     with_spread,
                     ..
                 } if arguments.is_empty() && !with_spread => {
-                    condition = if type_.is_nil() {
-                        docvec!(subject.clone(), " == null")
-                    } else {
-                        docvec!(subject.clone(), ".__gleam_tag' == ", string(name))
-                    }
+                    docvec!(subject.clone(), ".__gleam_tag' == ", string(name))
                 }
-                Pattern::Discard { .. } => condition = "true".to_doc(),
+                Pattern::Discard { .. } => "true".to_doc(),
                 _ => todo!("partial support for case"),
-            }
+            };
 
             let body = self.expression(&clause.then)?;
 
