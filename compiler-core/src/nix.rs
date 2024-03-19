@@ -12,7 +12,6 @@ use crate::ast::{
 };
 use crate::build::Target;
 use crate::docvec;
-use crate::javascript::Error;
 use crate::line_numbers::LineNumbers;
 use crate::nix::expression::string;
 use crate::nix::import::{Imports, Member};
@@ -542,7 +541,7 @@ pub fn module(
 ) -> Result<String, crate::Error> {
     let document = Generator::new(line_numbers, module, target_support)
         .compile()
-        .map_err(|error| crate::Error::JavaScript {
+        .map_err(|error| crate::Error::Nix {
             path: path.to_path_buf(),
             src: src.clone(),
             error,
@@ -725,4 +724,19 @@ pub(crate) struct UsageTracker {
     // pub string_bit_array_segment_used: bool,
     // pub codepoint_bit_array_segment_used: bool,
     // pub float_bit_array_segment_used: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Error {
+    Unsupported { feature: String, location: SrcSpan },
+}
+
+impl Error {
+    /// Returns `true` if the error is [`Unsupported`].
+    ///
+    /// [`Unsupported`]: crate::nix::Error::Unsupported
+    #[must_use]
+    pub fn is_unsupported(&self) -> bool {
+        matches!(self, Self::Unsupported { .. })
+    }
 }

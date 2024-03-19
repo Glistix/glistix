@@ -251,6 +251,13 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     #[error("The --javascript-prelude flag must be given when compiling to JavaScript")]
     JavaScriptPreludeRequired,
 
+    #[error("nix codegen failed")]
+    Nix {
+        path: Utf8PathBuf,
+        src: EcoString,
+        error: crate::nix::Error,
+    },
+
     #[error("The --nix-prelude flag must be given when compiling to Nix")]
     NixPreludeRequired,
 
@@ -2922,6 +2929,24 @@ Fix the warnings and try again."
                 javascript::Error::Unsupported { feature, location } => Diagnostic {
                     title: "Unsupported feature for compilation target".into(),
                     text: format!("{feature} is not supported for JavaScript compilation."),
+                    hint: None,
+                    level: Level::Error,
+                    location: Some(Location {
+                        label: Label {
+                            text: None,
+                            span: *location,
+                        },
+                        path: path.clone(),
+                        src: src.clone(),
+                        extra_labels: vec![],
+                    }),
+                },
+            },
+
+            Error::Nix { src, path, error } => match error {
+                crate::nix::Error::Unsupported { feature, location } => Diagnostic {
+                    title: "Unsupported feature for compilation target".into(),
+                    text: format!("{feature} is not supported for Nix compilation."),
                     hint: None,
                     level: Level::Error,
                     location: Some(Location {

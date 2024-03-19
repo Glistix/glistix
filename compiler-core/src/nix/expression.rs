@@ -5,11 +5,10 @@ use crate::ast::{
     TypedStatement,
 };
 use crate::docvec;
-use crate::javascript::Output;
 use crate::line_numbers::LineNumbers;
 use crate::nix::{
     fn_call, fun_args, is_nix_keyword, maybe_escape_identifier_doc, module_var_name_doc, pattern,
-    try_wrap_attr_set, UsageTracker, INDENT,
+    try_wrap_attr_set, Output, UsageTracker, INDENT,
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
