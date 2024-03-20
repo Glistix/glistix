@@ -308,14 +308,15 @@ impl<'module> Generator<'module> {
         let (inherited_fields, other_fields) = constructor
             .arguments
             .iter()
-            .partition::<Vec<_>, _>(|arg| arg.label.is_some());
+            .enumerate()
+            .partition::<Vec<_>, _>(|(_, arg)| arg.label.is_some());
 
         let inherited_fields = if inherited_fields.is_empty() {
             nil()
         } else {
             docvec![
                 break_("", " "),
-                syntax::inherit(inherited_fields.iter().map(|arg| {
+                syntax::inherit(inherited_fields.iter().map(|(_, arg)| {
                     maybe_escape_identifier_doc(
                         arg.label
                             .as_ref()
@@ -325,8 +326,8 @@ impl<'module> Generator<'module> {
             ]
         };
 
-        let other_fields = concat(other_fields.iter().enumerate().map(|(i, arg)| {
-            let parameter = parameter((i, arg));
+        let other_fields = concat(other_fields.iter().map(|(i, arg)| {
+            let parameter = parameter((*i, arg));
             let assignment = if let Some(label) = &arg.label {
                 syntax::assignment_line(maybe_escape_identifier_doc(label), parameter)
             } else {
