@@ -8,7 +8,8 @@ use crate::docvec;
 use crate::line_numbers::LineNumbers;
 use crate::nix::syntax::is_nix_keyword;
 use crate::nix::{
-    maybe_escape_identifier_doc, module_var_name_doc, pattern, syntax, Output, UsageTracker, INDENT,
+    maybe_escape_identifier_doc, module_var_name_doc, pattern, syntax, Error, Output, UsageTracker,
+    INDENT,
 };
 use crate::pretty::{break_, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
@@ -145,9 +146,16 @@ impl<'module> Generator<'module> {
             } => Ok(self.module_select(module_alias, label, constructor)),
 
             TypedExpr::Case {
-                subjects, clauses, ..
-            } => self.case(subjects, clauses),
-            TypedExpr::BitArray { .. } => todo!("bitarray"),
+                subjects,
+                clauses,
+                location,
+                ..
+            } => self.case(subjects, clauses, location),
+
+            TypedExpr::BitArray { location, .. } => Err(Error::Unsupported {
+                feature: "The bit array type".into(),
+                location: *location,
+            }),
         }
     }
 
@@ -170,7 +178,10 @@ impl<'module> Generator<'module> {
         }
 
         // Patterns
-        todo!()
+        Err(Error::Unsupported {
+            feature: "This kind of pattern in variable declarations".into(),
+            location: pattern.location(),
+        })
     }
 
     fn block<'a>(&mut self, statements: &'a Vec1<TypedStatement>) -> Output<'a> {
@@ -254,6 +265,7 @@ impl<'module> Generator<'module> {
         &mut self,
         subject_values: &'a [TypedExpr],
         clauses: &'a [TypedClause],
+        location: &SrcSpan,
     ) -> Output<'a> {
         let (subjects, subject_assignments): (Vec<_>, Vec<_>) =
             pattern::assign_subjects(self, subject_values)
@@ -263,11 +275,20 @@ impl<'module> Generator<'module> {
         let mut doc = nil();
 
         if subjects.len() > 1 {
-            todo!("partial support for case");
+            return Err(Error::Unsupported {
+                feature: "A case with multiple subjects".into(),
+                location: subject_values
+                    .last()
+                    .map(TypedExpr::location)
+                    .unwrap_or_default(),
+            });
         }
 
         let Some(subject) = subjects.into_iter().next() else {
-            todo!("partial support for case");
+            return Err(Error::Unsupported {
+                feature: "A case without subjects".into(),
+                location: *location,
+            });
         };
 
         let total_patterns: usize = clauses
@@ -279,11 +300,17 @@ impl<'module> Generator<'module> {
         // A case has many clauses `pattern -> consequence`
         for (clause_number, clause) in clauses.iter().enumerate() {
             if !clause.alternative_patterns.is_empty() || clause.guard.is_some() {
-                todo!("partial support for case");
+                return Err(Error::Unsupported {
+                    feature: "A clause with alternative patterns or guards".into(),
+                    location: clause.location(),
+                });
             }
             let pattern = &clause.pattern;
             if pattern.len() > 1 {
-                todo!("partial support for case");
+                return Err(Error::Unsupported {
+                    feature: "A case with multiple subjects".into(),
+                    location: pattern.last().map(Pattern::location).unwrap_or_default(),
+                });
             }
             let Some(pattern) = pattern.first() else {
                 continue;
@@ -322,7 +349,12 @@ impl<'module> Generator<'module> {
                     docvec!(subject.clone(), ".__gleam_tag' == ", string(name))
                 }
                 Pattern::Discard { .. } => "true".to_doc(),
-                _ => todo!("partial support for case"),
+                unsupported_pattern => {
+                    return Err(Error::Unsupported {
+                        feature: "This kind of pattern".into(),
+                        location: unsupported_pattern.location(),
+                    })
+                }
             };
 
             let body = self.expression(&clause.then)?;
@@ -666,13 +698,11 @@ impl Generator<'_> {
         right: &'a TypedExpr,
         should_be_equal: bool,
     ) -> Output<'a> {
-        // If it is a simple scalar type then we can use Nix's simple equality
-        if is_nix_scalar(left.type_()) {
-            return self.print_bin_op(left, right, if should_be_equal { "==" } else { "!=" });
-        }
-
+        // Nix's equality is always structural.
+        return self.print_bin_op(left, right, if should_be_equal { "==" } else { "!=" });
+        // if is_nix_scalar(left.type_()) {
+        // }
         // Other types must be compared using structural equality
-        todo!("track prelude equals call")
         // Ok(self.prelude_equal_call(should_be_equal, left, right))
     }
 
@@ -816,7 +846,14 @@ pub(crate) fn constant_expression<'a>(
             Ok(construct_record(module.as_deref(), tag, field_values))
         }
 
-        Constant::BitArray { segments: _, .. } => todo!("bitarray"),
+        Constant::BitArray {
+            segments: _,
+            location,
+            ..
+        } => Err(Error::Unsupported {
+            feature: "The bit array type".into(),
+            location: *location,
+        }),
 
         Constant::Var { name, module, .. } => Ok({
             match module {
