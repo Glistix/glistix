@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 
-use crate::nix::{expression, inherit, maybe_escape_identifier_string};
+use crate::nix::{maybe_escape_identifier_string, syntax};
 use crate::pretty::{break_, join, nil};
 use crate::{
     docvec,
@@ -34,7 +34,7 @@ impl<'a> Imports<'a> {
         unqualified_imports: impl IntoIterator<Item = Member<'a>>,
     ) {
         // Sanitize path
-        let path = expression::path(&path);
+        let path = syntax::path(&path);
         let import = self
             .imports
             .entry(path.clone().to_string())
@@ -86,7 +86,7 @@ impl<'a> Import<'a> {
             self.aliases.into_iter().sorted().map(|alias| {
                 // Alias is equivalent to just importing again:
                 // alias = import path;
-                expression::assignment_line(
+                syntax::assignment_line(
                     Document::String(maybe_escape_identifier_string(&alias)),
                     docvec!["builtins.import ", path.clone()],
                 )
@@ -116,7 +116,9 @@ impl<'a> Import<'a> {
                 (
                     docvec![
                         alias_import_break,
-                        inherit(std::iter::once(import_source.clone()).chain(unaliased_names))
+                        syntax::inherit(
+                            std::iter::once(import_source.clone()).chain(unaliased_names)
+                        )
                     ],
                     false,
                 )
@@ -134,7 +136,7 @@ impl<'a> Import<'a> {
                     aliased_members.into_iter().map(|member| {
                         // Generate:
                         // `alias = (import ...).name;\n`
-                        expression::assignment_line(
+                        syntax::assignment_line(
                             member.alias.to_doc(),
                             docvec![import_source.clone(), ".", member.name],
                         )

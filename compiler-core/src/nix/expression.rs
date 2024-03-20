@@ -6,11 +6,11 @@ use crate::ast::{
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
+use crate::nix::syntax::is_nix_keyword;
 use crate::nix::{
-    fn_call, fun_args, is_nix_keyword, maybe_escape_identifier_doc, module_var_name_doc, pattern,
-    try_wrap_attr_set, Output, UsageTracker, INDENT,
+    maybe_escape_identifier_doc, module_var_name_doc, pattern, syntax, Output, UsageTracker, INDENT,
 };
-use crate::pretty::{break_, join, nil, Document, Documentable};
+use crate::pretty::{break_, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
@@ -78,7 +78,7 @@ impl<'module> Generator<'module> {
                 let subject = self.expression(expression)?;
                 let name = self.next_anonymous_var();
                 // Convert expression to assignment with irrelevant name
-                Ok(assignment_line(name, subject))
+                Ok(syntax::assignment_line(name, subject))
             }
             Statement::Assignment(assignment) => self.assignment(assignment),
             Statement::Use(_use) => {
@@ -166,7 +166,7 @@ impl<'module> Generator<'module> {
             // Subject must be rendered before the variable for variable numbering
             let subject = self.expression(value)?;
             let nix_name = self.next_local_var(name);
-            return Ok(assignment_line(nix_name, subject));
+            return Ok(syntax::assignment_line(nix_name, subject));
         }
 
         // Patterns
@@ -205,7 +205,7 @@ impl<'module> Generator<'module> {
 
         let body = self.expression_from_statement(trailing_statement)?;
 
-        Ok(let_in(assignments, body, false))
+        Ok(syntax::let_in(assignments, body, false))
     }
 
     fn pipeline<'a>(
@@ -229,7 +229,7 @@ impl<'module> Generator<'module> {
         // Exiting scope
         self.current_scope_vars = scope;
 
-        Ok(let_in(assignments, body, false))
+        Ok(syntax::let_in(assignments, body, false))
     }
 
     fn variable<'a>(
@@ -353,13 +353,13 @@ impl<'module> Generator<'module> {
             .into_iter()
             .zip(subject_values)
             .flat_map(|(assignment_name, value)| assignment_name.map(|name| (name, value)))
-            .map(|(name, value)| Ok(assignment_line(name, self.expression(value)?)))
+            .map(|(name, value)| Ok(syntax::assignment_line(name, self.expression(value)?)))
             .try_collect()?;
 
         Ok(if subject_assignments.is_empty() {
             doc
         } else {
-            let_in(subject_assignments, doc, false)
+            syntax::let_in(subject_assignments, doc, false)
         })
     }
 
@@ -529,7 +529,7 @@ impl Generator<'_> {
                     };
                 }
                 let fun = self.wrap_child_expression(fun)?;
-                Ok(fn_call(fun, arguments))
+                Ok(syntax::fn_call(fun, arguments))
             }
         }
     }
@@ -594,7 +594,7 @@ impl Generator<'_> {
         // let fields = wrap_attr_set(fields.into_iter().map(|(k, v)| (k.to_doc(), Some(v))));
 
         // TODO: Insert module and line
-        fn_call("builtins.throw".to_doc(), [message.clone()])
+        syntax::fn_call("builtins.throw".to_doc(), [message.clone()])
     }
 }
 
@@ -632,21 +632,21 @@ impl Generator<'_> {
         self.tracker.int_division_used = true;
         // This name can't be shadowed, as user variables must be in lowercase
         // or (for types) PascalCase.
-        Ok(fn_call("divideInt".to_doc(), [left, right]))
+        Ok(syntax::fn_call("divideInt".to_doc(), [left, right]))
     }
 
     fn remainder_int<'a>(&mut self, left: &'a TypedExpr, right: &'a TypedExpr) -> Output<'a> {
         let left = self.wrap_child_expression(left)?;
         let right = self.wrap_child_expression(right)?;
         self.tracker.int_remainder_used = true;
-        Ok(fn_call("remainderInt".to_doc(), [left, right]))
+        Ok(syntax::fn_call("remainderInt".to_doc(), [left, right]))
     }
 
     fn div_float<'a>(&mut self, left: &'a TypedExpr, right: &'a TypedExpr) -> Output<'a> {
         let left = self.wrap_child_expression(left)?;
         let right = self.wrap_child_expression(right)?;
         self.tracker.float_division_used = true;
-        Ok(fn_call("divideFloat".to_doc(), [left, right]))
+        Ok(syntax::fn_call("divideFloat".to_doc(), [left, right]))
     }
 
     fn print_bin_op<'a>(
@@ -711,7 +711,7 @@ impl Generator<'_> {
                     self.wrap_child_expression(value),
                 )
             });
-        let set = try_wrap_attr_set(fields)?;
+        let set = syntax::try_wrap_attr_set(fields)?;
         Ok(docvec![record, " // ", set])
     }
 
@@ -843,12 +843,12 @@ fn construct_record<'a>(
         name.to_doc()
     };
 
-    fn_call(name, arguments)
+    syntax::fn_call(name, arguments)
 }
 
 /// Generates a valid Nix string.
 pub fn string(value: &str) -> Document<'_> {
-    match sanitize_string(value) {
+    match syntax::sanitize_string(value) {
         Cow::Owned(string) => Document::String(string),
         Cow::Borrowed(value) => value.to_doc(),
     }
@@ -905,86 +905,6 @@ pub fn float(value: &str) -> Document<'_> {
     out.to_doc()
 }
 
-/// Attempts to generate a valid Nix path.
-/// Not always possible when the value is surrounded by <...> (Nix store path).
-///
-/// Valid Nix paths include:
-/// 1. Those starting with `/` (absolute paths).
-/// 2. Those starting with `./` (relative paths).
-/// 3. Those starting with `~/` (user home paths).
-/// 4. Those surrounded by `<...>` (Nix store paths - don't support interpolation with ${...}).
-/// Anything not in the four categories above is converted to a relative path.
-pub fn path(value: &str) -> Cow<'_, str> {
-    // TODO: Consider introducing fallibility somewhere here.
-    match value {
-        "" => Cow::Borrowed(value),
-        "~" | "~/" => Cow::Borrowed("~/."),
-        "." | "./" => Cow::Borrowed("./."),
-        "/" => Cow::Borrowed("/."),
-        _ if value.starts_with('<') && value.ends_with('>') => {
-            // Can't sanitize further (Nix doesn't support ${...} insertions here),
-            // so just remove newlines and extra '>' as an "emergency measure" to
-            // guarantee that invalid syntax will crash Nix.
-            if value.contains('\n')
-                || value
-                    .get(..value.len() - 1)
-                    .unwrap_or_default()
-                    .contains('>')
-            {
-                Cow::Owned(format!("{}>", value.replace(['\n', '>'], "")))
-            } else {
-                Cow::Borrowed(value)
-            }
-        }
-        _ => {
-            let new_prefix;
-            let current_prefix;
-            if value.starts_with('/') {
-                new_prefix = "";
-                current_prefix = "/";
-            } else if value.starts_with("./") || value.starts_with("~/") {
-                new_prefix = "";
-                current_prefix = &value.get(0..2).expect("string should have two characters");
-            } else {
-                // Assume a relative path when the prefix is valid
-                new_prefix = "./";
-                current_prefix = "";
-            };
-
-            // Nix restriction: paths must not end with a trailing slash
-            let suffix = if value.ends_with('/') { "." } else { "" };
-
-            match sanitize_path(value.get(current_prefix.len()..).unwrap_or_default()) {
-                Cow::Owned(sanitized) => {
-                    Cow::Owned(format!("{new_prefix}{current_prefix}{sanitized}{suffix}"))
-                }
-                Cow::Borrowed(_) if new_prefix.is_empty() && suffix.is_empty() => {
-                    Cow::Borrowed(value)
-                }
-                Cow::Borrowed(_) => Cow::Owned(format!("{new_prefix}{value}{suffix}")),
-            }
-        }
-    }
-}
-
-/// Sanitize a Nix path's contents.
-/// Replaces any invalid path syntax with ${"... string ..."}.
-fn sanitize_path(value: &str) -> Cow<'_, str> {
-    let path_regex = regex::Regex::new(r"[^a-zA-Z0-9./_\-+]+").expect("regex should be valid");
-    path_regex.replace_all(value, |captures: &regex::Captures<'_>| {
-        format!("${{\"{}\"}}", sanitize_string(captures.extract::<0>().0))
-    })
-}
-
-/// Sanitize a Nix string.
-fn sanitize_string(value: &str) -> Cow<'_, str> {
-    if value.contains('\n') || value.contains("${") {
-        Cow::Owned(value.replace('\n', r"\n").replace("${", "\\${"))
-    } else {
-        Cow::Borrowed(value)
-    }
-}
-
 pub fn list<'a, Elements: IntoIterator<Item = Output<'a>>>(elements: Elements) -> Output<'a> {
     let elements = Itertools::intersperse(elements.into_iter(), Ok(break_("", " ")))
         .collect::<Result<Vec<_>, _>>()?
@@ -1004,54 +924,23 @@ pub fn tuple<'a>(elements: impl IntoIterator<Item = Output<'a>>) -> Output<'a> {
         .enumerate()
         .map(|(i, element)| (Document::String(format!("_{i}")), element));
 
-    try_wrap_attr_set(fields)
+    syntax::try_wrap_attr_set(fields)
 }
 
-/// Produces an assignment line in Nix:
-///
-/// ```nix
-/// let
-///   name = value;  // <--- this line is generated by this function
-/// in ...
-/// ```
-pub fn assignment_line<'a>(name: Document<'a>, value: Document<'a>) -> Document<'a> {
-    docvec![
-        name,
-        " =",
-        docvec![break_("", " "), value, ";"].nest(INDENT).group()
-    ]
-}
-
-/// Generates a Nix expression in the form
-///
-/// ```nix
-/// let
-///   assignment1 = value;
-///   assignment2 = value;
-/// in body
-/// ```
-pub fn let_in<'a>(
-    assignments: impl IntoIterator<Item = Document<'a>>,
-    body: Document<'a>,
-    extra_assign_break: bool,
-) -> Document<'a> {
-    let extra_assign_break = if extra_assign_break {
-        break_("", "")
-    } else {
-        nil()
-    };
-
-    docvec![
-        "let",
-        docvec![
-            break_("", " "),
-            join(assignments, break_("", " ").append(extra_assign_break))
-        ]
-        .nest(INDENT),
-        break_("", " "),
-        "in",
-        docvec![break_("", " "), body].nest(INDENT).group(),
-    ]
+pub fn fun_args(args: &'_ [TypedArg]) -> Document<'_> {
+    let mut discards = 0;
+    syntax::wrap_args(args.iter().map(|a| match a.get_variable_name() {
+        None => {
+            let doc = if discards == 0 {
+                "_".to_doc()
+            } else {
+                Document::String(format!("_{discards}"))
+            };
+            discards += 1;
+            doc
+        }
+        Some(name) => maybe_escape_identifier_doc(name),
+    }))
 }
 
 /// If the label would be a keyword, it is quoted.

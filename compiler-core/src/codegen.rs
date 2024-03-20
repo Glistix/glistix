@@ -269,7 +269,7 @@ impl<'a> Nix<'a> {
     fn write_prelude(&self, writer: &impl FileSystemWriter) -> Result<()> {
         let rexport = format!(
             "builtins.import {}\n",
-            nix::expression::path(self.prelude_location.as_str())
+            nix::syntax::path(self.prelude_location.as_str())
         );
         writer.write(&self.output_directory.join("gleam.nix"), &rexport)?;
 

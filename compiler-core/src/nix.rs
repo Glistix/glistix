@@ -1,21 +1,22 @@
-pub(crate) mod expression;
+mod expression;
 mod import;
 mod pattern;
+pub mod syntax;
 #[cfg(test)]
 mod tests;
 
 use crate::analyse::TargetSupport;
 use crate::ast::{
     AssignName, CustomType, Definition, Function, Import, ModuleConstant, Publicity, SrcSpan,
-    TypeAlias, TypedArg, TypedConstant, TypedDefinition, TypedFunction, TypedModule,
-    TypedRecordConstructor, TypedRecordConstructorArg, UnqualifiedImport,
+    TypeAlias, TypedConstant, TypedDefinition, TypedFunction, TypedModule, TypedRecordConstructor,
+    TypedRecordConstructorArg, UnqualifiedImport,
 };
 use crate::build::Target;
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
 use crate::nix::expression::string;
 use crate::nix::import::{Imports, Member};
-use crate::pretty::{break_, concat, join, line, Document, Documentable};
+use crate::pretty::{break_, line, Document, Documentable};
 use crate::type_::PRELUDE_MODULE_NAME;
 use camino::Utf8Path;
 use ecow::EcoString;
@@ -104,7 +105,7 @@ impl<'module> Generator<'module> {
 
         let exports = if exported_names.peek().is_some() {
             docvec![
-                docvec!["{", break_("", " "), inherit(exported_names)]
+                docvec!["{", break_("", " "), syntax::inherit(exported_names)]
                     .nest(INDENT)
                     .append(break_("", " "))
                     .group(),
@@ -117,7 +118,7 @@ impl<'module> Generator<'module> {
         // Assignment of top-level module names, exported or not.
         let assignments: Vec<_> = statements
             .into_iter()
-            .map(|declaration| expression::assignment_line(declaration.name, declaration.value))
+            .map(|declaration| syntax::assignment_line(declaration.name, declaration.value))
             .collect();
 
         // Finish up the module.
@@ -125,12 +126,12 @@ impl<'module> Generator<'module> {
             Ok(docvec![exports, line()])
         } else if no_imports {
             Ok(docvec![
-                expression::let_in(assignments, exports, true).group(),
+                syntax::let_in(assignments, exports, true).group(),
                 line()
             ])
         } else {
             Ok(docvec![
-                expression::let_in(
+                syntax::let_in(
                     std::iter::once(import_lines).chain(assignments),
                     exports,
                     true
@@ -287,7 +288,7 @@ impl<'module> Generator<'module> {
         let tag_field = ("__gleam_tag'".to_doc(), Some(string(&constructor.name)));
 
         if constructor.arguments.is_empty() {
-            let result = wrap_attr_set([tag_field]);
+            let result = syntax::wrap_attr_set([tag_field]);
             return ModuleDeclaration {
                 exported: should_export,
                 name,
@@ -295,7 +296,7 @@ impl<'module> Generator<'module> {
             };
         }
 
-        let args = wrap_args(constructor.arguments.iter().enumerate().map(parameter));
+        let args = syntax::wrap_args(constructor.arguments.iter().enumerate().map(parameter));
         let returned_fields = constructor.arguments.iter().enumerate().map(|(i, arg)| {
             let parameter = parameter((i, arg));
             if let Some(label) = &arg.label {
@@ -305,7 +306,7 @@ impl<'module> Generator<'module> {
             }
         });
 
-        let returned_set = wrap_attr_set(std::iter::once(tag_field).chain(returned_fields));
+        let returned_set = syntax::wrap_attr_set(std::iter::once(tag_field).chain(returned_fields));
         let constructor_fun = docvec!(args, break_("", " "), returned_set)
             .nest(INDENT)
             .group();
@@ -549,122 +550,17 @@ pub fn module(
     Ok(document.to_pretty_string(80))
 }
 
-fn fun_args(args: &'_ [TypedArg]) -> Document<'_> {
-    let mut discards = 0;
-    wrap_args(args.iter().map(|a| match a.get_variable_name() {
-        None => {
-            let doc = if discards == 0 {
-                "_".to_doc()
-            } else {
-                Document::String(format!("_{discards}"))
-            };
-            discards += 1;
-            doc
-        }
-        Some(name) => maybe_escape_identifier_doc(name),
-    }))
-}
-
-fn wrap_args<'a, I>(args: I) -> Document<'a>
-where
-    I: IntoIterator<Item = Document<'a>>,
-{
-    // Add spaces after all but the last argument.
-    break_("", "")
-        .append(join(
-            args.into_iter().map(|arg| arg.append(":")),
-            " ".to_doc(),
-        ))
-        .append(break_("", ""))
-        .group()
-}
-
-/// Generates a function call in Nix:
-///
-/// ```nix
-/// fun arg1 arg2 arg3
-/// ```
-fn fn_call<'a>(fun: Document<'a>, args: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
-    let args = concat(args.into_iter().map(|arg| break_("", " ").append(arg)));
-    docvec![fun, args]
-}
-
-fn inherit<'a>(items: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
-    let spaced_items = items.into_iter().map(|name| docvec!(break_("", " "), name));
-
-    // Note: an 'inherit' without items is valid Nix syntax.
-    docvec!["inherit", concat(spaced_items).nest(INDENT).group(), ";"]
-}
-
 /// Generates the variable name in Nix for the given module.
-fn module_var_name(name: &str) -> String {
+pub fn module_var_name(name: &str) -> String {
     format!("mod''{}", maybe_escape_identifier_string(name))
 }
 
-fn module_var_name_doc(name: &str) -> Document<'_> {
+/// Generates the variable name in Nix for the given module (as a document).
+pub fn module_var_name_doc(name: &str) -> Document<'_> {
     docvec!("mod''", maybe_escape_identifier_doc(name))
 }
 
-fn wrap_attr_set<'a>(
-    items: impl IntoIterator<Item = (Document<'a>, Option<Document<'a>>)>,
-) -> Document<'a> {
-    let mut empty = true;
-    let fields = items.into_iter().map(|(key, value)| {
-        empty = false;
-        match value {
-            Some(value) => docvec![
-                key,
-                " =",
-                docvec![break_("", " "), value, ";"].nest(INDENT).group()
-            ],
-            None => docvec!["inherit ", key.to_doc(), ";"],
-        }
-    });
-    let fields = join(fields, break_("", " "));
-
-    if empty {
-        "{}".to_doc()
-    } else {
-        docvec![
-            docvec!["{", break_("", " "), fields]
-                .nest(INDENT)
-                .append(break_("", " "))
-                .group(),
-            "}"
-        ]
-    }
-}
-
-fn try_wrap_attr_set<'a>(
-    items: impl IntoIterator<Item = (Document<'a>, Output<'a>)>,
-) -> Output<'a> {
-    let fields = items.into_iter().map(|(key, value)| {
-        Ok(docvec![
-            key,
-            " =",
-            docvec![break_("", " "), value?, ";"].nest(INDENT).group()
-        ])
-    });
-    let fields: Vec<_> = Itertools::intersperse(fields, Ok(break_("", " "))).try_collect()?;
-
-    Ok(docvec![
-        docvec!["{", break_("", " "), fields]
-            .nest(INDENT)
-            .append(break_("", " "))
-            .group(),
-        "}"
-    ])
-}
-
-fn is_nix_keyword(word: &str) -> bool {
-    matches!(
-        word,
-        // Keywords and reserved words
-        "if" | "then" | "else" | "assert" | "with" | "let" | "in" | "rec" | "inherit" | "or"
-    )
-}
-
-fn is_usable_nix_identifier(word: &str) -> bool {
+pub fn is_usable_nix_identifier(word: &str) -> bool {
     !matches!(
         word,
         // Keywords and reserved words
@@ -687,7 +583,7 @@ fn is_usable_nix_identifier(word: &str) -> bool {
     )
 }
 
-fn maybe_escape_identifier_string(word: &str) -> String {
+pub fn maybe_escape_identifier_string(word: &str) -> String {
     if is_usable_nix_identifier(word) {
         word.to_string()
     } else {
@@ -695,11 +591,11 @@ fn maybe_escape_identifier_string(word: &str) -> String {
     }
 }
 
-fn escape_identifier(word: &str) -> String {
+pub fn escape_identifier(word: &str) -> String {
     format!("{word}'")
 }
 
-fn maybe_escape_identifier_doc(word: &str) -> Document<'_> {
+pub fn maybe_escape_identifier_doc(word: &str) -> Document<'_> {
     if is_usable_nix_identifier(word) {
         word.to_doc()
     } else {
