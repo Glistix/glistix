@@ -112,6 +112,8 @@ struct Implementations {
   usesJavascriptExternals @2 :Bool;
   canRunOnErlang @3 :Bool;
   canRunOnJavascript @4 :Bool;
+  usesNixExternals @5 :Bool;
+  canRunOnNix @6 :Bool;
 }
 
 struct ValueConstructorVariant {

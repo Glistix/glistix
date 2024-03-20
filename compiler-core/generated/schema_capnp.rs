@@ -2891,6 +2891,14 @@ pub mod implementations {
     pub fn get_can_run_on_javascript(self) -> bool {
       self.reader.get_bool_field(4)
     }
+    #[inline]
+    pub fn get_uses_nix_externals(self) -> bool {
+      self.reader.get_bool_field(5)
+    }
+    #[inline]
+    pub fn get_can_run_on_nix(self) -> bool {
+      self.reader.get_bool_field(6)
+    }
   }
 
   pub struct Builder<'a> { builder: ::capnp::private::layout::StructBuilder<'a> }
@@ -2980,6 +2988,22 @@ pub mod implementations {
     #[inline]
     pub fn set_can_run_on_javascript(&mut self, value: bool)  {
       self.builder.set_bool_field(4, value);
+    }
+    #[inline]
+    pub fn get_uses_nix_externals(self) -> bool {
+      self.builder.get_bool_field(5)
+    }
+    #[inline]
+    pub fn set_uses_nix_externals(&mut self, value: bool)  {
+      self.builder.set_bool_field(5, value);
+    }
+    #[inline]
+    pub fn get_can_run_on_nix(self) -> bool {
+      self.builder.get_bool_field(6)
+    }
+    #[inline]
+    pub fn set_can_run_on_nix(&mut self, value: bool)  {
+      self.builder.set_bool_field(6, value);
     }
   }
 

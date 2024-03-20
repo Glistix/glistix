@@ -477,11 +477,10 @@ impl ModuleDecoder {
             gleam: reader.get_gleam(),
             uses_erlang_externals: reader.get_uses_erlang_externals(),
             uses_javascript_externals: reader.get_uses_javascript_externals(),
+            uses_nix_externals: reader.get_uses_nix_externals(),
             can_run_on_erlang: reader.get_can_run_on_erlang(),
             can_run_on_javascript: reader.get_can_run_on_javascript(),
-            // TODO(NIX)
-            uses_nix_externals: false,
-            can_run_on_nix: false,
+            can_run_on_nix: reader.get_can_run_on_nix(),
         }
     }
 
