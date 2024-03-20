@@ -77,7 +77,10 @@ where
         let extension = file.extension().unwrap_or_default();
 
         // Skip unknown file formats that are not supported native files
-        if !matches!(extension, "mjs" | "js" | "ts" | "hrl" | "erl" | "ex") {
+        if !matches!(
+            extension,
+            "nix" | "mjs" | "js" | "ts" | "hrl" | "erl" | "ex"
+        ) {
             return Ok(());
         }
 
