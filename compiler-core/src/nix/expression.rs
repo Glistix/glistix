@@ -578,14 +578,12 @@ impl Generator<'_> {
         // Reset scope
         self.current_scope_vars = scope;
 
-        // Don't break after the function call if there are no arguments.
-        let argument_break = if arguments.is_empty() {
-            nil()
-        } else {
-            break_("", " ")
-        };
+        if arguments.is_empty() {
+            // A function without args only has its body.
+            return result;
+        }
 
-        Ok(docvec!(fun_args(arguments), argument_break, result?)
+        Ok(docvec!(fun_args(arguments), break_("", " "), result?)
             .nest(INDENT)
             .group())
     }
