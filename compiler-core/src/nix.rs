@@ -161,16 +161,15 @@ impl<'module> Generator<'module> {
             }) => Some(self.module_constant(*publicity, name.as_ref(), value)),
 
             Definition::Function(function) => {
-                // If there's an external JavaScript implementation then it will be imported,
+                // If there's an external Nix implementation then it will be imported,
                 // so we don't need to generate a function definition.
-                if function.external_javascript.is_some() {
-                    // TODO: Specialize this to Nix
+                if function.external_nix.is_some() {
                     return None;
                 }
 
-                // If the function does not support JavaScript then we don't need to generate
+                // If the function does not support Nix then we don't need to generate
                 // a function definition.
-                if !function.implementations.supports(Target::JavaScript) {
+                if !function.implementations.supports(Target::Nix) {
                     return None;
                 }
 
