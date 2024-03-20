@@ -16,7 +16,7 @@ use crate::docvec;
 use crate::line_numbers::LineNumbers;
 use crate::nix::expression::string;
 use crate::nix::import::{Imports, Member};
-use crate::pretty::{break_, line, Document, Documentable};
+use crate::pretty::{break_, concat, line, nil, Document, Documentable};
 use crate::type_::PRELUDE_MODULE_NAME;
 use camino::Utf8Path;
 use ecow::EcoString;
@@ -106,13 +106,7 @@ impl<'module> Generator<'module> {
             .peekable();
 
         let exports = if exported_names.peek().is_some() {
-            docvec![
-                docvec!["{", break_("", " "), syntax::inherit(exported_names)]
-                    .nest(INDENT)
-                    .append(break_("", " "))
-                    .group(),
-                "}"
-            ]
+            syntax::attr_set(syntax::inherit(exported_names))
         } else {
             "{}".to_doc()
         };
@@ -272,12 +266,19 @@ impl<'module> Generator<'module> {
             .collect()
     }
 
+    /// Returns a record definition, of the form:
+    ///
+    /// ```nix
+    /// Ctor = named1: named2: x0: x1: { __gleam_tag' = "Ctor"; inherit named1 named2; _0 = x0; _1 = x1; }
+    /// ```
     fn record_definition<'a>(
         &self,
         constructor: &'a TypedRecordConstructor,
         publicity: Publicity,
         opaque: bool,
     ) -> ModuleDeclaration<'a> {
+        const GLEAM_TAG_FIELD_NAME: &str = "__gleam_tag'";
+
         fn parameter((i, arg): (usize, &TypedRecordConstructorArg)) -> Document<'_> {
             arg.label
                 .as_ref()
@@ -287,10 +288,11 @@ impl<'module> Generator<'module> {
 
         let should_export = !(publicity.is_private() || opaque);
         let name = maybe_escape_identifier_doc(&constructor.name);
-        let tag_field = ("__gleam_tag'".to_doc(), Some(string(&constructor.name)));
+        let tag_field =
+            syntax::assignment_line(GLEAM_TAG_FIELD_NAME.to_doc(), string(&constructor.name));
 
         if constructor.arguments.is_empty() {
-            let result = syntax::wrap_attr_set([tag_field]);
+            let result = syntax::attr_set(tag_field);
             return ModuleDeclaration {
                 exported: should_export,
                 name,
@@ -299,16 +301,43 @@ impl<'module> Generator<'module> {
         }
 
         let args = syntax::wrap_args(constructor.arguments.iter().enumerate().map(parameter));
-        let returned_fields = constructor.arguments.iter().enumerate().map(|(i, arg)| {
-            let parameter = parameter((i, arg));
-            if let Some(label) = &arg.label {
-                (label.to_doc(), Some(parameter))
-            } else {
-                (Document::String(format!("_{i}")), Some(parameter))
-            }
-        });
 
-        let returned_set = syntax::wrap_attr_set(std::iter::once(tag_field).chain(returned_fields));
+        // Named fields will always correspond to their parameters (both are
+        // renamed in the same way when they clash with keywords).
+        // Thus, they are added through 'inherit' instead of 'field = field'.
+        let (inherited_fields, other_fields) = constructor
+            .arguments
+            .iter()
+            .partition::<Vec<_>, _>(|arg| arg.label.is_some());
+
+        let inherited_fields = if inherited_fields.is_empty() {
+            nil()
+        } else {
+            docvec![
+                break_("", " "),
+                syntax::inherit(inherited_fields.iter().map(|arg| {
+                    maybe_escape_identifier_doc(
+                        arg.label
+                            .as_ref()
+                            .expect("presence of label should already have been checked"),
+                    )
+                }))
+            ]
+        };
+
+        let other_fields = concat(other_fields.iter().enumerate().map(|(i, arg)| {
+            let parameter = parameter((i, arg));
+            let assignment = if let Some(label) = &arg.label {
+                syntax::assignment_line(maybe_escape_identifier_doc(label), parameter)
+            } else {
+                syntax::assignment_line(Document::String(format!("_{i}")), parameter)
+            };
+
+            docvec![break_("", " "), assignment]
+        }));
+
+        let returned_set = syntax::attr_set(docvec![tag_field, inherited_fields, other_fields]);
+
         let constructor_fun = docvec!(args, break_("", " "), returned_set)
             .nest(INDENT)
             .group();

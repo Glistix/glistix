@@ -181,11 +181,7 @@ pub fn wrap_attr_set<'a>(
     let fields = items.into_iter().map(|(key, value)| {
         empty = false;
         match value {
-            Some(value) => docvec![
-                key,
-                " =",
-                docvec![break_("", " "), value, ";"].nest(INDENT).group()
-            ],
+            Some(value) => assignment_line(key, value),
             None => docvec!["inherit ", key.to_doc(), ";"],
         }
     });
@@ -217,13 +213,18 @@ pub fn try_wrap_attr_set<'a>(
     });
     let fields: Vec<_> = Itertools::intersperse(fields, Ok(break_("", " "))).try_collect()?;
 
-    Ok(docvec![
-        docvec!["{", break_("", " "), fields]
+    Ok(attr_set(fields.to_doc()))
+}
+
+/// Generates an attribute set's delimiters around its inner contents.
+pub fn attr_set(inner: Document<'_>) -> Document<'_> {
+    docvec![
+        docvec!["{", break_("", " "), inner]
             .nest(INDENT)
             .append(break_("", " "))
             .group(),
         "}"
-    ])
+    ]
 }
 
 pub fn is_nix_keyword(word: &str) -> bool {
