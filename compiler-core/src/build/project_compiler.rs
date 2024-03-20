@@ -234,23 +234,25 @@ where
     }
 
     fn write_prelude(&self) -> Result<()> {
-        // Only the JavaScript target has a prelude to write.
-        if !self.target().is_javascript() {
-            return Ok(());
-        }
+        // Only the JavaScript and Nix targets have a prelude to write.
+        let (prelude, prelude_filename) = match self.target() {
+            Target::Erlang => return Ok(()),
+            Target::JavaScript => (crate::javascript::PRELUDE, "prelude.mjs"),
+            Target::Nix => (crate::nix::PRELUDE, "prelude.nix"),
+        };
 
         let build = self
             .paths
             .build_directory_for_target(self.mode(), self.target());
 
-        // Write the JavaScript prelude
-        let path = build.join("prelude.mjs");
+        // Write the prelude
+        let path = build.join(prelude_filename);
         if !self.io.is_file(&path) {
-            self.io.write(&path, crate::javascript::PRELUDE)?;
+            self.io.write(&path, prelude)?;
         }
 
         // Write the TypeScript prelude, if asked for
-        if self.config.javascript.typescript_declarations {
+        if self.target().is_javascript() && self.config.javascript.typescript_declarations {
             let path = build.join("prelude.d.mts");
             if !self.io.is_file(&path) {
                 self.io.write(&path, crate::javascript::PRELUDE_TS_DEF)?;

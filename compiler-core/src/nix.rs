@@ -24,6 +24,8 @@ use itertools::Itertools;
 
 pub const INDENT: isize = 2;
 
+pub const PRELUDE: &str = include_str!("../templates/prelude.nix");
+
 struct Generator<'module> {
     module: &'module TypedModule,
     line_numbers: &'module LineNumbers,
