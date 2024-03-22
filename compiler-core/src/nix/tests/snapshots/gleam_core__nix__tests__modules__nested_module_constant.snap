@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/modules.rs
+expression: "\nimport rocket_ship/launcher\npub fn go() { launcher.x }\n"
+---
+let
+  mod''launcher = builtins.import ./../rocket_ship/launcher.nix;
+  
+  go = mod''launcher.x;
+in { inherit go; }

@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/modules.rs
+expression: "import one/two\npub fn go() { two.go() }"
+---
+let
+  mod''two = builtins.import ./../one/two.nix;
+  
+  go = mod''two.go;
+in { inherit go; }

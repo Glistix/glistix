@@ -1,0 +1,67 @@
+---
+source: compiler-core/src/nix/tests/basic.rs
+expression: "\npub type SimpleEnum {\n  SA\n  SB\n  SC\n  SD\n}\n\nfn simple_test(x: SimpleEnum) {\n  case x {\n    SC -> Ok(Ok(100))\n    _ -> Error(Error(100))\n  }\n\n  case x {\n    SA -> Ok(5)\n    SB -> Error(10)\n    SC -> Ok(10)\n    SD -> Ok(10)\n  }\n}\n\npub fn simple_test2(x: SimpleEnum, y: Int, z: Float, w: String, p: Nil) {\n  let x1 = case x {\n    SC -> \"is SC\"\n    SA -> \"is SA\"\n    _ -> \"not SC or SA\"\n  }\n  let y1 = case y {\n    0 -> \"is 0\"\n    -1 -> \"is -1\"\n    100 -> \"is 100\"\n    _ -> \"unknown int\"\n  }\n  let z1 = case z {\n    0.0 -> \"is 0.0\"\n    53.53 -> \"is 53.53\"\n    1.0e2 -> \"is 1.0e2\"\n    _ -> \"unknown float\"\n  }\n  let w1 = case w {\n    \"a\" -> \"is a\"\n    \"b\" -> \"is b\"\n    \"c\" -> \"is c\"\n    _ -> \"not a, b, c\"\n  }\n  let p1 = case p {\n    Nil -> \"is nil\"\n    _ -> \"not nil (impossible)\"\n  }\n  #(x1, y1, z1, w1, p1)\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) Ok Error;
+  
+  SA = { __gleam_tag' = "SA"; };
+  
+  SB = { __gleam_tag' = "SB"; };
+  
+  SC = { __gleam_tag' = "SC"; };
+  
+  SD = { __gleam_tag' = "SD"; };
+  
+  simple_test =
+    x:
+      let
+        _''0 =
+          if x.__gleam_tag' == "SC"
+          then Ok (Ok 100)
+          else Error (Error 100);
+      in
+        if x.__gleam_tag' == "SA"
+        then Ok 5
+        else if x.__gleam_tag' == "SB"
+        then Error 10
+        else if x.__gleam_tag' == "SC"
+        then Ok 10
+        else Ok 10;
+  
+  simple_test2 =
+    x: y: z: w: p:
+      let
+        x1 =
+          if x.__gleam_tag' == "SC"
+          then "is SC"
+          else if x.__gleam_tag' == "SA"
+          then "is SA"
+          else "not SC or SA";
+        y1 =
+          if y == 0
+          then "is 0"
+          else if y == -1
+          then "is -1"
+          else if y == 100
+          then "is 100"
+          else "unknown int";
+        z1 =
+          if z == 0.0
+          then "is 0.0"
+          else if z == 53.53
+          then "is 53.53"
+          else if z == 1.0e2
+          then "is 1.0e2"
+          else "unknown float";
+        w1 =
+          if w == "a"
+          then "is a"
+          else if w == "b"
+          then "is b"
+          else if w == "c"
+          then "is c"
+          else "not a, b, c";
+        p1 = if p == null then "is nil" else "not nil (impossible)";
+      in { _0 = x1; _1 = y1; _2 = z1; _3 = w1; _4 = p1; };
+in { inherit SA SB SC SD simple_test2; }
