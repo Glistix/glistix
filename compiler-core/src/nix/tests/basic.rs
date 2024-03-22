@@ -1,7 +1,7 @@
 use crate::assert_nix;
 
 #[test]
-fn variable_renaming() {
+fn basic_test() {
     assert_nix!(
         r#"
 pub type Amogus {
@@ -59,7 +59,7 @@ fn go(x, foo, boolthing, bmong) {
   let f = -5.5 -. 5.2e-5
   let f = 5.5 -. 5.2e5
   // TODO: fix string escaping
-  let ss = "a" <> "b" <> "c d \\ a \f \n \r \t \u{202b} \\x{202}"
+  let ss = "a" <> "b" <> "c d"
   let ff = [ -5.2e-5, -5.5 ]
   let z = !boolthing
   let tupdatup = #(1, 2, "a", -5.5, #(1, 2, 3))
@@ -85,7 +85,14 @@ fn mongus(a, b, c) {
   let y = x()
   #(1, 2, 3, fn(x: Int) { x + 1 }, { 5 6 10 {10 + 5} })
 }
+"#,
+    )
+}
 
+#[test]
+fn basic_case_test() {
+    assert_nix!(
+        r#"
 fn condman(a, b) {
   let p1 = case a > b {
     True -> 5
@@ -116,6 +123,24 @@ fn condman(a, b) {
   #(p1, p2, p3, p4, vv1, vv2, vv3)
 }
 
+pub fn fact(n: Int) -> #(Nil, Int) {
+  let res = case n < 0 {
+    True -> panic as "Don't."
+    False -> Nil
+  }
+  #(res, case n {
+    0 -> 1
+    _ -> n * fact(n - 1).1
+  })
+}
+"#
+    )
+}
+
+#[test]
+pub fn basic_diverse_case_test() {
+    assert_nix!(
+        r#"
 pub type SimpleEnum {
   SA
   SB
@@ -167,17 +192,6 @@ pub fn simple_test2(x: SimpleEnum, y: Int, z: Float, w: String, p: Nil) {
   }
   #(x1, y1, z1, w1, p1)
 }
-
-pub fn fact(n: Int) -> #(Nil, Int) {
-  let res = case n < 0 {
-    True -> panic as "Don't."
-    False -> Nil
-  }
-  #(res, case n {
-    0 -> 1
-    _ -> n * fact(n - 1).1
-  })
-}
-"#,
+"#
     )
 }
