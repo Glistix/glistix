@@ -228,7 +228,15 @@ pub fn basic_case_guard_test() {
         r#"
 import mymod
 
+type BigBad {
+  BigBad(a: Result(Int, Result(Int, Int)), b: Int)
+}
+
 pub const inherit = 5
+
+pub const bad = [Ok(5), Ok(6)]
+
+const bigbad = [BigBad(Error(Ok(5)), 10), BigBad(Error(Ok(5)), 10)]
 
 pub type Bad {
   Bad(inherit: Bool)
@@ -240,8 +248,10 @@ pub fn guard(x) {
     Nil if mymod.inherit -> 1
     Nil if b.inherit -> 2
     Nil if Bad(inherit: True) == Bad(inherit: False) -> 3
-    Nil if 5 > 6 -> 4
-    _ -> 5
+    Nil if BigBad(Error(Ok(5)), 10) == BigBad(Error(Ok(5)), 10) -> 4
+    Nil if 5 > 6 -> 5
+    Nil if [Ok(5), Ok(6)] == [Ok(7)] -> 6
+    _ -> 7
   }
 }
 "#
