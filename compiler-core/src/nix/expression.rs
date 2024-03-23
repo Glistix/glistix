@@ -1032,16 +1032,9 @@ pub fn float(value: &str) -> Document<'_> {
 }
 
 pub fn list<'a, Elements: IntoIterator<Item = Output<'a>>>(elements: Elements) -> Output<'a> {
-    let elements = Itertools::intersperse(elements.into_iter(), Ok(break_("", " ")))
-        .collect::<Result<Vec<_>, _>>()?
-        .to_doc();
-    Ok(docvec![
-        "[",
-        docvec![break_("", " "), elements].nest(INDENT),
-        break_("", " "),
-        "]"
-    ]
-    .group())
+    let elements: Vec<_> = elements.into_iter().try_collect()?;
+
+    Ok(syntax::list(elements))
 }
 
 pub fn tuple<'a>(elements: impl IntoIterator<Item = Output<'a>>) -> Output<'a> {

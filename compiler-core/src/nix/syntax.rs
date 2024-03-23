@@ -216,7 +216,11 @@ pub fn try_wrap_attr_set<'a>(
     Ok(attr_set(fields.to_doc()))
 }
 
-/// Generates an attribute set's delimiters around its inner contents.
+/// Generates an attribute set's delimiters around its inner contents:
+///
+/// ```nix
+/// { inner }
+/// ```
 pub fn attr_set(inner: Document<'_>) -> Document<'_> {
     docvec![
         docvec!["{", break_("", " "), inner]
@@ -224,6 +228,25 @@ pub fn attr_set(inner: Document<'_>) -> Document<'_> {
             .append(break_("", " "))
             .group(),
         "}"
+    ]
+}
+
+/// Generates a Nix list:
+///
+/// ```nix
+/// [ element1 element2 ... ]
+/// ```
+pub fn list<'a, Elements: IntoIterator<Item = Document<'a>>>(elements: Elements) -> Document<'a> {
+    let spaced_elements = elements
+        .into_iter()
+        .map(|element| break_("", " ").append(element));
+
+    docvec![
+        docvec!["[", concat(spaced_elements)]
+            .nest(INDENT)
+            .append(break_("", " "))
+            .group(),
+        "]"
     ]
 }
 
