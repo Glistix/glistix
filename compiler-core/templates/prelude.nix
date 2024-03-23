@@ -4,7 +4,7 @@
 let
   Ok = x0: { __gleam_tag' = "Ok"; _0 = x0; };
 
-  Err = x0: { __gleam_tag' = "Err"; _0 = x0; };
+  Error = x0: { __gleam_tag' = "Error"; _0 = x0; };
 
   # @internal
   remainderInt = a: b: if b == 0 then 0 else a - (b * (a / b));
@@ -43,4 +43,4 @@ let
         then init
         else fun (builtins.elemAt lst index) (fold' (index + 1));
     in fold' 0;
-in { inherit Ok Err remainderInt divideInt divideFloat toList prepend listHasAtLeastLength listHasLength; }
+in { inherit Ok Error remainderInt divideInt divideFloat toList prepend listHasAtLeastLength listHasLength; }
