@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/modules.rs
+expression: "\nimport esa/rocket_ship\nimport nasa/rocket_ship as _nasa_rocket\npub fn go() { rocket_ship.go() }\n"
+---
+let
+  mod''rocket_ship = builtins.import ./../esa/rocket_ship.nix;
+  
+  go = mod''rocket_ship.go;
+in { inherit go; }
