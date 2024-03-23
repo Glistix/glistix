@@ -1,8 +1,7 @@
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    Arg, BinOp, CallArg, Constant, Pattern, SrcSpan, Statement, TypedArg, TypedAssignment,
-    TypedClause, TypedConstant, TypedExpr, TypedModule, TypedPattern, TypedRecordUpdateArg,
-    TypedStatement,
+    Arg, BinOp, CallArg, Constant, SrcSpan, Statement, TypedArg, TypedAssignment, TypedClause,
+    TypedConstant, TypedExpr, TypedModule, TypedPattern, TypedRecordUpdateArg, TypedStatement,
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
@@ -11,7 +10,7 @@ use crate::nix::{
     maybe_escape_identifier_doc, module_var_name_doc, pattern, syntax, Error, Output, UsageTracker,
     INDENT,
 };
-use crate::pretty::{break_, nil, Document, Documentable};
+use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
@@ -20,6 +19,7 @@ use std::sync::Arc;
 use vec1::Vec1;
 
 /// Generates a Nix expression.
+#[derive(Debug)]
 pub(crate) struct Generator<'module> {
     module: &'module TypedModule,
     line_numbers: &'module LineNumbers,
@@ -27,7 +27,7 @@ pub(crate) struct Generator<'module> {
     current_scope_vars: im::HashMap<EcoString, usize>,
     // We register whether these features are used within an expression so that
     // the module generator can output a suitable function if it is needed.
-    tracker: &'module mut UsageTracker,
+    pub(crate) tracker: &'module mut UsageTracker,
 }
 
 impl<'module> Generator<'module> {
@@ -146,11 +146,8 @@ impl<'module> Generator<'module> {
             } => Ok(self.module_select(module_alias, label, constructor)),
 
             TypedExpr::Case {
-                subjects,
-                clauses,
-                location,
-                ..
-            } => self.case(subjects, clauses, location),
+                subjects, clauses, ..
+            } => self.case(subjects, clauses),
 
             TypedExpr::BitArray { location, .. } => Err(Error::Unsupported {
                 feature: "The bit array type".into(),
@@ -265,32 +262,20 @@ impl<'module> Generator<'module> {
         &mut self,
         subject_values: &'a [TypedExpr],
         clauses: &'a [TypedClause],
-        location: &SrcSpan,
     ) -> Output<'a> {
         let (subjects, subject_assignments): (Vec<_>, Vec<_>) =
             pattern::assign_subjects(self, subject_values)
                 .into_iter()
                 .unzip();
 
+        let mut gen = pattern::Generator::new(self);
+
         let mut doc = nil();
 
-        if subjects.len() > 1 {
-            return Err(Error::Unsupported {
-                feature: "A case with multiple subjects".into(),
-                location: subject_values
-                    .last()
-                    .map(TypedExpr::location)
-                    .unwrap_or_default(),
-            });
-        }
-
-        let Some(subject) = subjects.into_iter().next() else {
-            return Err(Error::Unsupported {
-                feature: "A case without subjects".into(),
-                location: *location,
-            });
-        };
-
+        // We wish to be able to know whether this is the first or clause being
+        // processed, so record the index number. We use this instead of
+        // `Iterator.enumerate` because we are using a nested for loop.
+        let mut clause_number = 0;
         let total_patterns: usize = clauses
             .iter()
             .map(|c| c.alternative_patterns.len())
@@ -298,85 +283,61 @@ impl<'module> Generator<'module> {
             + clauses.len();
 
         // A case has many clauses `pattern -> consequence`
-        for (clause_number, clause) in clauses.iter().enumerate() {
-            if !clause.alternative_patterns.is_empty() || clause.guard.is_some() {
-                return Err(Error::Unsupported {
-                    feature: "A clause with alternative patterns or guards".into(),
-                    location: clause.location(),
-                });
-            }
-            let pattern = &clause.pattern;
-            if pattern.len() > 1 {
-                return Err(Error::Unsupported {
-                    feature: "A case with multiple subjects".into(),
-                    location: pattern.last().map(Pattern::location).unwrap_or_default(),
-                });
-            }
-            let Some(pattern) = pattern.first() else {
-                continue;
-            };
-            let clause_number = clause_number + 1;
-            let is_final_clause = clause_number == total_patterns;
-            let is_first_clause = clause_number == 1;
-            let is_only_clause = is_final_clause && is_first_clause;
+        for clause in clauses {
+            let multipattern = std::iter::once(&clause.pattern);
+            let multipatterns = multipattern.chain(&clause.alternative_patterns);
 
-            let condition = match pattern {
-                Pattern::Int { value, .. } => {
-                    docvec!(subject.clone(), " == ", int(value))
-                }
-                Pattern::Float { value, .. } => {
-                    docvec!(subject.clone(), " == ", float(value))
-                }
-                Pattern::String { value, .. } => {
-                    docvec!(subject.clone(), " == ", string(value))
-                }
-                Pattern::Constructor { name, type_, .. } if type_.is_bool() => {
-                    if name == "True" {
-                        subject.clone()
-                    } else {
-                        docvec!("!", subject.clone())
-                    }
-                }
-                Pattern::Constructor { type_, .. } if type_.is_nil() => {
-                    docvec!(subject.clone(), " == null")
-                }
-                Pattern::Constructor {
-                    name,
-                    arguments,
-                    with_spread,
-                    ..
-                } if arguments.is_empty() && !with_spread => {
-                    docvec!(subject.clone(), ".__gleam_tag' == ", string(name))
-                }
-                Pattern::Discard { .. } => "true".to_doc(),
-                unsupported_pattern => {
-                    return Err(Error::Unsupported {
-                        feature: "This kind of pattern".into(),
-                        location: unsupported_pattern.location(),
-                    })
-                }
-            };
+            // A clause can have many patterns `pattern, pattern ->...`
+            for multipatterns in multipatterns {
+                let scope = gen.expression_generator.current_scope_vars.clone();
+                let mut compiled = gen.generate(&subjects, multipatterns, clause.guard.as_ref())?;
+                let consequence = gen.expression_generator.expression(&clause.then)?;
 
-            let body = self.expression(&clause.then)?;
+                // We've seen one more clause
+                clause_number += 1;
 
-            doc = if is_only_clause {
-                // If this is the only clause and there are no checks then we can
-                // render just the body as the case does nothing
-                doc.append(body)
-            } else if is_final_clause {
-                doc.append(break_("", " "))
-                    .append("else")
-                    .append(docvec!(break_("", " "), body).nest(INDENT).group())
-            } else {
-                doc.append(if is_first_clause {
-                    "if".to_doc()
+                // Reset the scope now that this clause has finished, causing the
+                // variables to go out of scope.
+                gen.expression_generator.current_scope_vars = scope;
+
+                // If the pattern assigns any variables we need to render assignments
+                let body = if compiled.has_assignments() {
+                    let assignments = std::mem::take(&mut compiled.assignments)
+                        .into_iter()
+                        .map(pattern::Assignment::into_doc);
+
+                    syntax::let_in(assignments, consequence, false)
                 } else {
-                    docvec!(break_("", " "), "else if")
-                })
-                .append(docvec!(break_("", " "), condition).nest(INDENT).group())
-                .append(docvec!(break_("", " "), "then"))
-                .append(docvec!(break_("", " "), body).nest(INDENT).group())
-            };
+                    consequence
+                };
+
+                let is_final_clause = clause_number == total_patterns;
+                let is_first_clause = clause_number == 1;
+                let is_only_clause = is_final_clause && is_first_clause;
+
+                doc = if is_only_clause {
+                    // If this is the only clause and there are no checks then we can
+                    // render just the body as the case does nothing
+                    doc.append(body)
+                } else if is_final_clause {
+                    doc.append(break_("", " "))
+                        .append("else")
+                        .append(docvec!(break_("", " "), body).nest(INDENT).group())
+                } else {
+                    let condition = gen
+                        .expression_generator
+                        .pattern_take_checks_doc(&mut compiled, true);
+
+                    doc.append(if is_first_clause {
+                        "if".to_doc()
+                    } else {
+                        docvec!(break_("", " "), "else if")
+                    })
+                    .append(docvec!(break_("", " "), condition).nest(INDENT).group())
+                    .append(docvec!(break_("", " "), "then"))
+                    .append(docvec!(break_("", " "), body).nest(INDENT).group())
+                };
+            }
         }
 
         // If there is a subject name given create a variable to hold it for
@@ -793,9 +754,108 @@ impl Generator<'_> {
     }
 }
 
-/// Types which are trivially comparable for equality.
-pub fn is_nix_scalar(t: Arc<Type>) -> bool {
-    t.is_int() || t.is_float() || t.is_bool() || t.is_nil() || t.is_string()
+/// Methods related to patterns.
+impl Generator<'_> {
+    fn pattern_take_checks_doc<'a>(
+        &self,
+        compiled_pattern: &mut pattern::CompiledPattern<'a>,
+        match_desired: bool,
+    ) -> Document<'a> {
+        let checks = std::mem::take(&mut compiled_pattern.checks);
+        self.pattern_checks_doc(checks, match_desired)
+    }
+
+    fn pattern_checks_doc<'a>(
+        &self,
+        checks: Vec<pattern::Check<'a>>,
+        match_desired: bool,
+    ) -> Document<'a> {
+        if checks.is_empty() {
+            return "true".to_doc();
+        };
+        let operator = if match_desired {
+            break_(" &&", " && ")
+        } else {
+            break_(" ||", " || ")
+        };
+
+        let checks_len = checks.len();
+        join(
+            checks.into_iter().map(|check| {
+                if checks_len > 1 && check.may_require_wrapping() {
+                    docvec!["(", check.into_doc(match_desired), ")"]
+                } else {
+                    check.into_doc(match_desired)
+                }
+            }),
+            operator,
+        )
+        .group()
+    }
+}
+
+pub(crate) fn guard_constant_expression<'a>(
+    assignments: &mut Vec<pattern::Assignment<'a>>,
+    tracker: &mut UsageTracker,
+    expression: &'a TypedConstant,
+) -> Output<'a> {
+    match expression {
+        Constant::Tuple { elements, .. } => tuple(
+            elements
+                .iter()
+                .map(|e| guard_constant_expression(assignments, tracker, e)),
+        ),
+
+        Constant::List { elements, .. } => {
+            // TODO: List tracking
+            // tracker.list_used = true;
+            list(
+                elements
+                    .iter()
+                    .map(|e| guard_constant_expression(assignments, tracker, e)),
+            )
+        }
+        Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
+            Ok("true".to_doc())
+        }
+        Constant::Record { typ, name, .. } if typ.is_bool() && name == "False" => {
+            Ok("false".to_doc())
+        }
+        Constant::Record { typ, .. } if typ.is_nil() => Ok("null".to_doc()),
+
+        Constant::Record {
+            tag,
+            typ,
+            args,
+            module,
+            ..
+        } => {
+            if typ.is_result() {
+                if tag == "Ok" {
+                    tracker.ok_used = true;
+                } else {
+                    tracker.error_used = true;
+                }
+            }
+            let field_values: Vec<_> = args
+                .iter()
+                .map(|arg| guard_constant_expression(assignments, tracker, &arg.value))
+                .try_collect()?;
+            Ok(construct_record(module.as_deref(), tag, field_values))
+        }
+
+        Constant::Var { name, .. } => Ok(assignments
+            .iter()
+            .find(|assignment| assignment.name == name)
+            .map(|assignment| {
+                assignment
+                    .path
+                    .clone()
+                    .into_doc_with_subject(assignment.subject.clone())
+            })
+            .unwrap_or_else(|| name.to_doc())),
+        expression => constant_expression(tracker, expression),
+    }
 }
 
 pub(crate) fn constant_expression<'a>(
