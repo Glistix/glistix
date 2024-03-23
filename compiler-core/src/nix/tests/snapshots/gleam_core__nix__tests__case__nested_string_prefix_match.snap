@@ -1,0 +1,23 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\nfn main() {\n  case Ok([\"a\", \"b c\", \"d\"]) {\n    Ok([\"a\", \"b \" <> _, \"d\"]) -> 1\n    _ -> 1\n  }\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) Ok toList listHasLength;
+  
+  main =
+    let
+      _pat' = Ok (toList [ "a" "b c" "d" ]);
+    in
+      if
+        _pat'.__gleam_tag' == "Ok" &&
+        listHasLength _pat'._0 3 &&
+        _pat'._0.head == "a" &&
+        "b " == (builtins.substring
+          0
+          (builtins.stringLength "b ")
+          _pat'._0.tail.head) &&
+        _pat'._0.tail.tail.head == "d"
+      then 1
+      else 1;
+in {}
