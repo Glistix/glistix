@@ -812,7 +812,7 @@ pub(crate) fn guard_constant_expression<'a>(
             list(
                 elements
                     .iter()
-                    .map(|e| guard_constant_expression(assignments, tracker, e)),
+                    .map(|e| wrap_child_guard_constant_expression(assignments, tracker, e)),
             )
         }
         Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
@@ -839,7 +839,7 @@ pub(crate) fn guard_constant_expression<'a>(
             }
             let field_values: Vec<_> = args
                 .iter()
-                .map(|arg| guard_constant_expression(assignments, tracker, &arg.value))
+                .map(|arg| wrap_child_guard_constant_expression(assignments, tracker, &arg.value))
                 .try_collect()?;
             Ok(construct_record(module.as_deref(), tag, field_values))
         }
@@ -870,9 +870,11 @@ pub(crate) fn constant_expression<'a>(
             tuple(elements.iter().map(|e| constant_expression(tracker, e)))
         }
 
-        Constant::List { elements, .. } => {
-            list(elements.iter().map(|e| constant_expression(tracker, e)))
-        }
+        Constant::List { elements, .. } => list(
+            elements
+                .iter()
+                .map(|e| wrap_child_constant_expression(tracker, e)),
+        ),
 
         Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
             Ok("true".to_doc())
@@ -898,7 +900,7 @@ pub(crate) fn constant_expression<'a>(
             }
             let field_values = args
                 .iter()
-                .map(|arg| constant_expression(tracker, &arg.value))
+                .map(|arg| wrap_child_constant_expression(tracker, &arg.value))
                 .try_collect()?;
 
             Ok(construct_record(module.as_deref(), tag, field_values))
@@ -919,6 +921,35 @@ pub(crate) fn constant_expression<'a>(
                 Some(module) => docvec![module_var_name_doc(module), ".", name],
             }
         }),
+    }
+}
+
+/// Same as [`constant_expression`], but wraps the result in parentheses if needed.
+fn wrap_child_constant_expression<'a>(
+    tracker: &mut UsageTracker,
+    expression: &'a TypedConstant,
+) -> Output<'a> {
+    match expression {
+        Constant::Record { args, .. } if !args.is_empty() => {
+            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+        }
+        _ => constant_expression(tracker, expression),
+    }
+}
+
+/// Same as [`guard_constant_expression`], but wraps the result in parentheses if needed.
+fn wrap_child_guard_constant_expression<'a>(
+    assignments: &mut Vec<pattern::Assignment<'a>>,
+    tracker: &mut UsageTracker,
+    expression: &'a TypedConstant,
+) -> Output<'a> {
+    match expression {
+        Constant::Record { args, .. } if !args.is_empty() => Ok(docvec!(
+            "(",
+            guard_constant_expression(assignments, tracker, expression)?,
+            ")"
+        )),
+        _ => guard_constant_expression(assignments, tracker, expression),
     }
 }
 
