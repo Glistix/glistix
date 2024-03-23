@@ -1,4 +1,5 @@
 use crate::assert_nix;
+use crate::nix::tests::CURRENT_PACKAGE;
 
 #[test]
 fn basic_test() {
@@ -191,6 +192,57 @@ pub fn simple_test2(x: SimpleEnum, y: Int, z: Float, w: String, p: Nil) {
     _ -> "not nil (impossible)"
   }
   #(x1, y1, z1, w1, p1)
+}
+"#
+    )
+}
+
+#[test]
+pub fn basic_assigning_case_test() {
+    assert_nix!(
+        r#"
+pub type MyRecord {
+  Simple
+  TupleLike(Int, Float)
+  RecordLike(a: Int, inherit: Float)
+  Mixed(a: Int, b: Float, Float, Float)
+}
+
+pub fn please_match(x) {
+  case x {
+    Simple as s -> {s #(-100, -100.0)}
+    TupleLike(i, f) as t -> { t #(i, f) }
+    RecordLike(a: i, inherit: f) -> { #(i, f) }
+    Mixed(f1, f2, a: i1, b: f3) -> #(i1, f1 +. f2 +. f3)
+    t -> { t #(555, 555.5) }
+  }
+}
+"#
+    )
+}
+
+#[test]
+pub fn basic_case_guard_test() {
+    assert_nix!(
+        (CURRENT_PACKAGE, "mymod", r#"pub const inherit = False"#),
+        r#"
+import mymod
+
+pub const inherit = 5
+
+pub type Bad {
+  Bad(inherit: Bool)
+}
+
+pub fn guard(x) {
+  let b = Bad(inherit: True)
+  case x {
+    Nil if mymod.inherit -> 1
+    Nil if b.inherit -> 2
+    Nil if Bad(inherit: True) == Bad(inherit: False) -> 3
+    Nil if 5 > 6 -> 4
+    _ -> 5
+  }
 }
 "#
     )
