@@ -49,6 +49,7 @@ impl<'a> Imports<'a> {
         let imports = join(
             self.imports
                 .into_values()
+                .filter(|import| !import.is_empty())
                 .sorted_by(|a, b| a.path.cmp(&b.path))
                 .map(Import::into_doc),
             break_("", " "),
@@ -148,6 +149,10 @@ impl<'a> Import<'a> {
             docvec![alias_imports, inherit_unaliased, aliased_assignments]
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.aliases.is_empty() && self.unqualified.is_empty()
+    }
 }
 
 #[derive(Debug)]
@@ -229,7 +234,6 @@ fn finish() {
             .append(imports.finish().0.group())
             .to_pretty_string(40),
         r#"
-
 wibble =
   builtins.import ./multiple/times;
 wobble =
