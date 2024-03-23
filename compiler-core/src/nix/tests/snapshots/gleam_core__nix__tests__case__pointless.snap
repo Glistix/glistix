@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\nfn go(x) {\n  case x {\n    _ -> x\n  }\n}\n"
+---
+let go = x: x; in {}

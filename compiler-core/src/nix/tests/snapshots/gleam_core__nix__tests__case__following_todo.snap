@@ -1,0 +1,7 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\nfn go(x) {\n  case x {\n    True -> todo\n    _ -> 1\n  }\n}\n"
+---
+let
+  go = x: if x then builtins.throw "This has not yet been implemented" else 1;
+in {}
