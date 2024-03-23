@@ -508,59 +508,67 @@ impl<'module> Generator<'module> {
 
         if self.tracker.ok_used {
             register_prelude_member("Ok", None);
-        };
+        }
 
         if self.tracker.error_used {
             register_prelude_member("Error", None);
-        };
+        }
 
-        // if self.tracker.list_used {
-        //     self.register_prelude_usage(&mut imports, "toList", None);
-        // };
+        if self.tracker.list_used {
+            register_prelude_member("toList", None);
+        }
 
-        // if self.tracker.prepend_used {
-        //     self.register_prelude_usage(&mut imports, "prepend", Some("$prepend"));
-        // };
+        if self.tracker.prepend_used {
+            register_prelude_member("prepend", Some("listPrepend"));
+        }
+
+        if self.tracker.list_has_at_least_length_used {
+            register_prelude_member("listHasAtLeastLength", None);
+        }
+
+        if self.tracker.list_has_length_used {
+            register_prelude_member("listHasLength", None);
+        }
 
         // if self.tracker.make_error_used {
         //     self.register_prelude_usage(&mut imports, "makeError", None);
-        // };
+        // }
 
         if self.tracker.int_remainder_used {
             register_prelude_member("remainderInt", None);
-        };
+        }
 
         if self.tracker.float_division_used {
             register_prelude_member("divideFloat", None);
-        };
+        }
 
         if self.tracker.int_division_used {
             register_prelude_member("divideInt", None);
-        };
+        }
 
         // if self.tracker.object_equality_used {
         //     self.register_prelude_usage(&mut imports, "isEqual", None);
-        // };
+        // }
 
         // if self.tracker.bit_array_literal_used {
         //     self.register_prelude_usage(&mut imports, "toBitArray", None);
-        // };
+        // }
         //
         // if self.tracker.sized_integer_segment_used {
         //     self.register_prelude_usage(&mut imports, "sizedInt", None);
-        // };
+        // }
         //
         // if self.tracker.string_bit_array_segment_used {
         //     self.register_prelude_usage(&mut imports, "stringBits", None);
-        // };
+        // }
         //
         // if self.tracker.codepoint_bit_array_segment_used {
         //     self.register_prelude_usage(&mut imports, "codepointBits", None);
-        // };
+        // }
         //
         // if self.tracker.float_bit_array_segment_used {
         //     self.register_prelude_usage(&mut imports, "float64Bits", None);
-        // };
+        // }
     }
 }
 
@@ -637,8 +645,10 @@ pub fn maybe_escape_identifier_doc(word: &str) -> Document<'_> {
 #[derive(Debug, Default)]
 pub(crate) struct UsageTracker {
     pub ok_used: bool,
-    // pub list_used: bool,
-    // pub prepend_used: bool,
+    pub list_used: bool,
+    pub prepend_used: bool,
+    pub list_has_at_least_length_used: bool,
+    pub list_has_length_used: bool,
     pub error_used: bool,
     pub int_remainder_used: bool,
     // pub make_error_used: bool,

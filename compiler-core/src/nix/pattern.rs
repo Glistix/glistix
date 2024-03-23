@@ -9,6 +9,7 @@ use crate::ast::{
 use crate::docvec;
 use crate::nix::{
     expression, maybe_escape_identifier_doc, module_var_name_doc, syntax, Error, Output,
+    UsageTracker,
 };
 use crate::pretty::{nil, Document, Documentable};
 use crate::type_::{FieldMap, PatternConstructor};
@@ -395,30 +396,21 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                 self.traverse_pattern(subject, pattern)
             }
 
-            Pattern::List {
-                elements: _,
-                tail: _,
-                location,
-                ..
-            } => {
-                Err(Error::Unsupported {
-                    feature: "Pattern matching on lists".into(),
-                    location: *location,
-                })
-                // self.push_list_length_check(subject.clone(), elements.len(), tail.is_some());
-                // for pattern in elements {
-                //     self.push_string("head");
-                //     self.traverse_pattern(subject, pattern)?;
-                //     self.pop();
-                //     self.push_string("tail");
-                // }
-                // self.pop_times(elements.len());
-                // if let Some(pattern) = tail {
-                //     self.push_string_times("tail", elements.len());
-                //     self.traverse_pattern(subject, pattern)?;
-                //     self.pop_times(elements.len());
-                // }
-                // Ok(())
+            Pattern::List { elements, tail, .. } => {
+                self.push_list_length_check(subject.clone(), elements.len(), tail.is_some());
+                for pattern in elements {
+                    self.push_string("head");
+                    self.traverse_pattern(subject, pattern)?;
+                    self.pop_segment();
+                    self.push_string("tail");
+                }
+                self.pop_times(elements.len());
+                if let Some(pattern) = tail {
+                    self.push_string_times("tail", elements.len());
+                    self.traverse_pattern(subject, pattern)?;
+                    self.pop_times(elements.len());
+                }
+                Ok(())
             }
 
             Pattern::Tuple { elems, .. } => {
@@ -760,7 +752,7 @@ pub enum Check<'a> {
 }
 
 impl<'a> Check<'a> {
-    pub fn into_doc(self, match_desired: bool) -> Document<'a> {
+    pub fn into_doc(self, tracker: &mut UsageTracker, match_desired: bool) -> Document<'a> {
         match self {
             Check::Guard { expression } => {
                 if match_desired {
@@ -787,21 +779,13 @@ impl<'a> Check<'a> {
                 path,
                 kind,
             } => {
-                if match_desired {
-                    docvec![
-                        path.into_doc_with_subject(subject),
-                        ".__gleam_tag' == ",
-                        expression::string(kind)
-                    ]
-                } else {
-                    docvec![
-                        "!(",
-                        path.into_doc_with_subject(subject),
-                        ".__gleam_tag' == ",
-                        expression::string(kind),
-                        ")"
-                    ]
-                }
+                let operator = if match_desired { " == " } else { " != " };
+                docvec![
+                    path.into_doc_with_subject(subject),
+                    ".__gleam_tag'",
+                    operator,
+                    expression::string(kind)
+                ]
             }
 
             Check::Result {
@@ -810,22 +794,15 @@ impl<'a> Check<'a> {
                 is_ok,
             } => {
                 let kind = if is_ok { "Ok" } else { "Error" };
-                if match_desired {
-                    docvec![
-                        path.into_doc_with_subject(subject),
-                        ".__gleam_tag' == \"",
-                        kind,
-                        "\""
-                    ]
-                } else {
-                    docvec![
-                        "!(",
-                        path.into_doc_with_subject(subject),
-                        ".__gleam_tag' == \"",
-                        kind,
-                        "\")"
-                    ]
-                }
+                let operator = if match_desired { " == " } else { " != " };
+                docvec![
+                    path.into_doc_with_subject(subject),
+                    ".__gleam_tag'",
+                    operator,
+                    "\"",
+                    kind,
+                    "\""
+                ]
             }
 
             Check::Equal { subject, path, to } => {
@@ -839,19 +816,24 @@ impl<'a> Check<'a> {
                 expected_length,
                 has_tail_spread,
             } => {
-                let length_call = docvec!(
-                    "(builtins.length ",
-                    path.into_doc_with_subject(subject),
-                    ")"
-                );
-                let length_check = Document::String(if has_tail_spread {
-                    let op = if match_desired { ">=" } else { "<" };
-                    format!(" {op} {expected_length}")
+                let resolved_subject = path.into_doc_with_subject(subject);
+                let length_check_fun = if has_tail_spread {
+                    tracker.list_has_at_least_length_used = true;
+                    "listHasAtLeastLength".to_doc()
                 } else {
-                    let op = if match_desired { "==" } else { "!=" };
-                    format!(" {op} {expected_length}")
-                });
-                docvec![length_call, length_check]
+                    tracker.list_has_length_used = true;
+                    "listHasLength".to_doc()
+                };
+                let length_check = syntax::fn_call(
+                    length_check_fun,
+                    [resolved_subject, expected_length.to_doc()],
+                );
+
+                if match_desired {
+                    length_check
+                } else {
+                    docvec!["!(", length_check, ")"]
+                }
             }
             Check::BitArrayLength { .. } => todo!("bit array"),
             Check::StringPrefix {

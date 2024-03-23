@@ -93,19 +93,18 @@ impl<'module> Generator<'module> {
             TypedExpr::String { value, .. } => Ok(string(value)),
             TypedExpr::Int { value, .. } => Ok(int(value)),
             TypedExpr::Float { value, .. } => Ok(float(value)),
-            TypedExpr::List { elements, tail, .. } => {
-                let head = list(
-                    elements
-                        .iter()
-                        .map(|element| self.wrap_child_expression(element)),
-                )?;
-
-                match tail {
-                    Some(tail) => Ok(docvec![head, " ++ ", self.wrap_child_expression(tail)?]),
-
-                    None => Ok(head),
+            TypedExpr::List { elements, tail, .. } => match tail {
+                Some(tail) if elements.is_empty() => self.expression(tail),
+                Some(tail) => {
+                    self.tracker.prepend_used = true;
+                    let tail = self.wrap_child_expression(tail)?;
+                    prepend(elements.iter().map(|e| self.wrap_child_expression(e)), tail)
                 }
-            }
+                None => {
+                    self.tracker.list_used = true;
+                    list(elements.iter().map(|e| self.wrap_child_expression(e)))
+                }
+            },
 
             TypedExpr::Tuple { elems, .. } => self.tuple(elems),
             TypedExpr::TupleIndex { tuple, index, .. } => self.tuple_index(tuple, *index),
@@ -409,6 +408,19 @@ impl<'module> Generator<'module> {
             | TypedExpr::Float { value, .. } if value.starts_with('-') => {
                 Ok(docvec!["(", self.expression(expression)?, ")"])
             },
+
+            TypedExpr::List { elements, tail, .. } => {
+                match tail {
+                    Some(tail) if elements.is_empty() => {
+                        self.wrap_child_expression(tail)
+                    }
+                    Some(_) | None => {
+                        // A list without a tail calls 'toList'.
+                        // A list with a tail calls 'listPrepend' if it has prepended elements.
+                        Ok(docvec!["(", self.expression(expression)?, ")"])
+                    }
+                }
+            }
 
             TypedExpr::Block { .. }
             | TypedExpr::Pipeline { .. }
@@ -757,7 +769,7 @@ impl Generator<'_> {
 /// Methods related to patterns.
 impl Generator<'_> {
     fn pattern_take_checks_doc<'a>(
-        &self,
+        &mut self,
         compiled_pattern: &mut pattern::CompiledPattern<'a>,
         match_desired: bool,
     ) -> Document<'a> {
@@ -766,7 +778,7 @@ impl Generator<'_> {
     }
 
     fn pattern_checks_doc<'a>(
-        &self,
+        &mut self,
         checks: Vec<pattern::Check<'a>>,
         match_desired: bool,
     ) -> Document<'a> {
@@ -783,9 +795,9 @@ impl Generator<'_> {
         join(
             checks.into_iter().map(|check| {
                 if checks_len > 1 && check.may_require_wrapping() {
-                    docvec!["(", check.into_doc(match_desired), ")"]
+                    docvec!["(", check.into_doc(self.tracker, match_desired), ")"]
                 } else {
-                    check.into_doc(match_desired)
+                    check.into_doc(self.tracker, match_desired)
                 }
             }),
             operator,
@@ -807,8 +819,7 @@ pub(crate) fn guard_constant_expression<'a>(
         ),
 
         Constant::List { elements, .. } => {
-            // TODO: List tracking
-            // tracker.list_used = true;
+            tracker.list_used = true;
             list(
                 elements
                     .iter()
@@ -870,11 +881,14 @@ pub(crate) fn constant_expression<'a>(
             tuple(elements.iter().map(|e| constant_expression(tracker, e)))
         }
 
-        Constant::List { elements, .. } => list(
-            elements
-                .iter()
-                .map(|e| wrap_child_constant_expression(tracker, e)),
-        ),
+        Constant::List { elements, .. } => {
+            tracker.list_used = true;
+            list(
+                elements
+                    .iter()
+                    .map(|e| wrap_child_constant_expression(tracker, e)),
+            )
+        }
 
         Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
             Ok("true".to_doc())
@@ -930,6 +944,7 @@ fn wrap_child_constant_expression<'a>(
     expression: &'a TypedConstant,
 ) -> Output<'a> {
     match expression {
+        Constant::List { .. } => Ok(docvec!("(", constant_expression(tracker, expression)?, ")")),
         Constant::Record { args, .. } if !args.is_empty() => {
             Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
         }
@@ -944,6 +959,11 @@ fn wrap_child_guard_constant_expression<'a>(
     expression: &'a TypedConstant,
 ) -> Output<'a> {
     match expression {
+        Constant::List { .. } => Ok(docvec!(
+            "(",
+            guard_constant_expression(assignments, tracker, expression)?,
+            ")"
+        )),
         Constant::Record { args, .. } if !args.is_empty() => Ok(docvec!(
             "(",
             guard_constant_expression(assignments, tracker, expression)?,
@@ -1031,10 +1051,30 @@ pub fn float(value: &str) -> Document<'_> {
     out.to_doc()
 }
 
+/// Constructs a Gleam List:
+///
+/// ```nix
+/// toList [ elem1 elem2 elem3 ... elemN ]
+/// ```
 pub fn list<'a, Elements: IntoIterator<Item = Output<'a>>>(elements: Elements) -> Output<'a> {
     let elements: Vec<_> = elements.into_iter().try_collect()?;
+    let element_list = syntax::list(elements);
 
-    Ok(syntax::list(elements))
+    Ok(syntax::fn_call("toList".to_doc(), [element_list]))
+}
+
+/// Prepends elements before an existing list:
+///
+/// ```nix
+/// listPrepend elem1 (listPrepend elem2 (... (listPrepend elemN tail) ...))
+/// ```
+fn prepend<'a, I: IntoIterator<Item = Output<'a>>>(elements: I, tail: Document<'a>) -> Output<'a>
+where
+    I::IntoIter: DoubleEndedIterator + ExactSizeIterator,
+{
+    elements.into_iter().rev().try_fold(tail, |tail, element| {
+        Ok(syntax::fn_call("listPrepend".to_doc(), [element?, tail]))
+    })
 }
 
 pub fn tuple<'a>(elements: impl IntoIterator<Item = Output<'a>>) -> Output<'a> {

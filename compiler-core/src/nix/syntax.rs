@@ -156,7 +156,7 @@ pub fn fn_call<'a>(
     args: impl IntoIterator<Item = Document<'a>>,
 ) -> Document<'a> {
     let args = concat(args.into_iter().map(|arg| break_("", " ").append(arg)));
-    docvec![fun, args]
+    docvec![fun, args].nest(INDENT).group()
 }
 
 /// Generates `inherit` in a Nix attribute set or let...in declaration:
