@@ -3,12 +3,13 @@ source: compiler-core/src/nix/tests/assignments.rs
 expression: "\npub fn main(x) {\n  let assert \"Game \" <> id = x\n  id\n}\n"
 ---
 let
+  inherit (builtins.import ./../gleam.nix) strHasPrefix;
+  
   main =
     x:
       let
         _assert' =
-          if
-            !("Game " == (builtins.substring 0 (builtins.stringLength "Game ") x))
+          if !(strHasPrefix "Game " x)
           then builtins.throw "Assignment pattern did not match"
           else null;
         id = builtins.seq _assert' (builtins.substring 5 (-1) x);

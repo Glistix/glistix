@@ -1,0 +1,8 @@
+---
+source: compiler-core/src/nix/tests/numbers.rs
+expression: "\nfn go(x) {\n  let assert 4 = x\n}\n"
+---
+let
+  go =
+    x: if x != 4 then builtins.throw "Assignment pattern did not match" else x;
+in {}

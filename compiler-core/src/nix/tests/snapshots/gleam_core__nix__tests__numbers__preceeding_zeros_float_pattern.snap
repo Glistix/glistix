@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/numbers.rs
+expression: "\nfn main(x) {\n  let assert 09_179.1 = x\n}\n"
+---
+let
+  main =
+    x:
+      if x != 9179.1
+      then builtins.throw "Assignment pattern did not match"
+      else x;
+in {}
