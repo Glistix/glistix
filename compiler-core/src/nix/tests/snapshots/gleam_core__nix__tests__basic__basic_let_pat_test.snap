@@ -17,12 +17,7 @@ let
   
   pat_test =
     let
-      
       x = Simple;
-      
-      
-      
-      
       _pat''4 = (Simple2 5);
       a = _pat''4._0;
       _pat''5 = (Simple3 true 5.0);
@@ -32,9 +27,6 @@ let
   
   pat_assert_test =
     let
-      
-      
-      
       _pat''3 = (B 5);
       _assert' =
         if _pat''3.__gleam_tag' != "B"
