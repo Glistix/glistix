@@ -837,11 +837,7 @@ impl Generator<'_> {
 
     fn record_access<'a>(&mut self, record: &'a TypedExpr, label: &'a str) -> Output<'a> {
         let record = self.wrap_child_expression(record)?;
-        Ok(docvec![
-            record,
-            ".",
-            maybe_quoted_attr_set_label(label, self.tracker)
-        ])
+        Ok(docvec![record, ".", maybe_quoted_attr_set_label(label)])
     }
 
     fn record_update<'a>(
@@ -854,7 +850,7 @@ impl Generator<'_> {
             .iter()
             .map(|TypedRecordUpdateArg { label, value, .. }| {
                 (
-                    maybe_quoted_attr_set_label(label, self.tracker),
+                    maybe_quoted_attr_set_label(label),
                     self.wrap_child_expression(value),
                 )
             });
@@ -1188,7 +1184,13 @@ fn construct_record<'a>(
     syntax::fn_call(name, arguments)
 }
 
-/// Generates a valid Nix string.
+/// Generates a valid Nix string from a Gleam string's contents.
+///
+/// If there are Unicode (`\u{...}`) escapes or `\f` escapes,
+/// those are replaced by a call to `parseEscape` which parses
+/// those escapes at runtime, due to the limited string escape
+/// sequences available in Nix. See
+/// [`sanitize_string_escape_sequences`] for more information.
 pub fn string<'a>(value: &'a str, tracker: &mut UsageTracker) -> Document<'a> {
     let sanitized = syntax::sanitize_string(value);
     match sanitize_string_escape_sequences(&sanitized, tracker) {
@@ -1197,6 +1199,18 @@ pub fn string<'a>(value: &'a str, tracker: &mut UsageTracker) -> Document<'a> {
             Cow::Owned(string) => Document::String(string),
             Cow::Borrowed(value) => value.to_doc(),
         },
+    }
+    .surround("\"", "\"")
+}
+
+/// Generates a valid Nix string from some string contents.
+/// Assumes said contents won't include any escape sequences
+/// (in particular, any backslashes), therefore the tracker
+/// isn't needed.
+pub fn string_without_escapes(value: &str) -> Document<'_> {
+    match syntax::sanitize_string(value) {
+        Cow::Owned(string) => Document::String(string),
+        Cow::Borrowed(value) => value.to_doc(),
     }
     .surround("\"", "\"")
 }
@@ -1380,9 +1394,9 @@ pub fn fun_args(args: &'_ [TypedArg]) -> Document<'_> {
 /// If the label would be a keyword, it is quoted.
 /// Assumes the label is a valid Gleam identifier, thus doesn't check for other
 /// invalid attribute names.
-pub fn maybe_quoted_attr_set_label<'a>(label: &'a str, tracker: &mut UsageTracker) -> Document<'a> {
+pub fn maybe_quoted_attr_set_label(label: &str) -> Document<'_> {
     if is_nix_keyword(label) {
-        string(label, tracker)
+        string_without_escapes(label)
     } else {
         label.to_doc()
     }

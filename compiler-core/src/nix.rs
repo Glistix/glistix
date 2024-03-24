@@ -14,7 +14,6 @@ use crate::ast::{
 use crate::build::Target;
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
-use crate::nix::expression::string;
 use crate::nix::import::{Imports, Member};
 use crate::pretty::{break_, concat, line, nil, Document, Documentable};
 use crate::type_::PRELUDE_MODULE_NAME;
@@ -261,14 +260,7 @@ impl<'module> Generator<'module> {
 
         constructors
             .iter()
-            .map(|constructor| {
-                Ok(Self::record_definition(
-                    constructor,
-                    publicity,
-                    opaque,
-                    &mut self.tracker,
-                ))
-            })
+            .map(|constructor| Ok(Self::record_definition(constructor, publicity, opaque)))
             .collect()
     }
 
@@ -277,12 +269,11 @@ impl<'module> Generator<'module> {
     /// ```nix
     /// Ctor = named1: named2: x0: x1: { __gleam_tag' = "Ctor"; inherit named1 named2; _0 = x0; _1 = x1; }
     /// ```
-    fn record_definition<'a>(
-        constructor: &'a TypedRecordConstructor,
+    fn record_definition(
+        constructor: &TypedRecordConstructor,
         publicity: Publicity,
         opaque: bool,
-        tracker: &mut UsageTracker,
-    ) -> ModuleDeclaration<'a> {
+    ) -> ModuleDeclaration<'_> {
         const GLEAM_TAG_FIELD_NAME: &str = "__gleam_tag'";
 
         fn parameter((i, arg): (usize, &TypedRecordConstructorArg)) -> Document<'_> {
@@ -296,7 +287,7 @@ impl<'module> Generator<'module> {
         let name = maybe_escape_identifier_doc(&constructor.name);
         let tag_field = syntax::assignment_line(
             GLEAM_TAG_FIELD_NAME.to_doc(),
-            string(&constructor.name, tracker),
+            expression::string_without_escapes(&constructor.name),
         );
 
         if constructor.arguments.is_empty() {

@@ -820,7 +820,7 @@ impl<'a> Check<'a> {
                     path.into_doc_with_subject(subject),
                     ".__gleam_tag'",
                     operator,
-                    expression::string(kind, tracker)
+                    expression::string_without_escapes(kind)
                 ]
             }
 
