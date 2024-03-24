@@ -104,8 +104,9 @@ impl<'module> Generator<'module> {
             TypedExpr::Int { value, .. } => Ok(int(value)),
             TypedExpr::Float { value, .. } => Ok(float(value)),
             TypedExpr::List { elements, tail, .. } => match tail {
-                Some(tail) if elements.is_empty() => self.expression(tail),
                 Some(tail) => {
+                    // A tail without prepended elements is a syntax error.
+                    // Therefore, we can assume we will have to use prepend here.
                     self.tracker.prepend_used = true;
                     let tail = self.wrap_child_expression(tail)?;
                     prepend(elements.iter().map(|e| self.wrap_child_expression(e)), tail)
@@ -566,19 +567,6 @@ impl<'module> Generator<'module> {
                 Ok(docvec!["(", self.expression(expression)?, ")"])
             },
 
-            TypedExpr::List { elements, tail, .. } => {
-                match tail {
-                    Some(tail) if elements.is_empty() => {
-                        self.wrap_child_expression(tail)
-                    }
-                    Some(_) | None => {
-                        // A list without a tail calls 'toList'.
-                        // A list with a tail calls 'listPrepend' if it has prepended elements.
-                        Ok(docvec!["(", self.expression(expression)?, ")"])
-                    }
-                }
-            }
-
             TypedExpr::Block { .. }
             | TypedExpr::Pipeline { .. }
             | TypedExpr::Fn { .. }
@@ -591,6 +579,7 @@ impl<'module> Generator<'module> {
             // Expands into 'if':
             | TypedExpr::Case { .. }
             // Expand into calls:
+            | TypedExpr::List { .. }
             | TypedExpr::Todo { .. }
             | TypedExpr::Panic { .. } => Ok(docvec!["(", self.expression(expression)?, ")"]),
 
