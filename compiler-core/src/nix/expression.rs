@@ -14,6 +14,7 @@ use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
+use regex::Regex;
 use std::borrow::Cow;
 use std::sync::{Arc, OnceLock};
 use vec1::Vec1;
@@ -90,7 +91,7 @@ impl<'module> Generator<'module> {
 
     pub fn expression<'a>(&mut self, expression: &'a TypedExpr) -> Output<'a> {
         match expression {
-            TypedExpr::String { value, .. } => Ok(string(value)),
+            TypedExpr::String { value, .. } => Ok(string(value, self.tracker)),
             TypedExpr::Int { value, .. } => Ok(int(value, self.tracker)),
             TypedExpr::Float { value, .. } => Ok(float(value)),
             TypedExpr::List { elements, tail, .. } => match tail {
@@ -705,7 +706,7 @@ impl Generator<'_> {
     fn todo<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
         let message = match message {
             Some(m) => self.expression(m)?,
-            None => string("This has not yet been implemented"),
+            None => "\"This has not yet been implemented\"".to_doc(),
         };
 
         Ok(self.throw_error("todo", &message, *location, vec![]))
@@ -714,7 +715,7 @@ impl Generator<'_> {
     fn panic<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
         let message = match message {
             Some(m) => self.expression(m)?,
-            None => string("panic expression evaluated"),
+            None => "\"panic expression evaluated\"".to_doc(),
         };
 
         Ok(self.throw_error("todo", &message, *location, vec![]))
@@ -836,7 +837,11 @@ impl Generator<'_> {
 
     fn record_access<'a>(&mut self, record: &'a TypedExpr, label: &'a str) -> Output<'a> {
         let record = self.wrap_child_expression(record)?;
-        Ok(docvec![record, ".", maybe_quoted_attr_set_label(label)])
+        Ok(docvec![
+            record,
+            ".",
+            maybe_quoted_attr_set_label(label, self.tracker)
+        ])
     }
 
     fn record_update<'a>(
@@ -849,7 +854,7 @@ impl Generator<'_> {
             .iter()
             .map(|TypedRecordUpdateArg { label, value, .. }| {
                 (
-                    maybe_quoted_attr_set_label(label),
+                    maybe_quoted_attr_set_label(label, self.tracker),
                     self.wrap_child_expression(value),
                 )
             });
@@ -978,7 +983,7 @@ impl Generator<'_> {
     ) -> Document<'a> {
         self.throw_error(
             "assignment_no_match",
-            &string("Assignment pattern did not match"),
+            &"\"Assignment pattern did not match\"".to_doc(),
             location,
             [("value", subject)],
         )
@@ -1055,7 +1060,7 @@ pub(crate) fn constant_expression<'a>(
     match expression {
         Constant::Int { value, .. } => Ok(int(value, tracker)),
         Constant::Float { value, .. } => Ok(float(value)),
-        Constant::String { value, .. } => Ok(string(value)),
+        Constant::String { value, .. } => Ok(string(value, tracker)),
         Constant::Tuple { elements, .. } => {
             tuple(elements.iter().map(|e| constant_expression(tracker, e)))
         }
@@ -1184,12 +1189,70 @@ fn construct_record<'a>(
 }
 
 /// Generates a valid Nix string.
-pub fn string(value: &str) -> Document<'_> {
-    match syntax::sanitize_string(value) {
+pub fn string<'a>(value: &'a str, tracker: &mut UsageTracker) -> Document<'a> {
+    let sanitized = syntax::sanitize_string(value);
+    match sanitize_string_escape_sequences(&sanitized, tracker) {
         Cow::Owned(string) => Document::String(string),
-        Cow::Borrowed(value) => value.to_doc(),
+        Cow::Borrowed(_) => match sanitized {
+            Cow::Owned(string) => Document::String(string),
+            Cow::Borrowed(value) => value.to_doc(),
+        },
     }
     .surround("\"", "\"")
+}
+
+fn form_feed_or_unicode_escape_sequence_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
+        Regex::new(r#"(\\+)(f|u\{([a-fA-F0-9]+)})"#)
+            .expect("escape sequence regex cannot be constructed")
+    })
+}
+
+/// Replaces `\f` and `\u{...}` in the string with a function call which
+/// polyfills those escape sequences within Nix (otherwise not natively supported).
+///
+/// For instance, "abc \f and \u{202f}" is replaced by
+///
+/// ```nix
+/// "abc ${parseEscape "\\f"} and ${parseEscape "\\U0000202f"}"
+/// ```
+fn sanitize_string_escape_sequences<'a>(
+    value: &'a str,
+    tracker: &mut UsageTracker,
+) -> Cow<'a, str> {
+    form_feed_or_unicode_escape_sequence_pattern()
+        // `\\u|f`-s should not be affected, so that "\\u..." or "\\f" are not converted to
+        // "${parseEscape ...}". That's why capturing groups are used to exclude cases that
+        // shouldn't be replaced.
+        .replace_all(value, |caps: &regex::Captures<'_>| {
+            let slashes = caps.get(1).map_or("", |m| m.as_str());
+            let sequence = caps.get(2).map_or("", |m| m.as_str());
+
+            if slashes.len() % 2 == 0 {
+                // Escape sequence is itself escaped, so don't change it.
+                format!("{slashes}{sequence}")
+            } else {
+                tracker.parse_escape_used = true;
+
+                // Convert to TOML escape sequence format.
+                let final_sequence = match caps.get(3) {
+                    // When the codepoint didn't match, we found a form feed character.
+                    None => "f".into(),
+                    Some(codepoint) if codepoint.is_empty() => "f".into(),
+                    Some(codepoint) => {
+                        // Must have exactly eight digits.
+                        let leading_zeroes = "0".repeat(8 - codepoint.len());
+                        let codepoint = codepoint.as_str();
+                        format!("U{leading_zeroes}{codepoint}")
+                    }
+                };
+
+                // Double the amount of slashes, as they should go in the final string
+                // given to 'parseEscape'.
+                format!("${{parseEscape \"{slashes}{slashes}{final_sequence}\"}}")
+            }
+        })
 }
 
 /// Generates a valid Nix integer.
@@ -1317,9 +1380,9 @@ pub fn fun_args(args: &'_ [TypedArg]) -> Document<'_> {
 /// If the label would be a keyword, it is quoted.
 /// Assumes the label is a valid Gleam identifier, thus doesn't check for other
 /// invalid attribute names.
-pub fn maybe_quoted_attr_set_label(label: &str) -> Document<'_> {
+pub fn maybe_quoted_attr_set_label<'a>(label: &'a str, tracker: &mut UsageTracker) -> Document<'a> {
     if is_nix_keyword(label) {
-        string(label)
+        string(label, tracker)
     } else {
         label.to_doc()
     }

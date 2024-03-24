@@ -261,7 +261,14 @@ impl<'module> Generator<'module> {
 
         constructors
             .iter()
-            .map(|constructor| Ok(self.record_definition(constructor, publicity, opaque)))
+            .map(|constructor| {
+                Ok(Self::record_definition(
+                    constructor,
+                    publicity,
+                    opaque,
+                    &mut self.tracker,
+                ))
+            })
             .collect()
     }
 
@@ -271,10 +278,10 @@ impl<'module> Generator<'module> {
     /// Ctor = named1: named2: x0: x1: { __gleam_tag' = "Ctor"; inherit named1 named2; _0 = x0; _1 = x1; }
     /// ```
     fn record_definition<'a>(
-        &self,
         constructor: &'a TypedRecordConstructor,
         publicity: Publicity,
         opaque: bool,
+        tracker: &mut UsageTracker,
     ) -> ModuleDeclaration<'a> {
         const GLEAM_TAG_FIELD_NAME: &str = "__gleam_tag'";
 
@@ -287,8 +294,10 @@ impl<'module> Generator<'module> {
 
         let should_export = !(publicity.is_private() || opaque);
         let name = maybe_escape_identifier_doc(&constructor.name);
-        let tag_field =
-            syntax::assignment_line(GLEAM_TAG_FIELD_NAME.to_doc(), string(&constructor.name));
+        let tag_field = syntax::assignment_line(
+            GLEAM_TAG_FIELD_NAME.to_doc(),
+            string(&constructor.name, tracker),
+        );
 
         if constructor.arguments.is_empty() {
             let result = syntax::attr_set(tag_field);
@@ -518,6 +527,10 @@ impl<'module> Generator<'module> {
             register_prelude_member("strHasPrefix", None);
         }
 
+        if self.tracker.parse_escape_used {
+            register_prelude_member("parseEscape", None);
+        }
+
         if self.tracker.parse_number_used {
             register_prelude_member("parseNumber", None);
         }
@@ -659,6 +672,7 @@ pub(crate) struct UsageTracker {
     pub list_has_length_used: bool,
     pub error_used: bool,
     pub str_has_prefix_used: bool,
+    pub parse_escape_used: bool,
     pub parse_number_used: bool,
     pub int_remainder_used: bool,
     // pub make_error_used: bool,

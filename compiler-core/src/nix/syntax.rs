@@ -4,7 +4,9 @@ use crate::docvec;
 use crate::nix::{Output, INDENT};
 use crate::pretty::{break_, concat, join, nil, Document, Documentable};
 use itertools::Itertools;
+use regex::Regex;
 use std::borrow::Cow;
+use std::sync::OnceLock;
 
 /// Attempts to generate a valid Nix path.
 /// Not always possible when the value is surrounded by <...> (Nix store path).
@@ -71,10 +73,16 @@ pub fn path(value: &str) -> Cow<'_, str> {
 /// Sanitize a Nix path's contents.
 /// Replaces any invalid path syntax with ${"... string ..."}.
 pub fn sanitize_path(value: &str) -> Cow<'_, str> {
-    let path_regex = regex::Regex::new(r"[^a-zA-Z0-9./_\-+]+").expect("regex should be valid");
-    path_regex.replace_all(value, |captures: &regex::Captures<'_>| {
+    invalid_path_segment_pattern().replace_all(value, |captures: &regex::Captures<'_>| {
         format!("${{\"{}\"}}", sanitize_string(captures.extract::<0>().0))
     })
+}
+
+/// Pattern with invalid characters in a typical Nix path.
+/// Here we also consider ${...} interpolation as invalid.
+fn invalid_path_segment_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| Regex::new(r"[^a-zA-Z0-9./_\-+]+").expect("regex should be valid"))
 }
 
 /// Sanitize a Nix string.

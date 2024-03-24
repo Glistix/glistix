@@ -373,7 +373,8 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
     ) -> Result<(), Error> {
         match pattern {
             Pattern::String { value, .. } => {
-                self.push_equality_check(subject.clone(), expression::string(value));
+                let string = expression::string(value, self.expression_generator.tracker);
+                self.push_equality_check(subject.clone(), string);
                 Ok(())
             }
             Pattern::Int { value, .. } => {
@@ -482,7 +483,9 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                     // let prefix = "foo";
                     // ^^^^^^^^^^^^^^^^^^^ we're adding this assignment inside the if clause
                     //                     the case branch gets translated into.
-                    self.push_assignment(expression::string(left_side_string), left);
+                    let left_side_string =
+                        expression::string(left_side_string, self.expression_generator.tracker);
+                    self.push_assignment(left_side_string, left);
                 }
                 Ok(())
             }
@@ -817,7 +820,7 @@ impl<'a> Check<'a> {
                     path.into_doc_with_subject(subject),
                     ".__gleam_tag'",
                     operator,
-                    expression::string(kind)
+                    expression::string(kind, tracker)
                 ]
             }
 
@@ -876,7 +879,7 @@ impl<'a> Check<'a> {
             } => {
                 tracker.str_has_prefix_used = true;
 
-                let prefix = expression::string(prefix);
+                let prefix = expression::string(prefix, tracker);
                 let has_prefix = syntax::fn_call(
                     "strHasPrefix".to_doc(),
                     [prefix, path.into_doc_with_subject(subject)],

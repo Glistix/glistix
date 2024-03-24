@@ -50,6 +50,9 @@ let
       prefix == (builtins.substring 0 (builtins.stringLength prefix) haystack);
 
   # @internal
+  parseTOML = value: (builtins.fromTOML "x = ${value}").x;
+
+  # @internal
   parseNumber =
     format:
       let
@@ -58,8 +61,11 @@ let
           if hasMinus
           then builtins.substring 1 (-1) format
           else format;
-        parsedNumber = (builtins.fromTOML "x = ${numberToParse}").x;
+        parsedNumber = parseTOML numberToParse;
       in if hasMinus then -parsedNumber else parsedNumber;
+
+  # @internal
+  parseEscape = content: parseTOML "\"${content}\"";
 in {
   inherit
     Ok
@@ -72,5 +78,6 @@ in {
     listHasAtLeastLength
     listHasLength
     strHasPrefix
-    parseNumber;
+    parseNumber
+    parseEscape;
 }
