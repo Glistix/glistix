@@ -864,24 +864,17 @@ impl<'a> Check<'a> {
                 path,
                 prefix,
             } => {
+                tracker.str_has_prefix_used = true;
+
                 let prefix = expression::string(prefix);
-                let substr = syntax::fn_call(
-                    "builtins.substring".to_doc(),
-                    [
-                        "0".to_doc(),
-                        docvec![
-                            "(",
-                            syntax::fn_call("builtins.stringLength".to_doc(), [prefix.clone()]),
-                            ")"
-                        ],
-                        path.into_doc_with_subject(subject),
-                    ],
+                let has_prefix = syntax::fn_call(
+                    "strHasPrefix".to_doc(),
+                    [prefix, path.into_doc_with_subject(subject)],
                 );
-                let starts_with = docvec![prefix, " == (", substr, ")"];
                 if match_desired {
-                    starts_with
+                    has_prefix
                 } else {
-                    docvec!["!(", starts_with, ")"]
+                    docvec!["!(", has_prefix, ")"]
                 }
             }
         }
