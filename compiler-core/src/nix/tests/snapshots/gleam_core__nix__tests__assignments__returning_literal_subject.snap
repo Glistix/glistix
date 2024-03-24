@@ -1,0 +1,14 @@
+---
+source: compiler-core/src/nix/tests/assignments.rs
+expression: "fn go(x) { let assert 1 = x + 1 }"
+---
+let
+  go =
+    x:
+      let
+        _pat' = (x + 1);
+      in
+        if _pat' != 1
+        then builtins.throw "Assignment pattern did not match"
+        else _pat';
+in {}

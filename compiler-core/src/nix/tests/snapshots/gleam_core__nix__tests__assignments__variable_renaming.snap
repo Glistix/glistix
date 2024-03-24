@@ -1,0 +1,24 @@
+---
+source: compiler-core/src/nix/tests/assignments.rs
+expression: "\n\nfn go(x, foo) {\n  let a = 1\n  foo(a)\n  let a = 2\n  foo(a)\n  let assert #(a, 3) = x\n  let b = a\n  foo(b)\n  let c = {\n    let a = a\n    #(a, b)\n  }\n  foo(a)\n  // make sure arguments are counted in initial state\n  let x = c\n  x\n}\n"
+---
+let
+  go =
+    x: foo:
+      let
+        a = 1;
+        _''0 = foo a;
+        a'1 = 2;
+        _''1 = foo a'1;
+        _assert' =
+          if x._1 != 3
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        a'2 = builtins.seq _assert' x._0;
+        b = a'2;
+        _''2 = foo b;
+        c = let a'3 = a'2; in { _0 = a'3; _1 = b; };
+        _''3 = foo a'2;
+        x'1 = c;
+      in x'1;
+in {}
