@@ -15,6 +15,7 @@ use crate::pretty::{nil, Document, Documentable};
 use crate::type_::{FieldMap, PatternConstructor};
 
 pub static ASSIGNMENT_VAR: &str = "_pat'";
+pub static ASSERTION_VAR: &str = "_assert'";
 
 #[derive(Debug)]
 enum Index<'a> {
@@ -702,8 +703,29 @@ pub struct Assignment<'a> {
 }
 
 impl<'a> Assignment<'a> {
+    /// Converts this assignment into a document ready for use within `let...in`:
+    ///
+    /// ```nix
+    /// var = value;
+    /// ```
     pub fn into_doc(self) -> Document<'a> {
         syntax::assignment_line(self.var, self.path.into_doc_with_subject(self.subject))
+    }
+
+    /// Similar to [`Assignment::into_doc`]; however, only evaluates the assigned value
+    /// if a given assertion succeeds. Useful in `let assert Pat = val`. Compiles to:
+    ///
+    /// ```nix
+    /// var = builtins.seq assertion value;
+    /// ```
+    pub fn into_doc_with_assertion(self, assertion: Document<'a>) -> Document<'a> {
+        syntax::assignment_line(
+            self.var,
+            syntax::fn_call(
+                "builtins.seq".to_doc(),
+                [assertion, self.path.into_doc_with_subject(self.subject)],
+            ),
+        )
     }
 }
 

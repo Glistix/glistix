@@ -15,7 +15,7 @@ use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstruc
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use vec1::Vec1;
 
 /// Generates a Nix expression.
@@ -81,7 +81,7 @@ impl<'module> Generator<'module> {
                 // Convert expression to assignment with irrelevant name
                 Ok(syntax::assignment_line(name, subject))
             }
-            Statement::Assignment(assignment) => self.assignment(assignment),
+            Statement::Assignment(assignment) => self.assignment(assignment, false),
             Statement::Use(_use) => {
                 unreachable!("Use must not be present for Nix generation")
             }
@@ -155,29 +155,164 @@ impl<'module> Generator<'module> {
         }
     }
 
-    pub fn assignment<'a>(&mut self, assignment: &'a TypedAssignment) -> Output<'a> {
+    /// Renders an assignment, or just the value being assigned if we're in trailing position
+    /// (that is, this assignment is the last statement in a function or block, so it is returned).
+    ///
+    /// ```nix
+    /// # Before trailing position
+    /// name = value;  # without assert
+    /// name = if (checks) then value else throw ...;  # with assert
+    ///
+    /// # In trailing position
+    /// value  # without assert
+    /// if (checks) then value else throw  # with assert
+    /// ```
+    pub fn assignment<'a>(
+        &mut self,
+        assignment: &'a TypedAssignment,
+        in_trailing_position: bool,
+    ) -> Output<'a> {
+        static ASSERTION_VAR_ECO_STR: OnceLock<EcoString> = OnceLock::new();
+
         let TypedAssignment {
             pattern,
-            kind: _,
+            kind,
             value,
-            annotation: _,
-            location: _,
+            ..
         } = assignment;
 
         // If it is a simple assignment to a variable we can generate a normal
-        // JS assignment
+        // Nix assignment
         if let TypedPattern::Variable { name, .. } = pattern {
             // Subject must be rendered before the variable for variable numbering
             let subject = self.expression(value)?;
+            if in_trailing_position {
+                // No need to assign, we are being returned.
+                return Ok(subject);
+            }
             let nix_name = self.next_local_var(name);
             return Ok(syntax::assignment_line(nix_name, subject));
         }
 
-        // Patterns
-        Err(Error::Unsupported {
-            feature: "This kind of pattern in variable declarations".into(),
-            location: pattern.location(),
-        })
+        // Otherwise we need to compile the patterns
+        let (subject, subject_assignment) = pattern::assign_subject(self, value);
+        // Value needs to be rendered before traversing pattern to have correctly incremented variables.
+        let value = self.wrap_child_expression(value)?;
+        let mut pattern_generator = pattern::Generator::new(self);
+        pattern_generator.traverse_pattern(&subject, pattern)?;
+        let compiled = pattern_generator.take_compiled();
+        let has_assertion = kind.is_assert() && !compiled.checks.is_empty();
+        let pattern_location = pattern.location();
+
+        if in_trailing_position {
+            // Note that, even though the variables used within trailing position are separate
+            // from those in the outer block or function (which would normally warrant a scope
+            // reset to indicate that those variables are now out of scope), we can assume that
+            // the block or function is about to end, and thus the scope is about to be reset,
+            // since we are at the trailing statement position. Therefore, there is no problem
+            // in not resetting the scope here, even though we are using a new variable (the
+            // subject).
+            if !has_assertion {
+                // No assertions, so we don't use the subject (it would be used in the checks).
+                // Just return the value directly.
+                return Ok(value);
+            }
+
+            // No need to add any assignments when we are in trailing position (i.e. the 'let'
+            // assignment is the last statement in the parent block or function).
+            // Simply return the subject (with the value assigned to it) if the check succeeds.
+            let checked_subject = self.pattern_checks_or_throw_doc(
+                compiled.checks,
+                subject.clone(),
+                subject,
+                pattern_location,
+            );
+
+            // If the value being assigned is complex and needs a subject variable,
+            // assign it so it can be used within the check.
+            Ok(match subject_assignment {
+                Some(name) => syntax::let_in(
+                    [syntax::assignment_line(name, value)],
+                    checked_subject,
+                    false,
+                ),
+                None => checked_subject,
+            })
+        } else if compiled.assignments.is_empty() {
+            // No assignments to make, so we don't do anything.
+            // Since Nix is lazily-evaluated, the value being assigned is effectively ignored.
+            // It would have to be used through some variable to have any effect.
+            // TODO: Consider adding a "strict assertion" mode.
+            Ok(nil())
+        } else {
+            // If the value being assigned is complex and needs a subject variable,
+            // assign it so it can be used within patterns.
+            let subject_assignment = match subject_assignment {
+                Some(name) => syntax::assignment_line(name, value).append(break_("", " ")),
+                None => nil(),
+            };
+
+            Ok(if has_assertion {
+                // We first assign a dummy value to a variable whose only purpose is performing
+                // an assertion. The idea is that, if the assertion fails, the variable will
+                // throw an error upon evaluation instead of returning the dummy value.
+                let assertion_var_name =
+                    ASSERTION_VAR_ECO_STR.get_or_init(|| pattern::ASSERTION_VAR.into());
+                let assertion_var = self.next_local_var(assertion_var_name);
+                let assertion_assignment = syntax::assignment_line(
+                    assertion_var.clone(),
+                    self.pattern_checks_or_throw_doc(
+                        compiled.checks,
+                        subject,
+                        "null".to_doc(),
+                        pattern_location,
+                    ),
+                )
+                .append(break_("", " "));
+
+                // Then, we ensure that evaluating any of the assignments first evaluates the
+                // assertion variable through `builtins.seq assertion_var assigned_value`.
+                // Therefore, accessing any of the assignments later will cause an error
+                // if the checks failed. If they aren't accessed, no error occurs, since
+                // Nix is lazily evaluated.
+                // TODO: Strict assertions mode (always check, even without assignments etc.)
+                let assignments = join(
+                    compiled.assignments.into_iter().map(|assignment| {
+                        assignment.into_doc_with_assertion(assertion_var.clone())
+                    }),
+                    break_("", " "),
+                );
+
+                // Finally, we place the assignments.
+                // Subject goes first so checks can be done on the subject.
+                // Then we generate the assertion which will evaluate either
+                // to an error (if checks fail) or to some dummy value.
+                // Finally, we generate assignments which will first evaluate
+                // the assertion before completing the assignments for the
+                // given pattern.
+                //
+                // For example, for `let assert Ok(x) = something(1)`, we'd generate
+                //
+                // ```nix
+                // _pat' = something 1;
+                // _assert' = if _pat'.__gleam_tag' != "Ok" then throw "..." else null;
+                // x = builtins.seq _assert' _pat'._0; # access the field after the assertion
+                // ```
+                docvec![subject_assignment, assertion_assignment, assignments]
+            } else {
+                // No assertions, so the type system tells us the pattern is exhaustive.
+                // We can perform the assignments directly.
+                let assignments = join(
+                    compiled
+                        .assignments
+                        .into_iter()
+                        .map(pattern::Assignment::into_doc),
+                    break_("", " "),
+                );
+
+                docvec![subject_assignment, assignments]
+            })
+        }
     }
 
     fn block<'a>(&mut self, statements: &'a Vec1<TypedStatement>) -> Output<'a> {
@@ -228,7 +363,7 @@ impl<'module> Generator<'module> {
         let scope = self.current_scope_vars.clone();
         let assignments = assignments
             .iter()
-            .map(|assignment| self.assignment(assignment))
+            .map(|assignment| self.assignment(assignment, false))
             .collect::<Result<Vec<_>, _>>()?;
 
         let body = self.expression(finally)?;
@@ -361,7 +496,7 @@ impl<'module> Generator<'module> {
         match statement {
             Statement::Expression(expression) => self.expression(expression),
 
-            Statement::Assignment(assignment) => self.expression(assignment.value.as_ref()),
+            Statement::Assignment(assignment) => self.assignment(assignment, true),
 
             Statement::Use(_) => {
                 unreachable!("use statements must not be present for Nix generation")
@@ -803,6 +938,44 @@ impl Generator<'_> {
             operator,
         )
         .group()
+    }
+
+    /// Given the compiled pattern checks, if the checks fail, throws an error.
+    /// Otherwise, returns the given value.
+    fn pattern_checks_or_throw_doc<'a>(
+        &mut self,
+        checks: Vec<pattern::Check<'a>>,
+        subject: Document<'a>,
+        success_value: Document<'a>,
+        location: SrcSpan,
+    ) -> Document<'a> {
+        let checks = self.pattern_checks_doc(checks, false);
+        docvec![
+            "if",
+            docvec![break_("", " "), checks].nest(INDENT).group(),
+            break_("", " "),
+            "then",
+            docvec![break_("", " "), self.assignment_no_match(location, subject)]
+                .nest(INDENT)
+                .group(),
+            break_("", " "),
+            "else",
+            docvec![break_("", " "), success_value].nest(INDENT).group(),
+        ]
+        .group()
+    }
+
+    fn assignment_no_match<'a>(
+        &mut self,
+        location: SrcSpan,
+        subject: Document<'a>,
+    ) -> Document<'a> {
+        self.throw_error(
+            "assignment_no_match",
+            &string("Assignment pattern did not match"),
+            location,
+            [("value", subject)],
+        )
     }
 }
 
