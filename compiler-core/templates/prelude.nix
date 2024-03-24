@@ -20,6 +20,9 @@ let
   prepend = head: tail: { __gleam_tag' = "NotEmpty"; inherit head tail; };
 
   # @internal
+  listIsEmpty = lst: lst.__gleam_tag' == "Empty";
+
+  # @internal
   listHasAtLeastLength =
     lst: len:
       len <= 0 || !(listIsEmpty lst) && listHasAtLeastLength lst.tail (len - 1);
@@ -32,9 +35,6 @@ let
       else len > 0 && listHasLength lst.tail (len - 1);
 
   # @internal
-  listIsEmpty = lst: lst.__gleam_tag' == "Empty";
-
-  # @internal
   foldr = fun: init: lst:
     let
       len = builtins.length lst;
@@ -43,4 +43,34 @@ let
         then init
         else fun (builtins.elemAt lst index) (fold' (index + 1));
     in fold' 0;
-in { inherit Ok Error remainderInt divideInt divideFloat toList prepend listHasAtLeastLength listHasLength; }
+
+  # @internal
+  strHasPrefix =
+    prefix: haystack:
+      prefix == (builtins.substring 0 (builtins.stringLength prefix) haystack);
+
+  # @internal
+  parseNumber =
+    format:
+      let
+        hasMinus = strHasPrefix "-" format;
+        numberToParse =
+          if hasMinus
+          then builtins.substring 1 (-1) format
+          else format;
+        parsedNumber = (builtins.fromTOML "x = ${numberToParse}").x;
+      in if hasMinus then -parsedNumber else parsedNumber;
+in {
+  inherit
+    Ok
+    Error
+    remainderInt
+    divideInt
+    divideFloat
+    toList
+    prepend
+    listHasAtLeastLength
+    listHasLength
+    strHasPrefix
+    parseNumber;
+}

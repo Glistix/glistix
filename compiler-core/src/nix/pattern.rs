@@ -377,7 +377,8 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                 Ok(())
             }
             Pattern::Int { value, .. } => {
-                self.push_equality_check(subject.clone(), expression::int(value));
+                let integer = expression::int(value, self.expression_generator.tracker);
+                self.push_equality_check(subject.clone(), integer);
                 Ok(())
             }
             Pattern::Float { value, .. } => {

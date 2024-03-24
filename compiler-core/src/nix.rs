@@ -514,6 +514,14 @@ impl<'module> Generator<'module> {
             register_prelude_member("Error", None);
         }
 
+        if self.tracker.str_has_prefix_used {
+            register_prelude_member("strHasPrefix", None);
+        }
+
+        if self.tracker.parse_number_used {
+            register_prelude_member("parseNumber", None);
+        }
+
         if self.tracker.list_used {
             register_prelude_member("toList", None);
         }
@@ -650,6 +658,8 @@ pub(crate) struct UsageTracker {
     pub list_has_at_least_length_used: bool,
     pub list_has_length_used: bool,
     pub error_used: bool,
+    pub str_has_prefix_used: bool,
+    pub parse_number_used: bool,
     pub int_remainder_used: bool,
     // pub make_error_used: bool,
     // pub custom_type_used: bool,

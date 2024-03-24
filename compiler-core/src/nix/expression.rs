@@ -101,7 +101,7 @@ impl<'module> Generator<'module> {
     pub fn expression<'a>(&mut self, expression: &'a TypedExpr) -> Output<'a> {
         match expression {
             TypedExpr::String { value, .. } => Ok(string(value)),
-            TypedExpr::Int { value, .. } => Ok(int(value)),
+            TypedExpr::Int { value, .. } => Ok(int(value, self.tracker)),
             TypedExpr::Float { value, .. } => Ok(float(value)),
             TypedExpr::List { elements, tail, .. } => match tail {
                 Some(tail) => {
@@ -558,6 +558,11 @@ impl<'module> Generator<'module> {
                 ..
             } if assignments.is_empty() => {
                 self.wrap_child_expression(finally)
+            }
+
+            // Integers with 0x, 0o, 0b require a function call to 'parseNumber'
+            TypedExpr::Int { value, .. } if int_requires_parsing(value) => {
+                Ok(docvec!["(", self.expression(expression)?, ")"])
             }
 
             // Negative numbers can trip up the Nix parser in some positions,
@@ -1058,7 +1063,7 @@ pub(crate) fn constant_expression<'a>(
     expression: &'a TypedConstant,
 ) -> Output<'a> {
     match expression {
-        Constant::Int { value, .. } => Ok(int(value)),
+        Constant::Int { value, .. } => Ok(int(value, tracker)),
         Constant::Float { value, .. } => Ok(float(value)),
         Constant::String { value, .. } => Ok(string(value)),
         Constant::Tuple { elements, .. } => {
@@ -1128,6 +1133,10 @@ fn wrap_child_constant_expression<'a>(
     expression: &'a TypedConstant,
 ) -> Output<'a> {
     match expression {
+        Constant::Int { value, .. } if int_requires_parsing(value) => {
+            // Will call 'parseNumber'
+            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+        }
         Constant::List { .. } => Ok(docvec!("(", constant_expression(tracker, expression)?, ")")),
         Constant::Record { args, .. } if !args.is_empty() => {
             Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
@@ -1143,6 +1152,14 @@ fn wrap_child_guard_constant_expression<'a>(
     expression: &'a TypedConstant,
 ) -> Output<'a> {
     match expression {
+        Constant::Int { value, .. } if int_requires_parsing(value) => {
+            // Will call 'parseNumber'
+            Ok(docvec!(
+                "(",
+                guard_constant_expression(assignments, tracker, expression)?,
+                ")"
+            ))
+        }
         Constant::List { .. } => Ok(docvec!(
             "(",
             guard_constant_expression(assignments, tracker, expression)?,
@@ -1186,7 +1203,23 @@ pub fn string(value: &str) -> Document<'_> {
 }
 
 /// Generates a valid Nix integer.
-pub fn int(value: &str) -> Document<'_> {
+///
+/// An integer may use binary, octal or hexadecimal notation, in which case
+/// importing `parseNumber` from the prelude is necessary. In those cases,
+/// we will generate e.g. `parseNumber "0xff"`.
+pub fn int<'a>(value: &str, tracker: &mut UsageTracker) -> Document<'a> {
+    if int_requires_parsing(value) {
+        tracker.parse_number_used = true;
+
+        // Remove leading '+'
+        let value = value.trim_start_matches('+');
+
+        // 'parseNumber' does support '_' separators! They can be kept.
+        let out = EcoString::from(value);
+
+        return syntax::fn_call("parseNumber".to_doc(), [docvec!["\"", out, "\""]]);
+    }
+
     let mut out = EcoString::with_capacity(value.len());
 
     if value.starts_with('-') {
@@ -1196,23 +1229,24 @@ pub fn int(value: &str) -> Document<'_> {
     // Ignore '+' at the beginning (no Nix support)
     let value = value.trim_start_matches(['+', '-'].as_ref());
 
-    let value = if value.starts_with("0x") {
-        todo!("Implement 0x Nix support")
-    } else if value.starts_with("0o") {
-        todo!("Implement 0o Nix support")
-    } else if value.starts_with("0b") {
-        todo!("Implement 0b Nix support")
-    } else {
-        value
-    };
-
     let value = value.trim_start_matches('0');
     if value.is_empty() {
         out.push('0');
     }
+
     out.push_str(value);
 
+    // Remove '_' separators (no Nix support)
+    let out = out.replace("_", "");
+
     out.to_doc()
+}
+
+/// Nix doesn't support hexadecimal, octal or binary integers by default.
+/// Therefore, those will require a call to a parsing function in the prelude.
+pub(super) fn int_requires_parsing(value: &str) -> bool {
+    let value = value.trim_start_matches(['+', '-']);
+    value.starts_with("0x") || value.starts_with("0o") || value.starts_with("0b")
 }
 
 /// Generates a valid Nix float.
@@ -1230,7 +1264,11 @@ pub fn float(value: &str) -> Document<'_> {
     if value.starts_with(['.', 'e', 'E']) {
         out.push('0');
     }
+
     out.push_str(value);
+
+    // Remove '_' separators (no Nix support)
+    let out = out.replace("_", "");
 
     out.to_doc()
 }
