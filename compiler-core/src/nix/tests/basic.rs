@@ -257,3 +257,48 @@ pub fn guard(x) {
 "#
     )
 }
+
+#[test]
+pub fn basic_let_pat_test() {
+    assert_nix!(
+        r#"
+pub type Test {
+  A
+  B(Int)
+  C(a: Int, b: Float)
+}
+
+pub type Simple {
+  Simple
+}
+pub type Simple2 {
+  Simple2(Int)
+}
+pub type Simple3 {
+  Simple3(inherit: Bool, x: Float)
+}
+
+pub fn pat_test() {
+  let Nil = Nil
+  let x = Simple
+  let Simple = x
+  let Simple = Simple
+  let _ = Simple2(5)
+  let _ignored = Simple2(5)
+  let Simple2(a) = Simple2(5)
+  let Simple3(a, b) = Simple3(True, 5.0)
+
+  #(a, b)
+}
+
+pub fn pat_assert_test() {
+  let assert True = True
+  let assert False = True
+  let assert A = A
+  let assert B(x) = B(5)
+  let assert C(a: a, b: b) = C(a: 5, b: 5.5e5)
+  let assert C(a: a, b: b) = C(a: 5, b: 5.5e5)
+}
+"#
+    )
+}
