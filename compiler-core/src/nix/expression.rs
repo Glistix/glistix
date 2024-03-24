@@ -73,23 +73,13 @@ impl<'module> Generator<'module> {
     }
 
     /// Every statement, in Nix, must be an assignment, even an expression.
-    ///
-    /// If there is no assignment to be printed, returns `Ok(None)`. This can only happen
-    /// when using `let` with a pattern with no assignments. Then, nothing effectively happens,
-    /// due to the fact that Nix is lazily evaluated, so a variable that isn't used or assigned
-    /// is never evaluated. See [`Generator::assignment`] for more information.
-    ///
-    /// In all other cases, returns either `Ok(Some(...))` or `Error(...)`.
-    fn statement<'a>(
-        &mut self,
-        statement: &'a TypedStatement,
-    ) -> Result<Option<Document<'a>>, Error> {
+    fn statement<'a>(&mut self, statement: &'a TypedStatement) -> Output<'a> {
         match statement {
             Statement::Expression(expression) => {
                 let subject = self.expression(expression)?;
                 let name = self.next_anonymous_var();
                 // Convert expression to assignment with irrelevant name
-                Ok(Some(syntax::assignment_line(name, subject)))
+                Ok(syntax::assignment_line(name, subject))
             }
             Statement::Assignment(assignment) => self.assignment(assignment, false),
             Statement::Use(_use) => {
@@ -169,9 +159,6 @@ impl<'module> Generator<'module> {
     /// Renders an assignment, or just the value being assigned if we're in trailing position
     /// (that is, this assignment is the last statement in a function or block, so it is returned).
     ///
-    /// Returns `Ok(None)` if no assignment should be printed. That never occurs within trailing
-    /// position.
-    ///
     /// ```nix
     /// # Before trailing position
     /// name = value;  # without assert
@@ -188,7 +175,7 @@ impl<'module> Generator<'module> {
         &mut self,
         assignment: &'a TypedAssignment,
         in_trailing_position: bool,
-    ) -> Result<Option<Document<'a>>, Error> {
+    ) -> Output<'a> {
         static ASSERTION_VAR_ECO_STR: OnceLock<EcoString> = OnceLock::new();
 
         let TypedAssignment {
@@ -205,10 +192,10 @@ impl<'module> Generator<'module> {
             let subject = self.expression(value)?;
             if in_trailing_position {
                 // No need to assign, we are being returned.
-                return Ok(Some(subject));
+                return Ok(subject);
             }
             let nix_name = self.next_local_var(name);
-            return Ok(Some(syntax::assignment_line(nix_name, subject)));
+            return Ok(syntax::assignment_line(nix_name, subject));
         }
 
         // Otherwise we need to compile the patterns
@@ -232,7 +219,7 @@ impl<'module> Generator<'module> {
             if !has_assertion {
                 // No assertions, so we don't use the subject (it would be used in the checks).
                 // Just return the value directly.
-                return Ok(Some(value));
+                return Ok(value);
             }
 
             // No need to add any assignments when we are in trailing position (i.e. the 'let'
@@ -247,20 +234,14 @@ impl<'module> Generator<'module> {
 
             // If the value being assigned is complex and needs a subject variable,
             // assign it so it can be used within the check.
-            Ok(Some(match subject_assignment {
+            Ok(match subject_assignment {
                 Some(name) => syntax::let_in(
                     [syntax::assignment_line(name, value)],
                     checked_subject,
                     false,
                 ),
                 None => checked_subject,
-            }))
-        } else if compiled.assignments.is_empty() {
-            // No assignments, so don't print anything, not even the value at right-hand side.
-            // Since Nix is lazily-evaluated, the value being assigned is effectively ignored.
-            // It would have to be used through some variable to have any effect.
-            // TODO: Consider adding a "strict assertion" mode.
-            Ok(None)
+            })
         } else {
             // If the value being assigned is complex and needs a subject variable,
             // assign it so it can be used within patterns.
@@ -269,7 +250,25 @@ impl<'module> Generator<'module> {
                 None => nil(),
             };
 
-            Ok(Some(if has_assertion {
+            // If there are no assignments, we ensure there is at least one anonymous assignment.
+            // This is consistent with unevaluated expressions. This is a bit useless, though,
+            // since, due to Nix's lazy evaluation, the subject won't be evaluated either way,
+            // and thus this assignment will have no effect, so assertions won't run.
+            // TODO: Consider adding a "strict assertion" mode.
+            let dummy_assignment = if compiled.assignments.is_empty() {
+                let anonymous_var = self.next_anonymous_var();
+                Some(pattern::Assignment::reassign_subject(
+                    "_''",
+                    anonymous_var,
+                    subject.clone(),
+                ))
+            } else {
+                None
+            };
+
+            let assignments = dummy_assignment.into_iter().chain(compiled.assignments);
+
+            Ok(if has_assertion {
                 // We first assign a dummy value to a variable whose only purpose is performing
                 // an assertion. The idea is that, if the assertion fails, the variable will
                 // throw an error upon evaluation instead of returning the dummy value.
@@ -294,7 +293,7 @@ impl<'module> Generator<'module> {
                 // Nix is lazily evaluated.
                 // TODO: Strict assertions mode (always check, even without assignments etc.)
                 let assignments = join(
-                    compiled.assignments.into_iter().map(|assignment| {
+                    assignments.map(|assignment| {
                         assignment.into_doc_with_assertion(assertion_var.clone())
                     }),
                     break_("", " "),
@@ -320,15 +319,12 @@ impl<'module> Generator<'module> {
                 // No assertions, so the type system tells us the pattern is exhaustive.
                 // We can perform the assignments directly.
                 let assignments = join(
-                    compiled
-                        .assignments
-                        .into_iter()
-                        .map(pattern::Assignment::into_doc),
+                    assignments.map(pattern::Assignment::into_doc),
                     break_("", " "),
                 );
 
                 docvec![subject_assignment, assignments]
-            }))
+            })
         }
     }
 
@@ -359,7 +355,7 @@ impl<'module> Generator<'module> {
 
         let assignments = assignments
             .iter()
-            .flat_map(|statement| self.statement(statement).transpose())
+            .map(|statement| self.statement(statement))
             .collect::<Result<Vec<_>, _>>()?;
 
         let body = self.expression_from_statement(trailing_statement)?;
@@ -380,7 +376,7 @@ impl<'module> Generator<'module> {
         let scope = self.current_scope_vars.clone();
         let assignments = assignments
             .iter()
-            .flat_map(|assignment| self.assignment(assignment, false).transpose())
+            .map(|assignment| self.assignment(assignment, false))
             .collect::<Result<Vec<_>, _>>()?;
 
         let body = self.expression(finally)?;
@@ -513,13 +509,7 @@ impl<'module> Generator<'module> {
         match statement {
             Statement::Expression(expression) => self.expression(expression),
 
-            Statement::Assignment(assignment) => {
-                // Trailing position assignment must always be kept.
-                // It is evaluated to the right-hand side of the assignment,
-                // optionally with some checks if `let assert` was used.
-                // Hence, we unwrap.
-                self.assignment(assignment, true).map(Option::unwrap)
-            }
+            Statement::Assignment(assignment) => self.assignment(assignment, true),
 
             Statement::Use(_) => {
                 unreachable!("use statements must not be present for Nix generation")

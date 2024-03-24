@@ -704,6 +704,16 @@ pub struct Assignment<'a> {
 }
 
 impl<'a> Assignment<'a> {
+    /// Create a new assignment which simply reassigns the subject to some other name.
+    pub fn reassign_subject(name: &'a str, var: Document<'a>, subject: Document<'a>) -> Self {
+        Self {
+            name,
+            var,
+            subject,
+            path: SubjectPath::new(),
+        }
+    }
+
     /// Converts this assignment into a document ready for use within `let...in`:
     ///
     /// ```nix
