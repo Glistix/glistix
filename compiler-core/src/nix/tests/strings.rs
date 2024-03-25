@@ -224,3 +224,18 @@ pub fn go(x) {
 "#,
     )
 }
+
+#[test]
+fn string_with_form_feed() {
+    assert_nix!(
+        r#"
+pub fn go() {
+  let form_feed = "\f a\fb \f"
+  case form_feed {
+    "\f " as ff <> rest -> rest
+    _ -> "\f"
+  }
+}
+"#,
+    )
+}
