@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/todo.rs
+expression: "\nfn go(f) {\n  let boop = todo as \"I should do this\"\n  f(todo as \"Boom\")\n}\n"
+---
+let
+  go =
+    f:
+      let
+        boop = builtins.throw "I should do this";
+      in f (builtins.throw "Boom");
+in {}

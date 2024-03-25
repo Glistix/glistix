@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/todo.rs
+expression: "\nfn go() {\n    todo\n}\n"
+---
+let go = builtins.throw "This has not yet been implemented"; in {}
