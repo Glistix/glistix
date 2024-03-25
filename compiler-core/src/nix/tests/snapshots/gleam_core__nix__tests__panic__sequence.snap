@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/panic.rs
+expression: "\nfn go(at_the_disco) {\n  panic\n  at_the_disco\n}\n"
+---
+let
+  go =
+    at_the_disco:
+      let
+        _''0 = builtins.throw "panic expression evaluated";
+      in at_the_disco;
+in {}

@@ -1,0 +1,7 @@
+---
+source: compiler-core/src/nix/tests/panic.rs
+expression: "\nfn go(f) {\n  f |> panic\n}\n"
+---
+let
+  go = f: let _pipe = f; in (builtins.throw "panic expression evaluated") _pipe;
+in {}
