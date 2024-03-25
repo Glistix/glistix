@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\npub fn go(x) {\n  case x {\n    \"Hello, \" <> _ -> Nil\n    _ -> Nil\n  }\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) strHasPrefix;
+  
+  go = x: if strHasPrefix "Hello, " x then null else null;
+in { inherit go; }

@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\nfn go(x) {\n  let assert \"Hello\" = x\n}\n"
+---
+let
+  go =
+    x:
+      if x != "Hello"
+      then builtins.throw "Assignment pattern did not match"
+      else x;
+in {}

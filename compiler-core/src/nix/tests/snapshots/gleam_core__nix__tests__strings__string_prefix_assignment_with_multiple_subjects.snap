@@ -1,0 +1,15 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\npub fn go(x) {\n  case x {\n    \"1\" as prefix <> _ | \"11\" as prefix <> _ -> prefix\n    _ -> \"Unknown\"\n  }\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) strHasPrefix;
+  
+  go =
+    x:
+      if strHasPrefix "1" x
+      then let prefix = "1"; in prefix
+      else if strHasPrefix "11" x
+      then let prefix = "11"; in prefix
+      else "Unknown";
+in { inherit go; }
