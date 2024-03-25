@@ -469,7 +469,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
             } => {
                 self.push_string_prefix_check(subject.clone(), left_side_string);
                 if let AssignName::Variable(right) = right_side_assignment {
-                    self.push_string_prefix_slice(utf16_no_escape_len(left_side_string));
+                    self.push_string_prefix_slice(no_escape_bytes_len(left_side_string));
                     self.push_assignment(subject.clone(), right);
                     // After pushing the assignment we need to pop the prefix slicing we used to
                     // check the condition.
@@ -942,19 +942,59 @@ pub(crate) fn assign_subjects<'a>(
     out
 }
 
-/// Calculates the length of str as utf16 without escape characters.
-fn utf16_no_escape_len(str: &EcoString) -> usize {
+/// Calculates the length of str as UTF-8 bytes without escape characters.
+fn no_escape_bytes_len(str: &EcoString) -> usize {
     let mut filtered_str = String::new();
-    let mut str_iter = str.chars();
+    let mut str_iter = str.chars().peekable();
     loop {
         match str_iter.next() {
             Some('\\') => match str_iter.next() {
-                Some(c) => filtered_str.push_str(c.to_string().as_str()),
+                // Check for Unicode escape sequence, e.g. \u{00012FF}
+                Some('u') => {
+                    if str_iter.peek() != Some(&'{') {
+                        // Invalid Unicode escape sequence
+                        filtered_str.push('u');
+                        continue;
+                    }
+
+                    // Consume the left brace after peeking
+                    let _ = str_iter.next();
+
+                    let codepoint_str = str_iter
+                        .peeking_take_while(char::is_ascii_hexdigit)
+                        .collect::<String>();
+
+                    if codepoint_str.is_empty() || str_iter.peek() != Some(&'}') {
+                        // Invalid Unicode escape sequence
+                        filtered_str.push_str("u{");
+                        filtered_str.push_str(&codepoint_str);
+                        continue;
+                    }
+
+                    let codepoint = u32::from_str_radix(&codepoint_str, 16)
+                        .ok()
+                        .and_then(char::from_u32);
+
+                    if let Some(codepoint) = codepoint {
+                        // Consume the right brace after peeking
+                        let _ = str_iter.next();
+
+                        // Consider this codepoint's length instead of
+                        // that of the Unicode escape sequence itself
+                        filtered_str.push(codepoint);
+                    } else {
+                        // Invalid Unicode escape sequence
+                        // (codepoint value not in base 16 or too large)
+                        filtered_str.push_str("u{");
+                        filtered_str.push_str(&codepoint_str);
+                    }
+                }
+                Some(c) => filtered_str.push(c),
                 None => break,
             },
-            Some(c) => filtered_str.push_str(c.to_string().as_str()),
+            Some(c) => filtered_str.push(c),
             None => break,
         }
     }
-    return filtered_str.encode_utf16().count();
+    return filtered_str.len();
 }
