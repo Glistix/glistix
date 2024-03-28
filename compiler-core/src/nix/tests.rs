@@ -24,6 +24,7 @@ mod records;
 mod strings;
 mod todo;
 mod tuples;
+mod type_alias;
 mod use_;
 
 pub static CURRENT_PACKAGE: &str = "thepackage";
