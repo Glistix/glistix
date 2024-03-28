@@ -1194,7 +1194,7 @@ fn wrap_child_constant_expression<'a>(
 }
 
 /// Same as [`guard_constant_expression`], but wraps the result in parentheses if needed.
-fn wrap_child_guard_constant_expression<'a>(
+pub(crate) fn wrap_child_guard_constant_expression<'a>(
     assignments: &mut Vec<pattern::Assignment<'a>>,
     tracker: &mut UsageTracker,
     expression: &'a TypedConstant,

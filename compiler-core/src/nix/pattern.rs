@@ -4,7 +4,7 @@ use itertools::Itertools;
 use std::sync::OnceLock;
 
 use crate::ast::{
-    AssignName, ClauseGuard, Constant, Pattern, TypedClauseGuard, TypedExpr, TypedPattern,
+    AssignName, ClauseGuard, Pattern, TypedClauseGuard, TypedExpr, TypedPattern,
 };
 use crate::docvec;
 use crate::nix::{
@@ -237,19 +237,19 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
         Ok(())
     }
 
-    fn wrapped_guard(&mut self, guard: &'a TypedClauseGuard) -> Result<Document<'a>, Error> {
+    fn wrapped_guard(&mut self, guard: &'a TypedClauseGuard) -> Output<'a> {
         match guard {
-            // Record construction with args must be wrapped: `(Ok 1)`
-            ClauseGuard::Constant(Constant::Record { typ, args, .. })
-                if !typ.is_bool() && !typ.is_nil() && !args.is_empty() =>
-            {
-                Ok(docvec!("(", self.guard(guard)?, ")"))
-            }
+            // Some constants need to be wrapped, e.g. record construction: `(Ok 1)`
+            ClauseGuard::Constant(constant) => expression::wrap_child_guard_constant_expression(
+                &mut self.assignments,
+                self.expression_generator.tracker,
+                constant,
+            ),
 
             ClauseGuard::Var { .. }
-            | ClauseGuard::Constant(_)
             | ClauseGuard::Not { .. }
-            | ClauseGuard::FieldAccess { .. } => self.guard(guard),
+            | ClauseGuard::FieldAccess { .. }
+            | ClauseGuard::ModuleSelect { .. } => self.guard(guard),
 
             ClauseGuard::Equals { .. }
             | ClauseGuard::NotEquals { .. }
@@ -263,7 +263,6 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
             | ClauseGuard::LtEqFloat { .. }
             | ClauseGuard::Or { .. }
             | ClauseGuard::And { .. }
-            | ClauseGuard::ModuleSelect { .. }
             | ClauseGuard::TupleIndex { .. } => Ok(docvec!("(", self.guard(guard)?, ")")),
         }
     }
