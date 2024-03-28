@@ -575,6 +575,7 @@ impl<'module> Generator<'module> {
             // Expand into calls:
             | TypedExpr::List { .. }
             | TypedExpr::BitArray { .. }
+            | TypedExpr::TupleIndex { .. }
             | TypedExpr::Todo { .. }
             | TypedExpr::Panic { .. } => Ok(docvec!["(", self.expression(expression)?, ")"]),
 
@@ -826,12 +827,23 @@ impl Generator<'_> {
 /// Record-related methods.
 impl Generator<'_> {
     fn tuple<'a>(&mut self, elements: &'a [TypedExpr]) -> Output<'a> {
-        tuple(elements.iter().map(|element| self.expression(element)))
+        tuple(
+            elements
+                .iter()
+                .map(|element| self.wrap_child_expression(element)),
+        )
     }
 
+    /// Indexes a Gleam tuple in Nix.
+    /// Since Gleam tuples are represented as Nix lists,
+    /// here we use `builtins.elemAt (tuple) (index)`.
     fn tuple_index<'a>(&mut self, tuple: &'a TypedExpr, index: u64) -> Output<'a> {
         let tuple = self.wrap_child_expression(tuple)?;
-        Ok(docvec![tuple, Document::String(format!("._{index}"))])
+
+        Ok(syntax::fn_call(
+            "builtins.elemAt".to_doc(),
+            [tuple, index.to_doc()],
+        ))
     }
 
     fn record_access<'a>(&mut self, record: &'a TypedExpr, label: &'a str) -> Output<'a> {
@@ -1035,7 +1047,7 @@ pub(crate) fn guard_constant_expression<'a>(
         Constant::Tuple { elements, .. } => tuple(
             elements
                 .iter()
-                .map(|e| guard_constant_expression(assignments, tracker, e)),
+                .map(|e| wrap_child_guard_constant_expression(assignments, tracker, e)),
         ),
 
         Constant::List { elements, .. } => {
@@ -1103,9 +1115,11 @@ pub(crate) fn constant_expression<'a>(
         Constant::Int { value, .. } => Ok(int(value, tracker)),
         Constant::Float { value, .. } => Ok(float(value)),
         Constant::String { value, .. } => Ok(string(value, tracker)),
-        Constant::Tuple { elements, .. } => {
-            tuple(elements.iter().map(|e| constant_expression(tracker, e)))
-        }
+        Constant::Tuple { elements, .. } => tuple(
+            elements
+                .iter()
+                .map(|e| wrap_child_constant_expression(tracker, e)),
+        ),
 
         Constant::List { elements, .. } => {
             tracker.list_used = true;
@@ -1452,13 +1466,12 @@ where
     })
 }
 
+/// Generates a Gleam tuple as Nix code.
+/// This is done by generating a Nix list (`[ element1 element2 ... ]`).
 pub fn tuple<'a>(elements: impl IntoIterator<Item = Output<'a>>) -> Output<'a> {
-    let fields = elements
-        .into_iter()
-        .enumerate()
-        .map(|(i, element)| (Document::String(format!("_{i}")), element));
+    let elements: Vec<_> = elements.into_iter().try_collect()?;
 
-    syntax::try_wrap_attr_set(fields)
+    Ok(syntax::list(elements))
 }
 
 pub fn fun_args(args: &'_ [TypedArg]) -> Document<'_> {

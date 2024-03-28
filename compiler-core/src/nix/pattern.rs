@@ -20,6 +20,7 @@ pub static ASSERTION_VAR: &str = "_assert'";
 #[derive(Debug)]
 enum Index<'a> {
     Int(usize),
+    TupleIndex(usize),
     String(&'a str),
     ByteAt(usize),
     IntFromSlice(usize, usize),
@@ -100,9 +101,14 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
         self.path.push(Index::String(s));
     }
 
-    /// For this pattern, access a tuple index field.
+    /// For this pattern, access a record's numbered field.
     fn push_int(&mut self, i: usize) {
         self.path.push(Index::Int(i));
+    }
+
+    /// For this pattern, access a tuple index field.
+    fn push_tuple_index(&mut self, i: usize) {
+        self.path.push(Index::TupleIndex(i));
     }
 
     fn push_string_prefix_slice(&mut self, i: usize) {
@@ -154,6 +160,10 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
             match segment {
                 Index::Int(i) => {
                     path = path.add_right_component(Document::String(format!("._{i}")))
+                }
+                Index::TupleIndex(i) => {
+                    path = path
+                        .add_component("(builtins.elemAt ".to_doc(), docvec!(" ", i.to_doc(), ")"))
                 }
                 Index::String(s) => {
                     path = path.add_right_component(docvec!(".", maybe_escape_identifier_doc(s)))
@@ -237,7 +247,6 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
             }
 
             ClauseGuard::Var { .. }
-            | ClauseGuard::TupleIndex { .. }
             | ClauseGuard::Constant(_)
             | ClauseGuard::Not { .. }
             | ClauseGuard::FieldAccess { .. } => self.guard(guard),
@@ -254,7 +263,8 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
             | ClauseGuard::LtEqFloat { .. }
             | ClauseGuard::Or { .. }
             | ClauseGuard::And { .. }
-            | ClauseGuard::ModuleSelect { .. } => Ok(docvec!("(", self.guard(guard)?, ")")),
+            | ClauseGuard::ModuleSelect { .. }
+            | ClauseGuard::TupleIndex { .. } => Ok(docvec!("(", self.guard(guard)?, ")")),
         }
     }
 
@@ -315,7 +325,9 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                 .unwrap_or_else(|| self.local_var(name)),
 
             ClauseGuard::TupleIndex { tuple, index, .. } => {
-                docvec!(self.wrapped_guard(tuple)?, "._", index)
+                let tuple = self.wrapped_guard(tuple)?;
+
+                syntax::fn_call("builtins.elemAt".to_doc(), [tuple, index.to_doc()])
             }
 
             ClauseGuard::FieldAccess {
@@ -420,7 +432,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                 // We don't check the length because type system ensures it's a
                 // tuple of the correct size
                 for (index, pattern) in elems.iter().enumerate() {
-                    self.push_int(index);
+                    self.push_tuple_index(index);
                     self.traverse_pattern(subject, pattern)?;
                     self.pop_segment();
                 }
