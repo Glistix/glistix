@@ -10,9 +10,21 @@ use crate::{
 };
 use camino::Utf8Path;
 
+mod assignments;
 mod basic;
+mod bit_arrays;
+mod blocks;
+mod bools;
 mod case;
+mod case_clause_guards;
 mod modules;
+mod numbers;
+mod panic;
+mod records;
+mod strings;
+mod todo;
+mod tuples;
+mod use_;
 
 pub static CURRENT_PACKAGE: &str = "thepackage";
 
