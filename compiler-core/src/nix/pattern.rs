@@ -996,5 +996,6 @@ fn no_escape_bytes_len(str: &EcoString) -> usize {
             None => break,
         }
     }
-    return filtered_str.len();
+
+    filtered_str.len()
 }
