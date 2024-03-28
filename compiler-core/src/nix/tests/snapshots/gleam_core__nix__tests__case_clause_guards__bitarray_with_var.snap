@@ -1,0 +1,15 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "pub fn main() {\n  case 5 {\n    z if <<z>> == <<z>> -> Nil\n    _ -> Nil\n  }\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) toBitArray;
+  
+  main =
+    let
+      _pat' = 5;
+    in
+      if (toBitArray [ _pat' ]) == (toBitArray [ _pat' ])
+      then let z = _pat'; in null
+      else null;
+in { inherit main; }

@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "\n          import hero\n          pub fn main() {\n            let names = [\"Tony Stark\", \"Bruce Wayne\"]\n            case names {\n              n if n == hero.heroes -> True\n              _ -> False\n            }\n          }\n        "
+---
+let
+  mod''hero = builtins.import ./../../package/hero.nix;
+  inherit (builtins.import ./../gleam.nix) toList;
+  
+  main =
+    let
+      names = toList [ "Tony Stark" "Bruce Wayne" ];
+    in if names == mod''hero.heroes then let n = names; in true else false;
+in { inherit main; }

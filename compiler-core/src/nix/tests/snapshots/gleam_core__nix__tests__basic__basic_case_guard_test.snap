@@ -27,7 +27,7 @@ let
         then 4
         else if x == null && (5 > 6)
         then 5
-        else if x == null && (toList [ (Ok 5) (Ok 6) ] == toList [ (Ok 7) ])
+        else if x == null && ((toList [ (Ok 5) (Ok 6) ]) == (toList [ (Ok 7) ]))
         then 6
         else 7;
   

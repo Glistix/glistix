@@ -1,0 +1,15 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "pub fn main(xs) -> Int {\n  case xs {\n    [x] | [_, x] -> x\n    _ -> 1\n  }\n}  \n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) listHasLength;
+  
+  main =
+    xs:
+      if listHasLength xs 1
+      then let x = xs.head; in x
+      else if listHasLength xs 2
+      then let x = xs.tail.head; in x
+      else 1;
+in { inherit main; }
