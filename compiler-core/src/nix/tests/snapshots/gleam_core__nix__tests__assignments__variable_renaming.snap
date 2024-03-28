@@ -11,13 +11,13 @@ let
         a'1 = 2;
         _''1 = foo a'1;
         _assert' =
-          if x._1 != 3
+          if (builtins.elemAt x 1) != 3
           then builtins.throw "Assignment pattern did not match"
           else null;
-        a'2 = builtins.seq _assert' x._0;
+        a'2 = builtins.seq _assert' (builtins.elemAt x 0);
         b = a'2;
         _''2 = foo b;
-        c = let a'3 = a'2; in { _0 = a'3; _1 = b; };
+        c = let a'3 = a'2; in [ a'3 b ];
         _''3 = foo a'2;
         x'1 = c;
       in x'1;

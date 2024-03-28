@@ -5,7 +5,7 @@ expression: "fn go(x) { let assert #(1, 2) = x }"
 let
   go =
     x:
-      if x._0 != 1 || x._1 != 2
+      if (builtins.elemAt x 0) != 1 || (builtins.elemAt x 1) != 2
       then builtins.throw "Assignment pattern did not match"
       else x;
 in {}

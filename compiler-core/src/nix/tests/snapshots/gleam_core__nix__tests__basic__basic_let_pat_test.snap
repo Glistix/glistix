@@ -32,7 +32,7 @@ let
       _pat''5 = (Simple3 true 5.0);
       a'1 = _pat''5.inherit';
       b = _pat''5.x;
-    in { _0 = a'1; _1 = b; };
+    in [ a'1 b ];
   
   pat_assert_test =
     let

@@ -57,15 +57,9 @@ let
         ss = ("a" + "b") + "c d";
         ff = toList [ (-5.2e-5) (-5.5) ];
         z'1 = !boolthing;
-        tupdatup =
-          {
-            _0 = 1;
-            _1 = 2;
-            _2 = "a";
-            _3 = -5.5;
-            _4 = { _0 = 1; _1 = 2; _2 = 3; };
-          };
-        tata = (tupdatup._1 + tupdatup._0) + 20;
+        tupdatup = [ 1 2 "a" (-5.5) [ 1 2 3 ] ];
+        tata =
+          ((builtins.elemAt tupdatup 1) + (builtins.elemAt tupdatup 0)) + 20;
         mabool = true;
         mnotbool = false;
         amagus_a = AmogusA;
@@ -85,14 +79,7 @@ let
       let
         x = 5 + 5;
         y = x;
-      in
-        {
-          _0 = 1;
-          _1 = 2;
-          _2 = 3;
-          _3 = x: x + 1;
-          _4 = let _''0 = 5; _''1 = 6; _''2 = 10; in 10 + 5;
-        };
+      in [ 1 2 3 (x: x + 1) (let _''0 = 5; _''1 = 6; _''2 = 10; in 10 + 5) ];
   
   sumongus = 5;
 in { inherit AmogusA AmogusB AmogusC sus sumongus; }

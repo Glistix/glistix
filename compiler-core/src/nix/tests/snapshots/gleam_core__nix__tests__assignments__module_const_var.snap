@@ -9,7 +9,7 @@ let
   
   use_int_alias = int_alias;
   
-  compound = { _0 = int; _1 = int_alias; };
+  compound = [ int int_alias ];
   
-  use_compound = compound._0 + compound._1;
+  use_compound = (builtins.elemAt compound 0) + (builtins.elemAt compound 1);
 in { inherit int int_alias use_int_alias compound use_compound; }

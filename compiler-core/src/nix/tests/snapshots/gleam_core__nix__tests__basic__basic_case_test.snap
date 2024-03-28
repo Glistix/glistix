@@ -15,7 +15,7 @@ let
         vv1 = 10;
         vv2 = if v2 then 50 else 10;
         vv3 = let _pat''4 = true; in if _pat''4 then 50 else 10;
-      in { _0 = p1; _1 = p2; _2 = p3; _3 = p4; _4 = vv1; _5 = vv2; _6 = vv3; };
+      in [ p1 p2 p3 p4 vv1 vv2 vv3 ];
   
   fact =
     n:
@@ -24,5 +24,5 @@ let
           let
             _pat' = n < 0;
           in if _pat' then builtins.throw "Don't." else null;
-      in { _0 = res; _1 = if n == 0 then 1 else n * (fact (n - 1))._1; };
+      in [ res (if n == 0 then 1 else n * (builtins.elemAt (fact (n - 1)) 1)) ];
 in { inherit fact; }

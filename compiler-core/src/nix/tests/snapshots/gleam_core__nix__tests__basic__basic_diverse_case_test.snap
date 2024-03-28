@@ -63,5 +63,5 @@ let
           then "is c"
           else "not a, b, c";
         p1 = if p == null then "is nil" else "not nil (impossible)";
-      in { _0 = x1; _1 = y1; _2 = z1; _3 = w1; _4 = p1; };
+      in [ x1 y1 z1 w1 p1 ];
 in { inherit SA SB SC SD simple_test2; }
