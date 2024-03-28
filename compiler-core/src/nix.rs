@@ -562,14 +562,14 @@ impl<'module> Generator<'module> {
         //     self.register_prelude_usage(&mut imports, "isEqual", None);
         // }
 
-        // if self.tracker.bit_array_literal_used {
-        //     self.register_prelude_usage(&mut imports, "toBitArray", None);
-        // }
-        //
-        // if self.tracker.sized_integer_segment_used {
-        //     self.register_prelude_usage(&mut imports, "sizedInt", None);
-        // }
-        //
+        if self.tracker.bit_array_literal_used {
+            register_prelude_member("toBitArray", None);
+        }
+
+        if self.tracker.sized_integer_segment_used {
+            register_prelude_member("sizedInt", None);
+        }
+
         // if self.tracker.string_bit_array_segment_used {
         //     self.register_prelude_usage(&mut imports, "stringBits", None);
         // }
@@ -671,8 +671,8 @@ pub(crate) struct UsageTracker {
     pub int_division_used: bool,
     pub float_division_used: bool,
     // pub object_equality_used: bool,
-    // pub bit_array_literal_used: bool,
-    // pub sized_integer_segment_used: bool,
+    pub bit_array_literal_used: bool,
+    pub sized_integer_segment_used: bool,
     // pub string_bit_array_segment_used: bool,
     // pub codepoint_bit_array_segment_used: bool,
     // pub float_bit_array_segment_used: bool,

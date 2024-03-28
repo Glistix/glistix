@@ -1,7 +1,8 @@
 use crate::analyse::TargetSupport;
 use crate::ast::{
-    Arg, BinOp, CallArg, Constant, SrcSpan, Statement, TypedArg, TypedAssignment, TypedClause,
-    TypedConstant, TypedExpr, TypedModule, TypedPattern, TypedRecordUpdateArg, TypedStatement,
+    Arg, BinOp, BitArrayOption, BitArraySegment, CallArg, Constant, SrcSpan, Statement, TypedArg,
+    TypedAssignment, TypedClause, TypedConstant, TypedExpr, TypedExprBitArraySegment, TypedModule,
+    TypedPattern, TypedRecordUpdateArg, TypedStatement,
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
@@ -150,10 +151,7 @@ impl<'module> Generator<'module> {
                 subjects, clauses, ..
             } => self.case(subjects, clauses),
 
-            TypedExpr::BitArray { location, .. } => Err(Error::Unsupported {
-                feature: "The bit array type".into(),
-                location: *location,
-            }),
+            TypedExpr::BitArray { segments, .. } => self.bit_array(segments),
         }
     }
 
@@ -576,6 +574,7 @@ impl<'module> Generator<'module> {
             | TypedExpr::Case { .. }
             // Expand into calls:
             | TypedExpr::List { .. }
+            | TypedExpr::BitArray { .. }
             | TypedExpr::Todo { .. }
             | TypedExpr::Panic { .. } => Ok(docvec!["(", self.expression(expression)?, ")"]),
 
@@ -906,6 +905,47 @@ impl Generator<'_> {
             }
         }
     }
+
+    fn bit_array<'a>(&mut self, segments: &'a [TypedExprBitArraySegment]) -> Output<'a> {
+        self.tracker.bit_array_literal_used = true;
+
+        let segments: Vec<_> = segments
+            .iter()
+            .map(|segment| {
+                let value = self.wrap_child_expression(&segment.value)?;
+                match segment.options.as_slice() {
+                    // Ints
+                    [] | [BitArrayOption::Int { .. }] => Ok(value),
+
+                    // Sized ints
+                    [BitArrayOption::Size { value: size, .. }] => {
+                        self.tracker.sized_integer_segment_used = true;
+                        let size = self.wrap_child_expression(size)?;
+                        Ok(docvec![
+                            "(",
+                            syntax::fn_call("sizedInt".to_doc(), [value, size]),
+                            ")"
+                        ])
+                    }
+
+                    // Bit strings
+                    [BitArrayOption::Bytes { .. } | BitArrayOption::Bits { .. }] => {
+                        Ok(docvec![value, ".buffer"])
+                    }
+
+                    // Anything else
+                    _ => Err(Error::Unsupported {
+                        feature: "This bit array segment option".into(),
+                        location: segment.location,
+                    }),
+                }
+            })
+            .try_collect()?;
+
+        let segments_array = syntax::list(segments);
+
+        Ok(syntax::fn_call("toBitArray".to_doc(), [segments_array]))
+    }
 }
 
 /// Methods related to patterns.
@@ -1035,6 +1075,12 @@ pub(crate) fn guard_constant_expression<'a>(
             Ok(construct_record(module.as_deref(), tag, field_values))
         }
 
+        Constant::BitArray { segments, .. } => {
+            constant_bit_array(tracker, segments, |tracker, constant| {
+                wrap_child_guard_constant_expression(assignments, tracker, constant)
+            })
+        }
+
         Constant::Var { name, .. } => Ok(assignments
             .iter()
             .find(|assignment| assignment.name == name)
@@ -1100,14 +1146,9 @@ pub(crate) fn constant_expression<'a>(
             Ok(construct_record(module.as_deref(), tag, field_values))
         }
 
-        Constant::BitArray {
-            segments: _,
-            location,
-            ..
-        } => Err(Error::Unsupported {
-            feature: "The bit array type".into(),
-            location: *location,
-        }),
+        Constant::BitArray { segments, .. } => {
+            constant_bit_array(tracker, segments, wrap_child_constant_expression)
+        }
 
         Constant::Var { name, module, .. } => Ok({
             match module {
@@ -1128,7 +1169,9 @@ fn wrap_child_constant_expression<'a>(
             // Will call 'parseNumber'
             Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
         }
-        Constant::List { .. } => Ok(docvec!("(", constant_expression(tracker, expression)?, ")")),
+        Constant::List { .. } | Constant::BitArray { .. } => {
+            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+        }
         Constant::Record { args, .. } if !args.is_empty() => {
             Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
         }
@@ -1151,7 +1194,7 @@ fn wrap_child_guard_constant_expression<'a>(
                 ")"
             ))
         }
-        Constant::List { .. } => Ok(docvec!(
+        Constant::List { .. } | Constant::BitArray { .. } => Ok(docvec!(
             "(",
             guard_constant_expression(assignments, tracker, expression)?,
             ")"
@@ -1350,6 +1393,49 @@ pub fn list<'a, Elements: IntoIterator<Item = Output<'a>>>(elements: Elements) -
     let element_list = syntax::list(elements);
 
     Ok(syntax::fn_call("toList".to_doc(), [element_list]))
+}
+
+fn constant_bit_array<'a>(
+    tracker: &mut UsageTracker,
+    segments: &'a [BitArraySegment<TypedConstant, Arc<Type>>],
+    mut wrap_child_constant_expr_fun: impl FnMut(&mut UsageTracker, &'a TypedConstant) -> Output<'a>,
+) -> Output<'a> {
+    tracker.bit_array_literal_used = true;
+
+    let segments: Vec<_> = segments
+        .iter()
+        .map(|segment| {
+            let value = wrap_child_constant_expr_fun(tracker, &segment.value)?;
+            match segment.options.as_slice() {
+                // Ints
+                [] | [BitArrayOption::Int { .. }] => Ok(value),
+
+                // Sized ints
+                [BitArrayOption::Size { value: size, .. }] => {
+                    tracker.sized_integer_segment_used = true;
+                    let size = wrap_child_constant_expr_fun(tracker, size)?;
+                    Ok(docvec![
+                        "(",
+                        syntax::fn_call("sizedInt".to_doc(), [value, size]),
+                        ")"
+                    ])
+                }
+
+                // Bit strings
+                [BitArrayOption::Bits { .. }] => Ok(docvec![value, ".buffer"]),
+
+                // Anything else
+                _ => Err(Error::Unsupported {
+                    feature: "This bit array segment option".into(),
+                    location: segment.location,
+                }),
+            }
+        })
+        .try_collect()?;
+
+    let segments_array = syntax::list(segments);
+
+    Ok(syntax::fn_call("toBitArray".to_doc(), [segments_array]))
 }
 
 /// Prepends elements before an existing list:

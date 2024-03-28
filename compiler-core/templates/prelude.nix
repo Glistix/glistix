@@ -66,10 +66,59 @@ let
 
   # @internal
   parseEscape = content: parseTOML "\"${content}\"";
+
+  # --- bit array ---
+  BitArray =
+    buffer:
+      if !(builtins.isList buffer)
+      then builtins.throw "Bit arrays can only be constructed from Nix lists"
+      else
+        { __gleam_tag' = "BitArray"; inherit buffer; };
+
+  # @internal
+  # Repeats an element 'n' times in a Nix list.
+  repeated = x: n: builtins.genList (_: x) n;
+
+  # @internal
+  sizedInt =
+    int: size:
+      if size <= 0
+      then []
+      else if remainderInt size 8 != 0
+      then builtins.throw "Bit arrays must be byte aligned on Nix, got size of ${builtins.toString(size)} bits"
+      else
+        let
+          byteArray = repeated 0 (size / 8);
+          foldFun =
+            acc: elem:
+              let
+                value = acc.value;
+                arr = acc.arr;
+                byte = builtins.bitAnd value 255;
+              in { value = (value - byte) / 256; arr = [ byte ] ++ arr; };
+        in (builtins.foldl' foldFun { value = int; arr = []; } byteArray).arr;
+
+  # @internal
+  toBitArray =
+    segments:
+      let
+        intoBuffer = elem:
+          if builtins.isList elem
+          then elem
+          else if builtins.isInt elem
+          then [ (remainderInt elem 256) ]
+          else [ elem ];
+        buffer = builtins.concatMap intoBuffer segments;
+      in BitArray buffer;
+
+  # Get the amount of bytes in the bitarray.
+  bitArrayByteSize = array: builtins.length array.buffer;
+
 in {
   inherit
     Ok
     Error
+    BitArray
     remainderInt
     divideInt
     divideFloat
@@ -79,5 +128,8 @@ in {
     listHasLength
     strHasPrefix
     parseNumber
-    parseEscape;
+    parseEscape
+    sizedInt
+    toBitArray
+    bitArrayByteSize;
 }
