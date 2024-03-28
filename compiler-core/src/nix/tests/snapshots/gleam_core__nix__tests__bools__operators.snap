@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/bools.rs
+expression: "\nfn go() {\n    True && True\n    False || False\n}\n"
+---
+let go = let _''0 = true && true; in false || false; in {}

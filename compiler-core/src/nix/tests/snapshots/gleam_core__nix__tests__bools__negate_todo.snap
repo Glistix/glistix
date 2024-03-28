@@ -1,0 +1,7 @@
+---
+source: compiler-core/src/nix/tests/bools.rs
+expression: "pub fn negate(x) {\n  !todo\n}"
+---
+let
+  negate = x: !(builtins.throw "This has not yet been implemented");
+in { inherit negate; }

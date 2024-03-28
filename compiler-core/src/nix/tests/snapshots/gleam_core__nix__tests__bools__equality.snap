@@ -1,0 +1,18 @@
+---
+source: compiler-core/src/nix/tests/bools.rs
+expression: "\nfn go(a, b) {\n  a == True\n  a != True\n  a == False\n  a != False\n  a == a\n  a != a\n  b == Nil\n  b != Nil\n  b == b\n}\n"
+---
+let
+  go =
+    a: b:
+      let
+        _''0 = a == true;
+        _''1 = a != true;
+        _''2 = a == false;
+        _''3 = a != false;
+        _''4 = a == a;
+        _''5 = a != a;
+        _''6 = b == null;
+        _''7 = b != null;
+      in b == b;
+in {}

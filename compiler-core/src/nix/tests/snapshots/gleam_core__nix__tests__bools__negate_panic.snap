@@ -1,0 +1,7 @@
+---
+source: compiler-core/src/nix/tests/bools.rs
+expression: "pub fn negate(x) {\n  !panic\n}"
+---
+let
+  negate = x: !(builtins.throw "panic expression evaluated");
+in { inherit negate; }
