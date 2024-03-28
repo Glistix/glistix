@@ -3,9 +3,7 @@ use ecow::EcoString;
 use itertools::Itertools;
 use std::sync::OnceLock;
 
-use crate::ast::{
-    AssignName, ClauseGuard, Pattern, TypedClauseGuard, TypedExpr, TypedPattern,
-};
+use crate::ast::{AssignName, ClauseGuard, Pattern, TypedClauseGuard, TypedExpr, TypedPattern};
 use crate::docvec;
 use crate::nix::{
     expression, maybe_escape_identifier_doc, module_var_name_doc, syntax, Error, Output,
@@ -20,7 +18,7 @@ pub static ASSERTION_VAR: &str = "_assert'";
 #[derive(Debug)]
 enum Index<'a> {
     Int(usize),
-    TupleIndex(usize),
+    Tuple(usize),
     String(&'a str),
     ByteAt(usize),
     IntFromSlice(usize, usize),
@@ -108,7 +106,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
 
     /// For this pattern, access a tuple index field.
     fn push_tuple_index(&mut self, i: usize) {
-        self.path.push(Index::TupleIndex(i));
+        self.path.push(Index::Tuple(i));
     }
 
     fn push_string_prefix_slice(&mut self, i: usize) {
@@ -161,7 +159,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                 Index::Int(i) => {
                     path = path.add_right_component(Document::String(format!("._{i}")))
                 }
-                Index::TupleIndex(i) => {
+                Index::Tuple(i) => {
                     path = path
                         .add_component("(builtins.elemAt ".to_doc(), docvec!(" ", i.to_doc(), ")"))
                 }
