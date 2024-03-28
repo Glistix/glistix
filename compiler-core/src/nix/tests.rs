@@ -20,6 +20,7 @@ mod case_clause_guards;
 mod modules;
 mod numbers;
 mod panic;
+mod prelude;
 mod records;
 mod strings;
 mod todo;
