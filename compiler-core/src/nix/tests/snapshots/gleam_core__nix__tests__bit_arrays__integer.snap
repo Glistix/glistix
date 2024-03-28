@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/bit_arrays.rs
+expression: "\nfn go() {\n  <<256:int>>\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) toBitArray;
+  
+  go = toBitArray [ 256 ];
+in {}
