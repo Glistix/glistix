@@ -6,6 +6,8 @@ let
 
   Error = x0: { __gleamTag = "Error"; _0 = x0; };
 
+  isOk = res: res.__gleamTag == "Ok";
+
   # @internal
   remainderInt = a: b: if b == 0 then 0 else a - (b * (a / b));
 
@@ -19,8 +21,9 @@ let
 
   prepend = head: tail: { __gleamTag = "NotEmpty"; __gleamBuiltIn = "List"; inherit head tail; };
 
-  # @internal
-  listIsEmpty = lst: lst.__gleamTag == "Empty";
+  listIsEmpty = list: list.__gleamTag == "Empty";
+
+  listToArray = list: if list.__gleamTag == "Empty" then [] else [ list.head ] ++ listToArray list.tail;
 
   # @internal
   listHasAtLeastLength =
@@ -119,11 +122,14 @@ in {
     Ok
     Error
     BitArray
+    isOk
     remainderInt
     divideInt
     divideFloat
     toList
     prepend
+    listIsEmpty
+    listToArray
     listHasAtLeastLength
     listHasLength
     strHasPrefix
