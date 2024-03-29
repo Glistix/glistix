@@ -15,9 +15,9 @@ let
   # @internal
   divideFloat = a: b: if b == 0 then 0 else a / b;
 
-  toList = foldr prepend { __gleamTag = "Empty"; };
+  toList = foldr prepend { __gleamTag = "Empty"; __gleamBuiltIn = "List"; };
 
-  prepend = head: tail: { __gleamTag = "NotEmpty"; inherit head tail; };
+  prepend = head: tail: { __gleamTag = "NotEmpty"; __gleamBuiltIn = "List"; inherit head tail; };
 
   # @internal
   listIsEmpty = lst: lst.__gleamTag == "Empty";
@@ -73,7 +73,7 @@ let
       if !(builtins.isList buffer)
       then builtins.throw "Bit arrays can only be constructed from Nix lists"
       else
-        { __gleamTag = "BitArray"; inherit buffer; };
+        { __gleamTag = "BitArray"; __gleamBuiltIn = "BitArray"; inherit buffer; };
 
   # @internal
   # Repeats an element 'n' times in a Nix list.
