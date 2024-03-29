@@ -4,7 +4,7 @@ expression: "\n        pub type Person {\n          Person(username: String, nam
 ---
 let
   Person =
-    username: name: age: { __gleam_tag' = "Person"; inherit username name age; };
+    username: name: age: { __gleamTag = "Person"; inherit username name age; };
   
   main =
     let

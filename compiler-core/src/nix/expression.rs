@@ -163,7 +163,7 @@ impl<'module> Generator<'module> {
     /// name = value;  # without assert
     /// # with assert:
     /// pat' = value;  # assuming the value is complex so we assign it to a var, for example
-    /// assert' = if pat'.__gleam_tag' != "Ok" then throw "..." else null;
+    /// assert' = if pat'.__gleamTag != "Ok" then throw "..." else null;
     /// name = builtins.seq assert' pat'; # only return pat' if assertion succeeds
     ///
     /// # In trailing position
@@ -310,7 +310,7 @@ impl<'module> Generator<'module> {
                 //
                 // ```nix
                 // _pat' = something 1;
-                // _assert' = if _pat'.__gleam_tag' != "Ok" then throw "..." else null;
+                // _assert' = if _pat'.__gleamTag != "Ok" then throw "..." else null;
                 // x = builtins.seq _assert' _pat'._0; # access the field after the assertion
                 // ```
                 docvec![subject_assignment, assertion_assignment, assignments]
@@ -1225,7 +1225,7 @@ pub(crate) fn wrap_child_guard_constant_expression<'a>(
 /// A record in Nix is represented with the following format:
 ///
 /// ```nix
-/// { __gleam_tag' = "Ctor", field_name = value, field2_name = value, ... }
+/// { __gleamTag = "Ctor", field_name = value, field2_name = value, ... }
 /// ```
 fn construct_record<'a>(
     module: Option<&'a str>,

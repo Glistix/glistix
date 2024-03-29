@@ -2,9 +2,9 @@
 # without notice.
 
 let
-  Ok = x0: { __gleam_tag' = "Ok"; _0 = x0; };
+  Ok = x0: { __gleamTag = "Ok"; _0 = x0; };
 
-  Error = x0: { __gleam_tag' = "Error"; _0 = x0; };
+  Error = x0: { __gleamTag = "Error"; _0 = x0; };
 
   # @internal
   remainderInt = a: b: if b == 0 then 0 else a - (b * (a / b));
@@ -15,12 +15,12 @@ let
   # @internal
   divideFloat = a: b: if b == 0 then 0 else a / b;
 
-  toList = foldr prepend { __gleam_tag' = "Empty"; };
+  toList = foldr prepend { __gleamTag = "Empty"; };
 
-  prepend = head: tail: { __gleam_tag' = "NotEmpty"; inherit head tail; };
+  prepend = head: tail: { __gleamTag = "NotEmpty"; inherit head tail; };
 
   # @internal
-  listIsEmpty = lst: lst.__gleam_tag' == "Empty";
+  listIsEmpty = lst: lst.__gleamTag == "Empty";
 
   # @internal
   listHasAtLeastLength =
@@ -73,7 +73,7 @@ let
       if !(builtins.isList buffer)
       then builtins.throw "Bit arrays can only be constructed from Nix lists"
       else
-        { __gleam_tag' = "BitArray"; inherit buffer; };
+        { __gleamTag = "BitArray"; inherit buffer; };
 
   # @internal
   # Repeats an element 'n' times in a Nix list.

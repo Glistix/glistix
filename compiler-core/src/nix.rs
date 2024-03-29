@@ -267,14 +267,14 @@ impl<'module> Generator<'module> {
     /// Returns a record definition, of the form:
     ///
     /// ```nix
-    /// Ctor = named1: named2: x0: x1: { __gleam_tag' = "Ctor"; inherit named1 named2; _0 = x0; _1 = x1; }
+    /// Ctor = named1: named2: x0: x1: { __gleamTag = "Ctor"; inherit named1 named2; _0 = x0; _1 = x1; }
     /// ```
     fn record_definition(
         constructor: &TypedRecordConstructor,
         publicity: Publicity,
         opaque: bool,
     ) -> ModuleDeclaration<'_> {
-        const GLEAM_TAG_FIELD_NAME: &str = "__gleam_tag'";
+        const GLEAM_TAG_FIELD_NAME: &str = "__gleamTag";
 
         fn parameter((i, arg): (usize, &TypedRecordConstructorArg)) -> Document<'_> {
             arg.label

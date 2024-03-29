@@ -6,9 +6,9 @@ let
   inherit (builtins.import ./../gleam.nix) Ok Error toList;
   mod''mymod = builtins.import ./../mymod.nix;
   
-  BigBad = a: b: { __gleam_tag' = "BigBad"; inherit a b; };
+  BigBad = a: b: { __gleamTag = "BigBad"; inherit a b; };
   
-  Bad = inherit': { __gleam_tag' = "Bad"; inherit inherit'; };
+  Bad = inherit': { __gleamTag = "Bad"; inherit inherit'; };
   
   guard =
     x:

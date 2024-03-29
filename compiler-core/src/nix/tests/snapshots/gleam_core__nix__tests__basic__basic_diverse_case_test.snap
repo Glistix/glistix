@@ -5,27 +5,24 @@ expression: "\npub type SimpleEnum {\n  SA\n  SB\n  SC\n  SD\n}\n\nfn simple_tes
 let
   inherit (builtins.import ./../gleam.nix) Ok Error;
   
-  SA = { __gleam_tag' = "SA"; };
+  SA = { __gleamTag = "SA"; };
   
-  SB = { __gleam_tag' = "SB"; };
+  SB = { __gleamTag = "SB"; };
   
-  SC = { __gleam_tag' = "SC"; };
+  SC = { __gleamTag = "SC"; };
   
-  SD = { __gleam_tag' = "SD"; };
+  SD = { __gleamTag = "SD"; };
   
   simple_test =
     x:
       let
-        _''0 =
-          if x.__gleam_tag' == "SC"
-          then Ok (Ok 100)
-          else Error (Error 100);
+        _''0 = if x.__gleamTag == "SC" then Ok (Ok 100) else Error (Error 100);
       in
-        if x.__gleam_tag' == "SA"
+        if x.__gleamTag == "SA"
         then Ok 5
-        else if x.__gleam_tag' == "SB"
+        else if x.__gleamTag == "SB"
         then Error 10
-        else if x.__gleam_tag' == "SC"
+        else if x.__gleamTag == "SC"
         then Ok 10
         else Ok 10;
   
@@ -33,9 +30,9 @@ let
     x: y: z: w: p:
       let
         x1 =
-          if x.__gleam_tag' == "SC"
+          if x.__gleamTag == "SC"
           then "is SC"
-          else if x.__gleam_tag' == "SA"
+          else if x.__gleamTag == "SA"
           then "is SA"
           else "not SC or SA";
         y1 =

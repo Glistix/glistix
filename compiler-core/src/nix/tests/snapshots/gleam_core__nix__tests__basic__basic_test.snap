@@ -11,11 +11,11 @@ let
     divideInt;
   listPrepend = (builtins.import ./../gleam.nix).prepend;
   
-  AmogusA = { __gleam_tag' = "AmogusA"; };
+  AmogusA = { __gleamTag = "AmogusA"; };
   
-  AmogusB = a: b: { __gleam_tag' = "AmogusB"; inherit a b; };
+  AmogusB = a: b: { __gleamTag = "AmogusB"; inherit a b; };
   
-  AmogusC = x0: x1: { __gleam_tag' = "AmogusC"; _0 = x0; _1 = x1; };
+  AmogusC = x0: x1: { __gleamTag = "AmogusC"; _0 = x0; _1 = x1; };
   
   sus = x: 5 + 5;
   

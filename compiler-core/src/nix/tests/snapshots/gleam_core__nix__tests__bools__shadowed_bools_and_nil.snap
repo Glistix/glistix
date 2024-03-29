@@ -3,27 +3,27 @@ source: compiler-core/src/nix/tests/bools.rs
 expression: "\npub type True { True False Nil }\nfn go(x, y) {\n  let assert True = x\n  let assert False = x\n  let assert Nil = y\n}\n"
 ---
 let
-  True = { __gleam_tag' = "True"; };
+  True = { __gleamTag = "True"; };
   
-  False = { __gleam_tag' = "False"; };
+  False = { __gleamTag = "False"; };
   
-  Nil = { __gleam_tag' = "Nil"; };
+  Nil = { __gleamTag = "Nil"; };
   
   go =
     x: y:
       let
         _assert' =
-          if x.__gleam_tag' != "True"
+          if x.__gleamTag != "True"
           then builtins.throw "Assignment pattern did not match"
           else null;
         _''0 = builtins.seq _assert' x;
         _assert''1 =
-          if x.__gleam_tag' != "False"
+          if x.__gleamTag != "False"
           then builtins.throw "Assignment pattern did not match"
           else null;
         _''1 = builtins.seq _assert''1 x;
       in
-        if y.__gleam_tag' != "Nil"
+        if y.__gleamTag != "Nil"
         then builtins.throw "Assignment pattern did not match"
         else y;
 in { inherit True False Nil; }

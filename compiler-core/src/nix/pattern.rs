@@ -827,7 +827,7 @@ impl<'a> Check<'a> {
                 let operator = if match_desired { " == " } else { " != " };
                 docvec![
                     path.into_doc_with_subject(subject),
-                    ".__gleam_tag'",
+                    ".__gleamTag",
                     operator,
                     expression::string_without_escapes(kind)
                 ]
@@ -842,7 +842,7 @@ impl<'a> Check<'a> {
                 let operator = if match_desired { " == " } else { " != " };
                 docvec![
                     path.into_doc_with_subject(subject),
-                    ".__gleam_tag'",
+                    ".__gleamTag",
                     operator,
                     "\"",
                     kind,

@@ -3,9 +3,9 @@ source: compiler-core/src/nix/tests/records.rs
 expression: "\npub type Person {\n    Teacher(name: String, title: String)\n    Student(name: String, age: Int)\n}\npub fn get_name(person: Person) { person.name }"
 ---
 let
-  Teacher = name: title: { __gleam_tag' = "Teacher"; inherit name title; };
+  Teacher = name: title: { __gleamTag = "Teacher"; inherit name title; };
   
-  Student = name: age: { __gleam_tag' = "Student"; inherit name age; };
+  Student = name: age: { __gleamTag = "Student"; inherit name age; };
   
   get_name = person: person.name;
 in { inherit Teacher Student get_name; }

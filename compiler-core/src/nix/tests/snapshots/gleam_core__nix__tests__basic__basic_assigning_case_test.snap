@@ -3,25 +3,24 @@ source: compiler-core/src/nix/tests/basic.rs
 expression: "\npub type MyRecord {\n  Simple\n  TupleLike(Int, Float)\n  RecordLike(a: Int, inherit: Float)\n  Mixed(a: Int, b: Float, Float, Float)\n}\n\npub fn please_match(x) {\n  case x {\n    Simple as s -> {s #(-100, -100.0)}\n    TupleLike(i, f) as t -> { t #(i, f) }\n    RecordLike(a: i, inherit: f) -> { #(i, f) }\n    Mixed(f1, f2, a: i1, b: f3) -> #(i1, f1 +. f2 +. f3)\n    t -> { t #(555, 555.5) }\n  }\n}\n"
 ---
 let
-  Simple = { __gleam_tag' = "Simple"; };
+  Simple = { __gleamTag = "Simple"; };
   
-  TupleLike = x0: x1: { __gleam_tag' = "TupleLike"; _0 = x0; _1 = x1; };
+  TupleLike = x0: x1: { __gleamTag = "TupleLike"; _0 = x0; _1 = x1; };
   
-  RecordLike =
-    a: inherit': { __gleam_tag' = "RecordLike"; inherit a inherit'; };
+  RecordLike = a: inherit': { __gleamTag = "RecordLike"; inherit a inherit'; };
   
   Mixed =
-    a: b: x2: x3: { __gleam_tag' = "Mixed"; inherit a b; _2 = x2; _3 = x3; };
+    a: b: x2: x3: { __gleamTag = "Mixed"; inherit a b; _2 = x2; _3 = x3; };
   
   please_match =
     x:
-      if x.__gleam_tag' == "Simple"
+      if x.__gleamTag == "Simple"
       then let s = x; in let _''0 = s; in [ (-100) (-100.0) ]
-      else if x.__gleam_tag' == "TupleLike"
+      else if x.__gleamTag == "TupleLike"
       then let t = x; i = x._0; f = x._1; in let _''0 = t; in [ i f ]
-      else if x.__gleam_tag' == "RecordLike"
+      else if x.__gleamTag == "RecordLike"
       then let i = x.a; f = x.inherit'; in [ i f ]
-      else if x.__gleam_tag' == "Mixed"
+      else if x.__gleamTag == "Mixed"
       then
         let
           i1 = x.a;

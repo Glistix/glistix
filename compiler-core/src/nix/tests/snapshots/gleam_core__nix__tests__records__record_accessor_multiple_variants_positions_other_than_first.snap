@@ -4,9 +4,9 @@ expression: "\npub type Person {\n    Teacher(name: String, age: Int, title: Str
 ---
 let
   Teacher =
-    name: age: title: { __gleam_tag' = "Teacher"; inherit name age title; };
+    name: age: title: { __gleamTag = "Teacher"; inherit name age title; };
   
-  Student = name: age: { __gleam_tag' = "Student"; inherit name age; };
+  Student = name: age: { __gleamTag = "Student"; inherit name age; };
   
   get_name = person: person.name;
   

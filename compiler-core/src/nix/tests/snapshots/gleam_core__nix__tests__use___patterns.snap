@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/use_.rs
 expression: "\npub fn main() {\n  use Box(x) <- apply(Box(1))\n  x\n}\n\ntype Box(a) {\n  Box(a)\n}\n\nfn apply(arg, fun) {\n  fun(arg)\n}\n"
 ---
 let
-  Box = x0: { __gleam_tag' = "Box"; _0 = x0; };
+  Box = x0: { __gleamTag = "Box"; _0 = x0; };
   
   apply = arg: fun: fun arg;
   
