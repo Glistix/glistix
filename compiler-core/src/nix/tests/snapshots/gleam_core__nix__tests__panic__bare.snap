@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/panic.rs
 expression: "\nfn go() {\n  panic\n}\n"
 ---
-let go = builtins.throw "panic expression evaluated"; in {}
+let go = {}: builtins.throw "panic expression evaluated"; in {}

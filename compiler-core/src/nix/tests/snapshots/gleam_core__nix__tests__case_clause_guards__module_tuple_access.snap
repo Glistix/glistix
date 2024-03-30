@@ -6,10 +6,11 @@ let
   mod''hero = builtins.import ./../../package/hero.nix;
   
   main =
-    let
-      name = "Tony Stark";
-    in
-      if name == (builtins.elemAt mod''hero.hero 1)
-      then let n = name; in true
-      else false;
+    {}:
+      let
+        name = "Tony Stark";
+      in
+        if name == (builtins.elemAt mod''hero.hero 1)
+        then let n = name; in true
+        else false;
 in { inherit main; }

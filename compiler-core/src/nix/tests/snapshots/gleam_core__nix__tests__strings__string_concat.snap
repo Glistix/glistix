@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/strings.rs
 expression: "\nfn go() {\n  \"Hello, \" <> \"Joe\"\n}\n"
 ---
-let go = "Hello, " + "Joe"; in {}
+let go = {}: "Hello, " + "Joe"; in {}

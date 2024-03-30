@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/numbers.rs
 expression: "\nfn go() {\n  let a = 3\n  let b = --a\n}\n"
 ---
-let go = let a = 3; in -(-a); in {}
+let go = {}: let a = 3; in -(-a); in {}

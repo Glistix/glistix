@@ -16,62 +16,64 @@ let
   Simple3 = inherit': x: { __gleamTag = "Simple3"; inherit inherit' x; };
   
   pat_test =
-    let
-      _pat' = null;
-      _''0 = _pat';
-      x = Simple;
-      _''1 = x;
-      _pat''1 = Simple;
-      _''2 = _pat''1;
-      _pat''2 = (Simple2 5);
-      _''3 = _pat''2;
-      _pat''3 = (Simple2 5);
-      _''4 = _pat''3;
-      _pat''4 = (Simple2 5);
-      a = _pat''4._0;
-      _pat''5 = (Simple3 true 5.0);
-      a'1 = _pat''5.inherit';
-      b = _pat''5.x;
-    in [ a'1 b ];
+    {}:
+      let
+        _pat' = null;
+        _''0 = _pat';
+        x = Simple;
+        _''1 = x;
+        _pat''1 = Simple;
+        _''2 = _pat''1;
+        _pat''2 = (Simple2 5);
+        _''3 = _pat''2;
+        _pat''3 = (Simple2 5);
+        _''4 = _pat''3;
+        _pat''4 = (Simple2 5);
+        a = _pat''4._0;
+        _pat''5 = (Simple3 true 5.0);
+        a'1 = _pat''5.inherit';
+        b = _pat''5.x;
+      in [ a'1 b ];
   
   pat_assert_test =
-    let
-      _pat' = true;
-      _assert' =
-        if !_pat'
-        then builtins.throw "Assignment pattern did not match"
-        else null;
-      _''0 = builtins.seq _assert' _pat';
-      _pat''1 = true;
-      _assert''1 =
-        if _pat''1
-        then builtins.throw "Assignment pattern did not match"
-        else null;
-      _''1 = builtins.seq _assert''1 _pat''1;
-      _pat''2 = A;
-      _assert''2 =
-        if _pat''2.__gleamTag != "A"
-        then builtins.throw "Assignment pattern did not match"
-        else null;
-      _''2 = builtins.seq _assert''2 _pat''2;
-      _pat''3 = (B 5);
-      _assert''3 =
-        if _pat''3.__gleamTag != "B"
-        then builtins.throw "Assignment pattern did not match"
-        else null;
-      x = builtins.seq _assert''3 _pat''3._0;
-      _pat''4 = (C 5 5.5e5);
-      _assert''4 =
-        if _pat''4.__gleamTag != "C"
-        then builtins.throw "Assignment pattern did not match"
-        else null;
-      a = builtins.seq _assert''4 _pat''4.a;
-      b = builtins.seq _assert''4 _pat''4.b;
-    in
+    {}:
       let
-        _pat''5 = (C 5 5.5e5);
+        _pat' = true;
+        _assert' =
+          if !_pat'
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        _''0 = builtins.seq _assert' _pat';
+        _pat''1 = true;
+        _assert''1 =
+          if _pat''1
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        _''1 = builtins.seq _assert''1 _pat''1;
+        _pat''2 = A;
+        _assert''2 =
+          if _pat''2.__gleamTag != "A"
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        _''2 = builtins.seq _assert''2 _pat''2;
+        _pat''3 = (B 5);
+        _assert''3 =
+          if _pat''3.__gleamTag != "B"
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        x = builtins.seq _assert''3 _pat''3._0;
+        _pat''4 = (C 5 5.5e5);
+        _assert''4 =
+          if _pat''4.__gleamTag != "C"
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        a = builtins.seq _assert''4 _pat''4.a;
+        b = builtins.seq _assert''4 _pat''4.b;
       in
-        if _pat''5.__gleamTag != "C"
-        then builtins.throw "Assignment pattern did not match"
-        else _pat''5;
+        let
+          _pat''5 = (C 5 5.5e5);
+        in
+          if _pat''5.__gleamTag != "C"
+          then builtins.throw "Assignment pattern did not match"
+          else _pat''5;
 in { inherit A B C Simple Simple2 Simple3 pat_test pat_assert_test; }

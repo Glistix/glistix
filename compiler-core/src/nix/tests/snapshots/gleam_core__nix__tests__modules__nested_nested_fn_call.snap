@@ -5,5 +5,5 @@ expression: "import one/two/three\npub fn go() { three.go() }"
 let
   mod''three = builtins.import ./../one/two/three.nix;
   
-  go = mod''three.go;
+  go = {}: mod''three.go {};
 in { inherit go; }

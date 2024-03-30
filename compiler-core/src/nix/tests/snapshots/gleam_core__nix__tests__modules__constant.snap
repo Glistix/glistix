@@ -5,5 +5,5 @@ expression: "\nimport rocket_ship\npub fn go() { rocket_ship.x }\n"
 let
   mod''rocket_ship = builtins.import ./../rocket_ship.nix;
   
-  go = mod''rocket_ship.x;
+  go = {}: mod''rocket_ship.x;
 in { inherit go; }

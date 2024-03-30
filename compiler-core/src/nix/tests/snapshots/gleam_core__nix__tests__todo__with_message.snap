@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/todo.rs
 expression: "\nfn go() {\n  todo as \"I should do this\"\n}\n"
 ---
-let go = builtins.throw "I should do this"; in {}
+let go = {}: builtins.throw "I should do this"; in {}

@@ -65,10 +65,10 @@ let
         amagus_a = AmogusA;
         amagus_b = AmogusB 10 15;
         amagus_c = AmogusC 10 5.5;
-        simplefunc = 5;
-        gg = simplefunc + 10;
-        less_simple_func = x: x;
-        gg'1 = (less_simple_func 5) + 10;
+        simplefunc = {}: 5;
+        gg = (simplefunc {}) + 10;
+        less_simple_func = x: {}: x;
+        gg'1 = ((less_simple_func 5) {}) + 10;
         mnull = null;
         sus'1 = "hey! I'm still sus :(";
         x'1 = tata;
@@ -77,8 +77,8 @@ let
   mongus =
     a: b: c:
       let
-        x = 5 + 5;
-        y = x;
+        x = {}: 5 + 5;
+        y = x {};
       in [ 1 2 3 (x: x + 1) (let _''0 = 5; _''1 = 6; _''2 = 10; in 10 + 5) ];
   
   sumongus = 5;

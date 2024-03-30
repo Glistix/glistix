@@ -4,7 +4,8 @@ expression: "\npub fn main() {\n  let thingy = fn(f) { f() }\n  use <- thingy()\
 ---
 let
   main =
-    let
-      thingy = f: f;
-    in thingy (builtins.throw "This has not yet been implemented");
+    {}:
+      let
+        thingy = f: f {};
+      in thingy ({}: builtins.throw "This has not yet been implemented");
 in { inherit main; }

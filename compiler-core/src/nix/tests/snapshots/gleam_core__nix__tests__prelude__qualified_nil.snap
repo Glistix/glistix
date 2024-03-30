@@ -2,4 +2,8 @@
 source: compiler-core/src/nix/tests/prelude.rs
 expression: "import gleam\npub fn go() { gleam.Nil }\n"
 ---
-let mod''gleam = builtins.import ./../gleam.nix; go = null; in { inherit go; }
+let
+  mod''gleam = builtins.import ./../gleam.nix;
+  
+  go = {}: null;
+in { inherit go; }

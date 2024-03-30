@@ -5,5 +5,5 @@ expression: "\npub fn y_with_dieresis() -> String {\n  \"\\u{0308}y\"\n}\n"
 let
   inherit (builtins.import ./../gleam.nix) parseEscape;
   
-  y_with_dieresis = "${parseEscape "\\U00000308"}y";
+  y_with_dieresis = {}: "${parseEscape "\\U00000308"}y";
 in { inherit y_with_dieresis; }

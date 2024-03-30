@@ -6,13 +6,14 @@ let
   add1 = a: a + 1;
   
   go =
-    let
-      x =
-        let
-          _''0 = 1;
-        in
+    {}:
+      let
+        x =
           let
-            _pipe = let _''1 = 2; in let _pipe = 3; in add1 _pipe;
-          in add1 _pipe;
-    in x;
+            _''0 = 1;
+          in
+            let
+              _pipe = let _''1 = 2; in let _pipe = 3; in add1 _pipe;
+            in add1 _pipe;
+      in x;
 in {}

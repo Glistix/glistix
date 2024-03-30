@@ -5,5 +5,5 @@ expression: "\npub fn emoji() -> String {\n  \"\\u{1f600}\"\n}\n"
 let
   inherit (builtins.import ./../gleam.nix) parseEscape;
   
-  emoji = "${parseEscape "\\U0001f600"}";
+  emoji = {}: "${parseEscape "\\U0001f600"}";
 in { inherit emoji; }

@@ -7,11 +7,12 @@ let
     username: name: age: { __gleamTag = "Person"; inherit username name age; };
   
   main =
-    let
-      given_name = "jack";
-      raiden = Person "raiden" "jack" 31;
-    in
-      if given_name == raiden.name
-      then let name = given_name; in "It's jack"
-      else "It's not jack";
+    {}:
+      let
+        given_name = "jack";
+        raiden = Person "raiden" "jack" 31;
+      in
+        if given_name == raiden.name
+        then let name = given_name; in "It's jack"
+        else "It's not jack";
 in { inherit Person main; }

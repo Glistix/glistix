@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/numbers.rs
 expression: "\nfn go() {\n  2.4 *. { 3.5 +. 6.0 }\n}\n"
 ---
-let go = 2.4 * (3.5 + 6.0); in {}
+let go = {}: 2.4 * (3.5 + 6.0); in {}

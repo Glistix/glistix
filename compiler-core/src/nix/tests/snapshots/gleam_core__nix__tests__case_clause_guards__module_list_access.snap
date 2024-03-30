@@ -7,7 +7,8 @@ let
   inherit (builtins.import ./../gleam.nix) toList;
   
   main =
-    let
-      names = toList [ "Tony Stark" "Bruce Wayne" ];
-    in if names == mod''hero.heroes then let n = names; in true else false;
+    {}:
+      let
+        names = toList [ "Tony Stark" "Bruce Wayne" ];
+      in if names == mod''hero.heroes then let n = names; in true else false;
 in { inherit main; }

@@ -6,10 +6,11 @@ let
   inherit (builtins.import ./../gleam.nix) toBitArray;
   
   main =
-    let
-      _pat' = 5;
-    in
-      if (toBitArray [ _pat' ]) == (toBitArray [ _pat' ])
-      then let z = _pat'; in null
-      else null;
+    {}:
+      let
+        _pat' = 5;
+      in
+        if (toBitArray [ _pat' ]) == (toBitArray [ _pat' ])
+        then let z = _pat'; in null
+        else null;
 in { inherit main; }

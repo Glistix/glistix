@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/use_.rs
 expression: "\npub fn main() {\n  use <- trip(1.0, \"\")\n  123\n}\n\nfn trip(x, y, f) {\n  let z = f()\n  #(x, y, z)\n}\n"
 ---
 let
-  trip = x: y: f: let z = f; in [ x y z ];
+  trip = x: y: f: let z = f {}; in [ x y z ];
   
-  main = trip 1.0 "" (123);
+  main = {}: trip 1.0 "" ({}: 123);
 in { inherit main; }
