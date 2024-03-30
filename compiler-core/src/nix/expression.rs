@@ -668,15 +668,20 @@ impl Generator<'_> {
             }
 
             _ => {
-                if arguments.is_empty() {
-                    return if in_child_position {
-                        self.wrap_child_expression(fun)
-                    } else {
-                        self.expression(fun)
-                    };
-                }
                 let fun = self.wrap_child_expression(fun)?;
-                Ok(syntax::fn_call(fun, arguments))
+                let arguments = if arguments.is_empty() {
+                    // Single argument functions receive a single empty set.
+                    vec!["{}".to_doc()]
+                } else {
+                    arguments
+                };
+
+                let call = syntax::fn_call(fun, arguments);
+                if in_child_position {
+                    Ok(docvec!["(", call, ")"])
+                } else {
+                    Ok(call)
+                }
             }
         }
     }
@@ -693,12 +698,17 @@ impl Generator<'_> {
         // Reset scope
         self.current_scope_vars = scope;
 
-        if arguments.is_empty() {
-            // A function without args only has its body.
-            return result;
-        }
+        let arguments = if arguments.is_empty() {
+            // A function without args takes a single empty set as a parameter.
+            // Normally it wouldn't be a function (it would just be equal to its
+            // body), but Nix code can have side effects, e.g. `builtins.trace` which
+            // prints to stderr, so we have to keep it as a function.
+            "{}:".to_doc()
+        } else {
+            fun_args(arguments)
+        };
 
-        Ok(docvec!(fun_args(arguments), break_("", " "), result?)
+        Ok(docvec!(arguments, break_("", " "), result?)
             .nest(INDENT)
             .group())
     }
@@ -1238,6 +1248,8 @@ fn construct_record<'a>(
         name.to_doc()
     };
 
+    // It's ok for record constructors with no arguments to be called without
+    // arguments. They have no fields, so there is no risk of side effects.
     syntax::fn_call(name, arguments)
 }
 
