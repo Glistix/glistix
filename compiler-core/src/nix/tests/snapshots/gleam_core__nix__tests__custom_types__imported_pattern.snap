@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/custom_types.rs
 expression: "import other.{Two}\n\npub fn main(x) {\n  case x {\n    Two(a: 1, ..) -> 1\n    other.Two(b: 2, c: c, ..) -> c\n    _ -> 3\n  }\n}\n"
 ---
 let
-  mod''other = builtins.import ./../other.nix;
+  other' = builtins.import ./../other.nix;
   inherit (builtins.import ./../other.nix) Two;
   
   main =

@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/custom_types.rs
 expression: "import other.{Two}\npub fn main() {\n  Two\n}"
 ---
 let
-  mod''other = builtins.import ./../other.nix;
+  other' = builtins.import ./../other.nix;
   inherit (builtins.import ./../other.nix) Two;
   
   main = {}: Two;

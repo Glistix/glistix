@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/functions.rs
 expression: "\n        import foo.{println}\n        pub fn main() {\n          let println =\n            \"oh dear\"\n            |> println\n          println\n        }"
 ---
 let
-  mod''foo = builtins.import ./../foo.nix;
+  foo' = builtins.import ./../foo.nix;
   inherit (builtins.import ./../foo.nix) println;
   
   main =

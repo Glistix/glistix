@@ -3,10 +3,10 @@ source: compiler-core/src/nix/tests/modules.rs
 expression: "\nimport esa/rocket_ship\nimport nasa/rocket_ship.{go} as _nasa_rocket\npub fn esa_go() { rocket_ship.go() }\npub fn nasa_go() { go() }\n"
 ---
 let
-  mod''rocket_ship = builtins.import ./../esa/rocket_ship.nix;
+  rocket_ship' = builtins.import ./../esa/rocket_ship.nix;
   inherit (builtins.import ./../nasa/rocket_ship.nix) go;
   
-  esa_go = {}: mod''rocket_ship.go {};
+  esa_go = {}: rocket_ship'.go {};
   
   nasa_go = {}: go {};
 in { inherit esa_go nasa_go; }

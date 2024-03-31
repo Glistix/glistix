@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/modules.rs
 expression: "\nimport x as y\nconst z = y.v\n"
 ---
-let mod''y = builtins.import ./../x.nix; z = mod''y.v; in {}
+let y' = builtins.import ./../x.nix; z = y'.v; in {}

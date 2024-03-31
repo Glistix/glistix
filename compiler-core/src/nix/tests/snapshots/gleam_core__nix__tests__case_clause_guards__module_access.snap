@@ -3,11 +3,11 @@ source: compiler-core/src/nix/tests/case_clause_guards.rs
 expression: "\n          import hero\n          pub fn main() {\n            let name = \"Tony Stark\"\n            case name {\n              n if n == hero.ironman.name -> True\n              _ -> False\n            }\n          }\n        "
 ---
 let
-  mod''hero = builtins.import ./../../package/hero.nix;
+  hero' = builtins.import ./../../package/hero.nix;
   
   main =
     {}:
       let
         name = "Tony Stark";
-      in if name == mod''hero.ironman.name then let n = name; in true else false;
+      in if name == hero'.ironman.name then let n = name; in true else false;
 in { inherit main; }

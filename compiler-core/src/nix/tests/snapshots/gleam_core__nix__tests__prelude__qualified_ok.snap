@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/prelude.rs
 expression: "import gleam\npub fn go() { gleam.Ok(1) }\n"
 ---
 let
-  mod''gleam = builtins.import ./../gleam.nix;
+  gleam' = builtins.import ./../gleam.nix;
   
-  go = {}: mod''gleam.Ok 1;
+  go = {}: gleam'.Ok 1;
 in { inherit go; }

@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/results.rs
 expression: "import gleam\npub fn main() { gleam.Error }"
 ---
 let
-  mod''gleam = builtins.import ./../gleam.nix;
+  gleam' = builtins.import ./../gleam.nix;
   
-  main = {}: mod''gleam.Error;
+  main = {}: gleam'.Error;
 in { inherit main; }

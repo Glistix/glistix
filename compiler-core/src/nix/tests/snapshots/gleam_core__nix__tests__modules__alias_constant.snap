@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/modules.rs
 expression: "\nimport rocket_ship as boop\npub fn go() { boop.x }\n"
 ---
 let
-  mod''boop = builtins.import ./../rocket_ship.nix;
+  boop' = builtins.import ./../rocket_ship.nix;
   
-  go = {}: mod''boop.x;
+  go = {}: boop'.x;
 in { inherit go; }

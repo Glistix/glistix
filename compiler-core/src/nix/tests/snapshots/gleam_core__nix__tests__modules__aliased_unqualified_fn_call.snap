@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/modules.rs
 expression: "import rocket_ship.{launch as boom_time}\npub fn go() { boom_time() }\n"
 ---
 let
-  mod''rocket_ship = builtins.import ./../rocket_ship.nix;
+  rocket_ship' = builtins.import ./../rocket_ship.nix;
   boom_time = (builtins.import ./../rocket_ship.nix).launch;
   
   go = {}: boom_time {};

@@ -607,12 +607,12 @@ pub fn module(
 
 /// Generates the variable name in Nix for the given module.
 pub fn module_var_name(name: &str) -> String {
-    format!("mod''{}", maybe_escape_identifier_string(name))
+    format!("{}'", maybe_escape_identifier_string(name))
 }
 
 /// Generates the variable name in Nix for the given module (as a document).
 pub fn module_var_name_doc(name: &str) -> Document<'_> {
-    docvec!("mod''", maybe_escape_identifier_doc(name))
+    docvec!(maybe_escape_identifier_doc(name), "'")
 }
 
 pub fn is_usable_nix_identifier(word: &str) -> bool {
