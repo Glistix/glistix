@@ -5,5 +5,5 @@ expression: "\nfn go(x) {\n    [{True 1}]\n}\n"
 let
   inherit (builtins.import ./../gleam.nix) toList;
   
-  go = x: toList [ (let _'0 = true; in 1) ];
+  go = x: toList [ (let _' = true; in builtins.seq _' 1) ];
 in {}

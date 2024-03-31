@@ -2,4 +2,8 @@
 source: compiler-core/src/nix/tests/numbers.rs
 expression: "\nfn go() {\n    1.5\n    2.0\n    -0.1\n    1.\n}\n"
 ---
-let go = {}: let _'0 = 1.5; _'1 = 2.0; _'2 = -0.1; in 1.; in {}
+let
+  inherit (builtins.import ./../gleam.nix) seqAll;
+  
+  go = {}: let _' = 1.5; _'1 = 2.0; _'2 = -0.1; in seqAll [ _' _'1 _'2 ] 1.;
+in {}

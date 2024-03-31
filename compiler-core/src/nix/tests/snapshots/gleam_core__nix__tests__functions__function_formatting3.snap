@@ -3,5 +3,7 @@ source: compiler-core/src/nix/tests/functions.rs
 expression: "\npub fn math(x, y) {\n  fn() {\n    x + y\n    x - y\n    2 * x\n  }\n}"
 ---
 let
-  math = x: y: {}: let _'0 = x + y; _'1 = x - y; in 2 * x;
+  inherit (builtins.import ./../gleam.nix) seqAll;
+  
+  math = x: y: {}: let _' = x + y; _'1 = x - y; in seqAll [ _' _'1 ] (2 * x);
 in { inherit math; }

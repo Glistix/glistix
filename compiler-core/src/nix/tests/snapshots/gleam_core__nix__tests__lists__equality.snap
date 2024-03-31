@@ -8,6 +8,6 @@ let
   go =
     {}:
       let
-        _'0 = (toList [ ]) == (toList [ 1 ]);
-      in (toList [ ]) != (toList [ 1 ]);
+        _' = (toList [ ]) == (toList [ 1 ]);
+      in builtins.seq _' ((toList [ ]) != (toList [ 1 ]));
 in {}

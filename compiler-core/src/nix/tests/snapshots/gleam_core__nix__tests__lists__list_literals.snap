@@ -3,14 +3,14 @@ source: compiler-core/src/nix/tests/lists.rs
 expression: "\nfn go(x) {\n    []\n    [1]\n    [1, 2]\n    [1, 2, ..x]\n}\n"
 ---
 let
-  inherit (builtins.import ./../gleam.nix) toList;
+  inherit (builtins.import ./../gleam.nix) toList seqAll;
   listPrepend = (builtins.import ./../gleam.nix).prepend;
   
   go =
     x:
       let
-        _'0 = toList [ ];
+        _' = toList [ ];
         _'1 = toList [ 1 ];
         _'2 = toList [ 1 2 ];
-      in listPrepend 1 (listPrepend 2 x);
+      in seqAll [ _' _'1 _'2 ] (listPrepend 1 (listPrepend 2 x));
 in {}

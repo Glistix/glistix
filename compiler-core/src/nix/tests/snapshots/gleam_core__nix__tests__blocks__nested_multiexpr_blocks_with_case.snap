@@ -3,5 +3,17 @@ source: compiler-core/src/nix/tests/blocks.rs
 expression: "\nfn go() {\n  let x = {\n    1\n    {\n      2\n      case True {\n        _ -> 3\n      }\n    }\n  }\n  x\n}\n"
 ---
 let
-  go = {}: let x = let _'0 = 1; in let _'1 = 2; in let _pat' = true; in 3; in x;
+  go =
+    {}:
+      let
+        x =
+          let
+            _' = 1;
+          in
+            builtins.seq
+              _'
+              (let
+                _'1 = 2;
+              in builtins.seq _'1 (let _pat' = true; in 3));
+      in x;
 in {}

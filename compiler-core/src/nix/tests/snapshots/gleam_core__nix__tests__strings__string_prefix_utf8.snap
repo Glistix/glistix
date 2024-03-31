@@ -3,12 +3,12 @@ source: compiler-core/src/nix/tests/strings.rs
 expression: "\npub fn go(x) {\n  case \"Θ foo bar\" {\n    \"Θ\" <> rest -> rest\n    _ -> \"\"\n  }\n  case \"🫥 is neutral dotted\" {\n    \"🫥\" <> rest -> rest\n    _ -> \"\"\n  }\n  case \"🇺🇸 is a cluster\" {\n    \"🇺🇸\" <> rest -> rest\n    _ -> \"\"\n  }\n  case \"\\\" is a an escaped quote\" {\n    \"\\\"\" <> rest -> rest\n    _ -> \"\"\n  }\n  case \"\\\\ is a an escaped backslash\" {\n    \"\\\\\" <> rest -> rest\n    _ -> \"\"\n  }\n}\n"
 ---
 let
-  inherit (builtins.import ./../gleam.nix) strHasPrefix;
+  inherit (builtins.import ./../gleam.nix) strHasPrefix seqAll;
   
   go =
     x:
       let
-        _'0 =
+        _' =
           let
             _pat' = "Θ foo bar";
           in
@@ -37,10 +37,12 @@ let
             then let rest = (builtins.substring 1 (-1) _pat''3); in rest
             else "";
       in
-        let
-          _pat''4 = "\\ is a an escaped backslash";
-        in
-          if strHasPrefix "\\" _pat''4
-          then let rest = (builtins.substring 1 (-1) _pat''4); in rest
-          else "";
+        seqAll
+          [ _' _'1 _'2 _'3 ]
+          (let
+            _pat''4 = "\\ is a an escaped backslash";
+          in
+            if strHasPrefix "\\" _pat''4
+            then let rest = (builtins.substring 1 (-1) _pat''4); in rest
+            else "");
 in { inherit go; }

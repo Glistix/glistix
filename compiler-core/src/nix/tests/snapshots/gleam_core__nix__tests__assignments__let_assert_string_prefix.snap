@@ -13,5 +13,5 @@ let
           then builtins.throw "Assignment pattern did not match"
           else null;
         id = builtins.seq _assert' (builtins.substring 5 (-1) x);
-      in id;
+      in builtins.seq _assert' id;
 in { inherit main; }

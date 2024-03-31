@@ -2,4 +2,8 @@
 source: compiler-core/src/nix/tests/blocks.rs
 expression: "\nfn go() {\n  \"one\"\n  \"two\"\n  \"three\"\n}\n"
 ---
-let go = {}: let _'0 = "one"; _'1 = "two"; in "three"; in {}
+let
+  inherit (builtins.import ./../gleam.nix) seqAll;
+  
+  go = {}: let _' = "one"; _'1 = "two"; in seqAll [ _' _'1 ] "three";
+in {}

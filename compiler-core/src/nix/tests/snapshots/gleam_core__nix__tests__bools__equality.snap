@@ -3,10 +3,12 @@ source: compiler-core/src/nix/tests/bools.rs
 expression: "\nfn go(a, b) {\n  a == True\n  a != True\n  a == False\n  a != False\n  a == a\n  a != a\n  b == Nil\n  b != Nil\n  b == b\n}\n"
 ---
 let
+  inherit (builtins.import ./../gleam.nix) seqAll;
+  
   go =
     a: b:
       let
-        _'0 = a == true;
+        _' = a == true;
         _'1 = a != true;
         _'2 = a == false;
         _'3 = a != false;
@@ -14,5 +16,5 @@ let
         _'5 = a != a;
         _'6 = b == null;
         _'7 = b != null;
-      in b == b;
+      in seqAll [ _' _'1 _'2 _'3 _'4 _'5 _'6 _'7 ] (b == b);
 in {}

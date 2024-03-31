@@ -3,7 +3,11 @@ source: compiler-core/src/nix/tests/lists.rs
 expression: "\nfn go(x, y) {\n  let assert [] = x\n  let assert [a] = x\n  let assert [1, 2] = x\n  let assert [_, #(3, b)] = y\n  let assert [head, ..tail] = y\n}\n"
 ---
 let
-  inherit (builtins.import ./../gleam.nix) listHasAtLeastLength listHasLength;
+  inherit
+    (builtins.import ./../gleam.nix)
+    listHasAtLeastLength
+    listHasLength
+    seqAll;
   
   go =
     x: y:
@@ -12,7 +16,7 @@ let
           if !(listHasLength x 0)
           then builtins.throw "Assignment pattern did not match"
           else null;
-        _'0 = builtins.seq _assert' x;
+        _' = builtins.seq _assert' x;
         _assert''1 =
           if !(listHasLength x 1)
           then builtins.throw "Assignment pattern did not match"
@@ -29,7 +33,9 @@ let
           else null;
         b = builtins.seq _assert''3 (builtins.elemAt y.tail.head 1);
       in
-        if !(listHasAtLeastLength y 1)
-        then builtins.throw "Assignment pattern did not match"
-        else y;
+        seqAll
+          [ _' _assert' _assert''1 _'1 _assert''2 _assert''3 ]
+          (if !(listHasAtLeastLength y 1)
+          then builtins.throw "Assignment pattern did not match"
+          else y);
 in {}
