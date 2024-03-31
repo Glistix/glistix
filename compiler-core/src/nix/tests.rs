@@ -23,6 +23,7 @@ mod numbers;
 mod panic;
 mod prelude;
 mod records;
+mod recursion;
 mod strings;
 mod todo;
 mod tuples;
