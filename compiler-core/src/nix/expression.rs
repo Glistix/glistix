@@ -1475,9 +1475,26 @@ fn prepend<'a, I: IntoIterator<Item = Output<'a>>>(elements: I, tail: Document<'
 where
     I::IntoIter: DoubleEndedIterator + ExactSizeIterator,
 {
-    elements.into_iter().rev().try_fold(tail, |tail, element| {
-        Ok(syntax::fn_call("listPrepend".to_doc(), [element?, tail]))
-    })
+    elements
+        .into_iter()
+        .rev()
+        .enumerate()
+        .try_fold(tail, |tail, (i, element)| {
+            // The initial tail was already generated through `wrap_child_expression`,
+            // so it will have parentheses if necessary. However, further tails are
+            // calls to `listPrepend` generated here, and therefore must be wrapped
+            // manually.
+            let wrapped_tail = if i == 0 {
+                tail
+            } else {
+                docvec!["(", tail, ")"]
+            };
+
+            Ok(syntax::fn_call(
+                "listPrepend".to_doc(),
+                [element?, wrapped_tail],
+            ))
+        })
 }
 
 /// Generates a Gleam tuple as Nix code.
