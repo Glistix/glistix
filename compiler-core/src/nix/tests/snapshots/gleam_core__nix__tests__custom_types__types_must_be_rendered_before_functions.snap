@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "\npub fn one() { One }\npub type One { One }\n"
+---
+let One = { __gleamTag = "One"; }; one = {}: One; in { inherit One one; }

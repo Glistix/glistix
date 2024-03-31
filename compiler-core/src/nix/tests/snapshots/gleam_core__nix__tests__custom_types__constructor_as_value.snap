@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "import other\npub fn main() {\n  other.Two\n}"
+---
+let
+  mod''other = builtins.import ./../other.nix;
+  
+  main = {}: mod''other.Two;
+in { inherit main; }

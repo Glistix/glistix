@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "import other\npub const main = other.Two(field: 1)\n"
+---
+let
+  mod''other = builtins.import ./../other.nix;
+  
+  main = mod''other.Two 1;
+in { inherit main; }

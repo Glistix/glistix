@@ -1,0 +1,17 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "\ntype Cat {\n  Cat(name: String, Int)\n}\n\nfn go(cat) {\n  let Cat(x, y) = cat\n  let Cat(name: x, ..) = cat\n  let Cat(y, name: x) = cat\n  x\n}\n\n"
+---
+let
+  Cat = name: x1: { __gleamTag = "Cat"; inherit name; _1 = x1; };
+  
+  go =
+    cat:
+      let
+        x = cat.name;
+        y = cat._1;
+        x'1 = cat.name;
+        x'2 = cat.name;
+        y'1 = cat._1;
+      in x'2;
+in {}
