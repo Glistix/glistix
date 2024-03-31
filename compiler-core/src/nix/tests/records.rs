@@ -13,6 +13,17 @@ pub fn get_name(person: Person) { person.name }
 }
 
 #[test]
+fn record_accessors_with_escaping() {
+    assert_nix!(
+        r#"
+pub type Person { Person(then: String, builtins: Int) }
+pub fn get_age(person: Person) { person.then }
+pub fn get_name(person: Person) { person.builtins }
+"#
+    );
+}
+
+#[test]
 fn record_accessor_multiple_variants() {
     // We can access fields on custom types with multiple variants
     assert_nix!(

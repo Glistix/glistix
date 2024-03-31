@@ -927,11 +927,11 @@ impl Generator<'_> {
 
     fn record_access<'a>(&mut self, record: &'a TypedExpr, label: &'a str) -> Output<'a> {
         let record = self.wrap_child_expression(record)?;
-        Ok(docvec![
-            record,
-            ".",
-            syntax::maybe_quoted_attr_set_label_from_identifier(label)
-        ])
+        // Escape as an identifier (that is, add `'` after the label if it
+        // would clash with a keyword or important name), since that's how
+        // we generate fields at a record constructor.
+        let escaped_label = maybe_escape_identifier_doc(label);
+        Ok(docvec![record, ".", escaped_label])
     }
 
     fn record_update<'a>(

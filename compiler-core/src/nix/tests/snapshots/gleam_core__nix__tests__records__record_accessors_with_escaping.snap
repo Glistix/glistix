@@ -1,0 +1,12 @@
+---
+source: compiler-core/src/nix/tests/records.rs
+expression: "\npub type Person { Person(then: String, builtins: Int) }\npub fn get_age(person: Person) { person.then }\npub fn get_name(person: Person) { person.builtins }\n"
+---
+let
+  Person =
+    then': builtins': { __gleamTag = "Person"; inherit then' builtins'; };
+  
+  get_age = person: person.then';
+  
+  get_name = person: person.builtins';
+in { inherit Person get_age get_name; }
