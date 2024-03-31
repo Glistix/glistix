@@ -9,4 +9,4 @@ error: Invalid Nix function
   │ ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The function `one` has an external Nix implementation but the function name
-`(x: x)` is not valid.
+`(x: x)` is not valid, as it must be a valid Nix identifier.

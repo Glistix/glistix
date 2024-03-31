@@ -2559,7 +2559,10 @@ implementation but the function name `{function}` is not valid."
                 } => {
                     let text = wrap_format!(
                         "The function `{name}` has an external Nix \
-implementation but the module path `{module}` is not valid."
+implementation but the module path `{module}` is not valid. Currently, it \
+must always be either an absolute path (`/leading/slash.nix`) or a relative \
+path (`./here.nix` or `../top.nix`) with a restricted set of ASCII characters. \
+To import from other paths, re-export in an auxiliary Nix file instead."
                     );
                     Diagnostic {
                         title: "Invalid Nix module".into(),
@@ -2585,7 +2588,8 @@ implementation but the module path `{module}` is not valid."
                 } => {
                     let text = wrap_format!(
                         "The function `{name}` has an external Nix \
-implementation but the function name `{function}` is not valid."
+implementation but the function name `{function}` is not valid, as it must be \
+a valid Nix identifier."
                     );
                     Diagnostic {
                         title: "Invalid Nix function".into(),

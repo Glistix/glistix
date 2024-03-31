@@ -706,8 +706,12 @@ fn assert_valid_nix_external(
         Some(external) => external,
     };
     // TODO(NIX): Consider allowing arbitrary paths, incl. <...> notation
+    // Currently, we force paths to be relative to something, that is,
+    // you can't import an external function from "word", but you can from
+    // "./word" or "../word". You can also import from "." or "..".
+    // We should expand this in the future.
     if !MODULE
-        .get_or_init(|| Regex::new("^[a-zA-Z0-9\\./:_-]+$").expect("regex"))
+        .get_or_init(|| Regex::new("^(?:\\.\\.?|\\.?\\.?/[a-zA-Z0-9\\./:_-]*)$").expect("regex"))
         .is_match(module)
     {
         return Err(Error::InvalidExternalNixModule {
