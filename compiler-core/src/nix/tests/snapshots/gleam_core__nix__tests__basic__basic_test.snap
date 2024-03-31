@@ -23,7 +23,7 @@ let
     x: foo: boolthing: bmong:
       let
         a = 1;
-        _''0 = foo;
+        _'0 = foo;
         a'1 = 2;
         z = toList [ (y: y) (foo a'1 a'1 50) (x: x) ];
         d = "aaa";
@@ -33,9 +33,9 @@ let
         remm = remainderInt 5 5;
         g = 0.5;
         b = a'1;
-        _''1 = foo a'1 a'1 50;
+        _'1 = foo a'1 a'1 50;
         c = let a'2 = a'1; in toList [ a'2 ];
-        _''2 = foo;
+        _'2 = foo;
         www = a'1 == 5;
         wwww = (a'1 + a'1) == (10 - (5 * 5));
         first_list = toList [ (1 < 4) (3 >= 5) ];
@@ -46,10 +46,10 @@ let
             _pipe'1 = (_capture: foo _capture a'1 50) _pipe;
           in (x: x) _pipe'1;
         pipes2 = let _pipe = a'1; in (i: i) _pipe;
-        _''3 = builtins.throw "amongus";
-        _''4 = builtins.throw "amongus";
-        _''5 = builtins.throw "panic expression evaluated";
-        _''6 = builtins.throw "This has not yet been implemented";
+        _'3 = builtins.throw "amongus";
+        _'4 = builtins.throw "amongus";
+        _'5 = builtins.throw "panic expression evaluated";
+        _'6 = builtins.throw "This has not yet been implemented";
         y = (((-500) + 10) - (-a'1)) - (-5);
         yy = toList [ (-a'1) (-5) (-y) ];
         f = (-5.5) - 5.2e-5;
@@ -79,7 +79,7 @@ let
       let
         x = {}: 5 + 5;
         y = x {};
-      in [ 1 2 3 (x: x + 1) (let _''0 = 5; _''1 = 6; _''2 = 10; in 10 + 5) ];
+      in [ 1 2 3 (x: x + 1) (let _'0 = 5; _'1 = 6; _'2 = 10; in 10 + 5) ];
   
   sumongus = 5;
 in { inherit AmogusA AmogusB AmogusC sus sumongus; }

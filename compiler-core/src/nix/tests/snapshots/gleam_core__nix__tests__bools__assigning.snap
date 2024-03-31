@@ -8,10 +8,10 @@ let
       let
         _assert' =
           if !x then builtins.throw "Assignment pattern did not match" else null;
-        _''0 = builtins.seq _assert' x;
+        _'0 = builtins.seq _assert' x;
         _assert''1 =
           if x then builtins.throw "Assignment pattern did not match" else null;
-        _''1 = builtins.seq _assert''1 x;
+        _'1 = builtins.seq _assert''1 x;
       in
         if y != null
         then builtins.throw "Assignment pattern did not match"

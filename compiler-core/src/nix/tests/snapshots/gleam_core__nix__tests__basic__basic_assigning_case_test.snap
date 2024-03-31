@@ -15,9 +15,9 @@ let
   please_match =
     x:
       if x.__gleamTag == "Simple"
-      then let s = x; in let _''0 = s; in [ (-100) (-100.0) ]
+      then let s = x; in let _'0 = s; in [ (-100) (-100.0) ]
       else if x.__gleamTag == "TupleLike"
-      then let t = x; i = x._0; f = x._1; in let _''0 = t; in [ i f ]
+      then let t = x; i = x._0; f = x._1; in let _'0 = t; in [ i f ]
       else if x.__gleamTag == "RecordLike"
       then let i = x.a; f = x.inherit'; in [ i f ]
       else if x.__gleamTag == "Mixed"
@@ -28,5 +28,5 @@ let
           f1 = x._2;
           f2 = x._3;
         in [ i1 ((f1 + f2) + f3) ]
-      else let t = x; in let _''0 = t; in [ 555 555.5 ];
+      else let t = x; in let _'0 = t; in [ 555 555.5 ];
 in { inherit Simple TupleLike RecordLike Mixed please_match; }

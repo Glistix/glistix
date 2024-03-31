@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/bools.rs
 expression: "pub fn negate(x) {\n  !{\n    123\n    x\n  }\n}"
 ---
-let negate = x: !(let _''0 = 123; in x); in { inherit negate; }
+let negate = x: !(let _'0 = 123; in x); in { inherit negate; }

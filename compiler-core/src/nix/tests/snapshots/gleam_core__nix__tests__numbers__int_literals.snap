@@ -8,12 +8,12 @@ let
   go =
     {}:
       let
-        _''0 = 1;
-        _''1 = 2;
-        _''2 = -3;
-        _''3 = 4001;
-        _''4 = parseNumber "0b00001111";
-        _''5 = parseNumber "0o17";
-        _''6 = parseNumber "0xF";
+        _'0 = 1;
+        _'1 = 2;
+        _'2 = -3;
+        _'3 = 4001;
+        _'4 = parseNumber "0b00001111";
+        _'5 = parseNumber "0o17";
+        _'6 = parseNumber "0xF";
       in 1000;
 in {}

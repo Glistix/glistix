@@ -16,7 +16,7 @@ let
   simple_test =
     x:
       let
-        _''0 = if x.__gleamTag == "SC" then Ok (Ok 100) else Error (Error 100);
+        _'0 = if x.__gleamTag == "SC" then Ok (Ok 100) else Error (Error 100);
       in
         if x.__gleamTag == "SA"
         then Ok 5

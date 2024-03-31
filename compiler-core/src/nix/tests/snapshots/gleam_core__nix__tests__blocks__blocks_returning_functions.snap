@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/blocks.rs
 expression: "\nfn b() {\n  {\n    fn(cb) { cb(1) }\n  }\n  {\n    fn(cb) { cb(2) }\n  }\n  3\n}\n"
 ---
-let b = {}: let _''0 = cb: cb 1; _''1 = cb: cb 2; in 3; in {}
+let b = {}: let _'0 = cb: cb 1; _'1 = cb: cb 2; in 3; in {}
