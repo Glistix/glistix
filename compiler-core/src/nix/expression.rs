@@ -32,6 +32,8 @@ pub(crate) struct Generator<'module> {
     pub(crate) tracker: &'module mut UsageTracker,
 }
 
+const ANONYMOUS_VAR_NAME: &str = "_'";
+
 impl<'module> Generator<'module> {
     pub fn new(
         module: &'module TypedModule,
@@ -56,7 +58,7 @@ impl<'module> Generator<'module> {
                 maybe_escape_identifier_doc(name)
             }
             Some(0) => maybe_escape_identifier_doc(name),
-            Some(n) if name == "_''" => Document::String(format!("_''{n}")),
+            Some(n) if name == ANONYMOUS_VAR_NAME => Document::String(format!("_'{n}")),
             Some(n) => Document::String(format!("{name}'{n}")),
         }
     }
@@ -68,7 +70,7 @@ impl<'module> Generator<'module> {
     }
 
     fn next_anonymous_var<'a>(&mut self) -> Document<'a> {
-        let name = "_''";
+        let name = ANONYMOUS_VAR_NAME;
         let next = self.current_scope_vars.get(name).map_or(0, |i| i + 1);
         let _ = self.current_scope_vars.insert(eco_format!("{name}"), next);
         Document::String(format!("{name}{next}"))
@@ -257,7 +259,7 @@ impl<'module> Generator<'module> {
             let dummy_assignment = if compiled.assignments.is_empty() {
                 let anonymous_var = self.next_anonymous_var();
                 Some(pattern::Assignment::reassign_subject(
-                    "_''",
+                    ANONYMOUS_VAR_NAME,
                     anonymous_var,
                     subject.clone(),
                 ))
