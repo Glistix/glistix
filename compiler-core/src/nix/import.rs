@@ -45,7 +45,7 @@ impl<'a> Imports<'a> {
 
     /// Finishes import declarations.
     /// Returns assignments to perform and names to export.
-    pub fn finish(self) -> (Document<'a>, HashSet<String>) {
+    pub fn finish(self) -> (Document<'a>, impl IntoIterator<Item = String>) {
         let imports = join(
             self.imports
                 .into_values()
@@ -55,7 +55,7 @@ impl<'a> Imports<'a> {
             break_("", " "),
         );
 
-        (imports, self.exports)
+        (imports, self.exports.into_iter().sorted())
     }
 
     pub fn is_empty(&self) -> bool {
