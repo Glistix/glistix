@@ -13,7 +13,6 @@ use crate::pretty::{nil, Document, Documentable};
 use crate::type_::{FieldMap, PatternConstructor};
 
 pub static ASSIGNMENT_VAR: &str = "_pat'";
-pub static ASSERTION_VAR: &str = "_assert'";
 
 #[derive(Debug)]
 enum Index<'a> {
@@ -87,7 +86,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
     }
 
     fn next_local_var(&mut self, name: &'a EcoString) -> Document<'a> {
-        self.expression_generator.next_local_var(name)
+        self.expression_generator.next_local_var(name, false)
     }
 
     fn local_var(&mut self, name: &'a EcoString) -> Document<'a> {
@@ -933,8 +932,10 @@ pub(crate) fn assign_subject<'a>(
         // If it's not a variable we need to assign it to a variable
         // to avoid rendering the subject expression multiple times
         _ => {
-            let subject = expression_generator
-                .next_local_var(ASSIGNMENT_VAR_ECO_STR.get_or_init(|| ASSIGNMENT_VAR.into()));
+            let subject = expression_generator.next_local_var(
+                ASSIGNMENT_VAR_ECO_STR.get_or_init(|| ASSIGNMENT_VAR.into()),
+                false,
+            );
             (subject.clone(), Some(subject))
         }
     }

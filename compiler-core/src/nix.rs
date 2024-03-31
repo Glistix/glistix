@@ -581,6 +581,10 @@ impl<'module> Generator<'module> {
         // if self.tracker.float_bit_array_segment_used {
         //     self.register_prelude_usage(&mut imports, "float64Bits", None);
         // }
+
+        if self.tracker.seq_all_used {
+            register_prelude_member("seqAll", None);
+        }
     }
 }
 
@@ -676,6 +680,7 @@ pub(crate) struct UsageTracker {
     // pub string_bit_array_segment_used: bool,
     // pub codepoint_bit_array_segment_used: bool,
     // pub float_bit_array_segment_used: bool,
+    pub seq_all_used: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

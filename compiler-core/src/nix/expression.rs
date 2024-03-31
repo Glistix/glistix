@@ -8,8 +8,8 @@ use crate::docvec;
 use crate::line_numbers::LineNumbers;
 use crate::nix::syntax::is_nix_keyword;
 use crate::nix::{
-    maybe_escape_identifier_doc, module_var_name_doc, pattern, syntax, Error, Output, UsageTracker,
-    INDENT,
+    maybe_escape_identifier_doc, maybe_escape_identifier_string, module_var_name_doc, pattern,
+    syntax, Error, Output, UsageTracker, INDENT,
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
@@ -27,12 +27,16 @@ pub(crate) struct Generator<'module> {
     line_numbers: &'module LineNumbers,
     target_support: TargetSupport,
     current_scope_vars: im::HashMap<EcoString, usize>,
+    /// Variables which must be forcibly evaluated at the end of the scope.
+    /// These include assertions and unassigned expressions.
+    strict_eval_vars: Vec<(EcoString, usize)>,
     // We register whether these features are used within an expression so that
     // the module generator can output a suitable function if it is needed.
     pub(crate) tracker: &'module mut UsageTracker,
 }
 
 const ANONYMOUS_VAR_NAME: &str = "_'";
+const ASSERTION_VAR_NAME: &str = "_assert'";
 
 impl<'module> Generator<'module> {
     pub fn new(
@@ -47,6 +51,7 @@ impl<'module> Generator<'module> {
             line_numbers,
             target_support,
             current_scope_vars,
+            strict_eval_vars: vec![],
             tracker,
         }
     }
@@ -63,17 +68,28 @@ impl<'module> Generator<'module> {
         }
     }
 
-    pub fn next_local_var<'a>(&mut self, name: &'a EcoString) -> Document<'a> {
+    pub fn next_local_var<'a>(&mut self, name: &'a EcoString, strict_eval: bool) -> Document<'a> {
         let next = self.current_scope_vars.get(name).map_or(0, |i| i + 1);
         let _ = self.current_scope_vars.insert(name.clone(), next);
+        if strict_eval {
+            self.strict_eval_vars.push((name.clone(), next));
+        }
         self.local_var(name)
     }
 
     fn next_anonymous_var<'a>(&mut self) -> Document<'a> {
         let name = ANONYMOUS_VAR_NAME;
         let next = self.current_scope_vars.get(name).map_or(0, |i| i + 1);
-        let _ = self.current_scope_vars.insert(eco_format!("{name}"), next);
-        Document::String(format!("{name}{next}"))
+        let eco_str = eco_format!("{name}");
+        let _ = self.current_scope_vars.insert(eco_str.clone(), next);
+        // Discarded expressions must be evaluated
+        self.strict_eval_vars.push((eco_str, next));
+
+        if next == 0 {
+            maybe_escape_identifier_doc(name)
+        } else {
+            Document::String(format!("{name}{next}"))
+        }
     }
 
     /// Every statement, in Nix, must be an assignment, even an expression.
@@ -190,12 +206,19 @@ impl<'module> Generator<'module> {
         // Nix assignment
         if let TypedPattern::Variable { name, .. } = pattern {
             // Subject must be rendered before the variable for variable numbering
-            let subject = self.expression(value)?;
             if in_trailing_position {
                 // No need to assign, we are being returned.
-                return Ok(subject);
+                return if self.strict_eval_vars.is_empty() {
+                    self.expression(value)
+                } else {
+                    // If there are variables to evaluate strictly,
+                    // we will be an argument to 'builtins.seq' or
+                    // 'seqAll', so wrap accordingly.
+                    self.wrap_child_expression(value)
+                };
             }
-            let nix_name = self.next_local_var(name);
+            let subject = self.expression(value)?;
+            let nix_name = self.next_local_var(name, false);
             return Ok(syntax::assignment_line(nix_name, subject));
         }
 
@@ -235,13 +258,21 @@ impl<'module> Generator<'module> {
 
             // If the value being assigned is complex and needs a subject variable,
             // assign it so it can be used within the check.
-            Ok(match subject_assignment {
+            let returning = match subject_assignment {
                 Some(name) => syntax::let_in(
                     [syntax::assignment_line(name, value)],
                     checked_subject,
                     false,
                 ),
                 None => checked_subject,
+            };
+
+            Ok(if self.strict_eval_vars.is_empty() {
+                returning
+            } else {
+                // Parameter to `builtins.seq`,
+                // so needs wrapping.
+                docvec!["(", returning, ")"]
             })
         } else {
             // If the value being assigned is complex and needs a subject variable,
@@ -252,10 +283,7 @@ impl<'module> Generator<'module> {
             };
 
             // If there are no assignments, we ensure there is at least one anonymous assignment.
-            // This is consistent with unevaluated expressions. This is a bit useless, though,
-            // since, due to Nix's lazy evaluation, the subject won't be evaluated either way,
-            // and thus this assignment will have no effect, so assertions won't run.
-            // TODO: Consider adding a "strict assertion" mode.
+            // This is consistent with unassigned expressions, and ensures they are evaluated.
             let dummy_assignment = if compiled.assignments.is_empty() {
                 let anonymous_var = self.next_anonymous_var();
                 Some(pattern::Assignment::reassign_subject(
@@ -274,8 +302,11 @@ impl<'module> Generator<'module> {
                 // an assertion. The idea is that, if the assertion fails, the variable will
                 // throw an error upon evaluation instead of returning the dummy value.
                 let assertion_var_name =
-                    ASSERTION_VAR_ECO_STR.get_or_init(|| pattern::ASSERTION_VAR.into());
-                let assertion_var = self.next_local_var(assertion_var_name);
+                    ASSERTION_VAR_ECO_STR.get_or_init(|| ASSERTION_VAR_NAME.into());
+
+                // Strictly evaluate assertions.
+                // Ensure all assertions in a function are run.
+                let assertion_var = self.next_local_var(assertion_var_name, true);
                 let assertion_assignment = syntax::assignment_line(
                     assertion_var.clone(),
                     self.pattern_checks_or_throw_doc(
@@ -331,14 +362,24 @@ impl<'module> Generator<'module> {
 
     fn block<'a>(&mut self, statements: &'a Vec1<TypedStatement>) -> Output<'a> {
         if statements.len() == 1 {
-            self.expression_from_statement(statements.first())
+            // 'expression_from_statement' must only be aware of strict vars
+            // in its scope. Here, the scope is just itself (single statement in
+            // the block), so it must not see any strict eval vars to "finish";
+            // the outer scope will take care of those.
+            let strict_vars = std::mem::take(&mut self.strict_eval_vars);
+            let expr = self.expression_from_statement(statements.first())?;
+            self.strict_eval_vars = strict_vars;
+
+            Ok(expr)
         } else {
             // Entering a new scope
             let scope = self.current_scope_vars.clone();
+            let strict_vars = std::mem::take(&mut self.strict_eval_vars);
             let output = self.statements(statements)?;
 
             // Reset scope
             self.current_scope_vars = scope;
+            self.strict_eval_vars = strict_vars;
             Ok(output)
         }
     }
@@ -375,6 +416,7 @@ impl<'module> Generator<'module> {
 
         // Entering a new scope
         let scope = self.current_scope_vars.clone();
+        let strict_vars = std::mem::take(&mut self.strict_eval_vars);
         let assignments = assignments
             .iter()
             .map(|assignment| self.assignment(assignment, false))
@@ -384,6 +426,7 @@ impl<'module> Generator<'module> {
 
         // Exiting scope
         self.current_scope_vars = scope;
+        self.strict_eval_vars = strict_vars;
 
         Ok(syntax::let_in(assignments, body, false))
     }
@@ -507,15 +550,44 @@ impl<'module> Generator<'module> {
     /// Outputs the expression which would replace a statement if it were the
     /// last one.
     fn expression_from_statement<'a>(&mut self, statement: &'a TypedStatement) -> Output<'a> {
-        match statement {
-            Statement::Expression(expression) => self.expression(expression),
+        let final_expression = match statement {
+            Statement::Expression(expression) => {
+                if self.strict_eval_vars.is_empty() {
+                    self.expression(expression)?
+                } else {
+                    self.wrap_child_expression(expression)?
+                }
+            }
 
-            Statement::Assignment(assignment) => self.assignment(assignment, true),
+            Statement::Assignment(assignment) => self.assignment(assignment, true)?,
 
             Statement::Use(_) => {
                 unreachable!("use statements must not be present for Nix generation")
             }
-        }
+        };
+
+        let mut strict_eval_vars = std::mem::take(&mut self.strict_eval_vars)
+            .into_iter()
+            .map(|(name, number)| owned_local_var(name, number));
+
+        Ok(match (strict_eval_vars.next(), strict_eval_vars.next()) {
+            (None, _) => {
+                // No variable to evaluate strictly, so the final expression
+                // is directly emitted
+                final_expression
+            }
+            (Some(first_var), None) => {
+                // Emit 'builtins.seq var returned'
+                syntax::fn_call("builtins.seq".to_doc(), [first_var, final_expression])
+            }
+            (Some(first_var), Some(second_var)) => {
+                // Emit 'seqAll [ var1 var2 ] returned'
+                self.tracker.seq_all_used = true;
+                let seq_vars =
+                    syntax::list([first_var, second_var].into_iter().chain(strict_eval_vars));
+                syntax::fn_call("seqAll".to_doc(), [seq_vars, final_expression])
+            }
+        })
     }
 
     /// Some expressions in Nix may be displayed with spaces.
@@ -690,6 +762,7 @@ impl Generator<'_> {
 
     pub fn fn_<'a>(&mut self, arguments: &'a [TypedArg], body: &'a [TypedStatement]) -> Output<'a> {
         let scope = self.current_scope_vars.clone();
+        let strict_vars = std::mem::take(&mut self.strict_eval_vars);
         for name in arguments.iter().flat_map(Arg::get_variable_name) {
             let _ = self.current_scope_vars.insert(name.clone(), 0);
         }
@@ -699,6 +772,7 @@ impl Generator<'_> {
 
         // Reset scope
         self.current_scope_vars = scope;
+        self.strict_eval_vars = strict_vars;
 
         let arguments = if arguments.is_empty() {
             // A function without args takes a single empty set as a parameter.
@@ -1529,5 +1603,14 @@ pub fn maybe_quoted_attr_set_label(label: &str) -> Document<'_> {
         string_without_escapes(label)
     } else {
         label.to_doc()
+    }
+}
+
+/// Borrow-less version of the generator's `local_var`.
+fn owned_local_var<'a>(name: EcoString, next: usize) -> Document<'a> {
+    match next {
+        0 => Document::String(maybe_escape_identifier_string(&name)),
+        n if name == ANONYMOUS_VAR_NAME => Document::String(format!("_'{n}")),
+        n => Document::String(format!("{name}'{n}")),
     }
 }

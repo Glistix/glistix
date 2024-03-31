@@ -70,6 +70,14 @@ let
   # @internal
   parseEscape = content: parseTOML "\"${content}\"";
 
+  # @internal
+  # Strictly evaluates each expression and returns the second parameter.
+  seqAll =
+    exprs: returning:
+      builtins.seq
+        (builtins.foldl' (acc: elem: builtins.seq elem acc) null exprs)
+        returning;
+
   # --- bit array ---
   BitArray =
     buffer:
@@ -135,6 +143,7 @@ in {
     strHasPrefix
     parseNumber
     parseEscape
+    seqAll
     sizedInt
     toBitArray
     bitArrayByteSize;
