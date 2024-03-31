@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"./ffi.nix\", \"then\")\npub fn then(a: a) -> b\n\n@external(nix, \"./ffi.nix\", \"inherit\")\npub fn escaped_inherit(a: a) -> b\n\n@external(nix, \"./ffi.nix\", \"inherit'\")\npub fn inherit(a: a) -> b\n\n@external(nix, \"./ffi.nix\", \"builtins\")\npub fn not_escaped(a: a) -> b\n\n@external(nix, \"./ffi.nix\", \"a'b\")\npub fn also_not_escaped(a: a) -> b\n"
+---
+let
+  then' = (builtins.import ./ffi.nix)."then";
+  escaped_inherit = (builtins.import ./ffi.nix)."inherit";
+  inherit' = (builtins.import ./ffi.nix).inherit';
+  not_escaped = (builtins.import ./ffi.nix).builtins;
+  also_not_escaped = (builtins.import ./ffi.nix).a'b;
+in { inherit also_not_escaped escaped_inherit inherit' not_escaped then'; }
