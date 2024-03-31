@@ -13,7 +13,7 @@ use crate::nix::{
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
-use ecow::{eco_format, EcoString};
+use ecow::EcoString;
 use itertools::Itertools;
 use regex::Regex;
 use std::borrow::Cow;
@@ -78,18 +78,12 @@ impl<'module> Generator<'module> {
     }
 
     fn next_anonymous_var<'a>(&mut self) -> Document<'a> {
-        let name = ANONYMOUS_VAR_NAME;
-        let next = self.current_scope_vars.get(name).map_or(0, |i| i + 1);
-        let eco_str = eco_format!("{name}");
-        let _ = self.current_scope_vars.insert(eco_str.clone(), next);
-        // Discarded expressions must be evaluated
-        self.strict_eval_vars.push((eco_str, next));
+        static ANONYMOUS_VAR_ECO_STR: OnceLock<EcoString> = OnceLock::new();
+        let name = ANONYMOUS_VAR_ECO_STR.get_or_init(|| ANONYMOUS_VAR_NAME.into());
 
-        if next == 0 {
-            maybe_escape_identifier_doc(name)
-        } else {
-            Document::String(format!("{name}{next}"))
-        }
+        // Discarded expressions must be evaluated.
+        // Otherwise, side effects won't run.
+        self.next_local_var(name, true)
     }
 
     /// Every statement, in Nix, must be an assignment, even an expression.
