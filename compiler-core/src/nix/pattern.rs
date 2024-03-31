@@ -828,7 +828,7 @@ impl<'a> Check<'a> {
                     path.into_doc_with_subject(subject),
                     ".__gleamTag",
                     operator,
-                    expression::string_without_escapes(kind)
+                    syntax::string_without_escapes_or_backslashes(kind)
                 ]
             }
 

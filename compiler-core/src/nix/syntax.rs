@@ -94,6 +94,39 @@ pub fn sanitize_string(value: &str) -> Cow<'_, str> {
     }
 }
 
+/// Generates a valid Nix string from some string contents.
+/// Assumes said contents won't include any escape sequences,
+/// any backslashes or any double quotes.
+/// This is meant to create strings from valid Gleam identifiers
+/// without having to check for backslashes and double quotes each time.
+pub fn string_without_escapes_or_backslashes(value: &str) -> Document<'_> {
+    debug_assert!(!value.contains(['\\', '"']));
+
+    match sanitize_string(value) {
+        Cow::Owned(string) => Document::String(string),
+        Cow::Borrowed(value) => value.to_doc(),
+    }
+    .surround("\"", "\"")
+}
+
+/// Generates a valid Nix string escaping any backslashes or quotes,
+/// thus printing escape sequences literally. Additionally,
+/// sanitizes the string such that newlines become `\n` and
+/// `${` becomes `\${`.
+pub fn string_escaping_backslashes_and_quotes(value: &str) -> Document<'_> {
+    if value.contains('\\') || value.contains('"') {
+        let replaced_value = value.replace('\\', "\\\\").replace('"', "\\\"");
+
+        match sanitize_string(&replaced_value) {
+            Cow::Owned(string) => Document::String(string),
+            Cow::Borrowed(_) => Document::String(replaced_value),
+        }
+        .surround("\"", "\"")
+    } else {
+        string_without_escapes_or_backslashes(value)
+    }
+}
+
 /// Produces an assignment line in Nix:
 ///
 /// ```nix
@@ -264,4 +297,39 @@ pub fn is_nix_keyword(word: &str) -> bool {
         // Keywords and reserved words
         "if" | "then" | "else" | "assert" | "with" | "let" | "in" | "rec" | "inherit" | "or"
     )
+}
+
+/// Pattern with valid characters in a Nix identifier.
+/// Make sure to combine this with `is_nix_keyword`.
+fn nix_is_identifier_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN
+        .get_or_init(|| Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_'\-]*$").expect("regex should be valid"))
+}
+
+/// Checks if the given string is syntactically a valid Nix identifier.
+/// Combine this with `is_nix_keyword` to make sure the string is not a keyword.
+pub fn is_nix_identifier_or_keyword(string: &str) -> bool {
+    nix_is_identifier_pattern().is_match(string)
+}
+
+/// If the label would be a keyword, it is quoted.
+/// Assumes the label is a valid Gleam identifier, thus doesn't check for other
+/// invalid attribute names.
+pub fn maybe_quoted_attr_set_label_from_identifier(label: &str) -> Document<'_> {
+    if is_nix_keyword(label) {
+        string_without_escapes_or_backslashes(label)
+    } else {
+        label.to_doc()
+    }
+}
+
+/// If the label would be a keyword or not an identifier, it is quoted.
+/// Otherwise, it is kept as is.
+pub fn maybe_quoted_attr_set_label(label: &str) -> Document<'_> {
+    if is_nix_keyword(label) || !is_nix_identifier_or_keyword(label) {
+        string_escaping_backslashes_and_quotes(label)
+    } else {
+        label.to_doc()
+    }
 }

@@ -287,7 +287,7 @@ impl<'module> Generator<'module> {
         let name = maybe_escape_identifier_doc(&constructor.name);
         let tag_field = syntax::assignment_line(
             GLEAM_TAG_FIELD_NAME.to_doc(),
-            expression::string_without_escapes(&constructor.name),
+            syntax::string_without_escapes_or_backslashes(&constructor.name),
         );
 
         if constructor.arguments.is_empty() {
@@ -434,6 +434,7 @@ impl<'module> Generator<'module> {
         }
     }
 
+    /// Register an import from a Gleam module.
     fn register_import<'a>(
         &mut self,
         imports: &mut Imports<'a>,
@@ -462,6 +463,14 @@ impl<'module> Generator<'module> {
                 self.register_in_scope(n);
                 maybe_escape_identifier_doc(n)
             });
+
+            // Here we escape as an identifier, not as an arbitrary string,
+            // since we're using Gleam's built-in import mechanism, which can
+            // only import identifiers (and variables can be bound to the
+            // imported names). This is different from functions imported through
+            // @external, which can have arbitrary names, but that's OK since
+            // we always rename the imported function when it wouldn't match
+            // the chosen identifier for the function receiving @external.
             let name = maybe_escape_identifier_doc(&i.name);
             Member { name, alias }
         });
@@ -480,7 +489,10 @@ impl<'module> Generator<'module> {
     ) {
         let needs_escaping = !is_usable_nix_identifier(name);
         let member = Member {
-            name: fun.to_doc(),
+            // External functions can have arbitrary names in Nix,
+            // including keywords and whatnot, so we escape them
+            // using quotes.
+            name: syntax::maybe_quoted_attr_set_label(fun),
             alias: if name == fun && !needs_escaping {
                 None
             } else if needs_escaping {
@@ -499,8 +511,16 @@ impl<'module> Generator<'module> {
     fn register_used_prelude_functions(&mut self, imports: &mut Imports<'_>) {
         let path = self.import_path(&self.module.type_info.package, PRELUDE_MODULE_NAME);
         let mut register_prelude_member = |name: &'static str, alias: Option<&'static str>| {
+            debug_assert!(
+                is_usable_nix_identifier(name) && syntax::is_nix_identifier_or_keyword(name)
+                    || alias.is_some()
+            );
+
             let member = Member {
-                name: name.to_doc(),
+                // Assumes we will always provide an alias when the name
+                // would be an invalid identifier or would otherwise clash with
+                // a keyword or important variable name (checked above).
+                name: syntax::maybe_quoted_attr_set_label(name),
                 alias: alias.map(|a| a.to_doc()),
             };
             imports.register_module(path.clone(), [], [member]);

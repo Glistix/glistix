@@ -6,7 +6,6 @@ use crate::ast::{
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
-use crate::nix::syntax::is_nix_keyword;
 use crate::nix::{
     maybe_escape_identifier_doc, maybe_escape_identifier_string, module_var_name_doc, pattern,
     syntax, Error, Output, UsageTracker, INDENT,
@@ -928,7 +927,11 @@ impl Generator<'_> {
 
     fn record_access<'a>(&mut self, record: &'a TypedExpr, label: &'a str) -> Output<'a> {
         let record = self.wrap_child_expression(record)?;
-        Ok(docvec![record, ".", maybe_quoted_attr_set_label(label)])
+        Ok(docvec![
+            record,
+            ".",
+            syntax::maybe_quoted_attr_set_label_from_identifier(label)
+        ])
     }
 
     fn record_update<'a>(
@@ -941,7 +944,7 @@ impl Generator<'_> {
             .iter()
             .map(|TypedRecordUpdateArg { label, value, .. }| {
                 (
-                    maybe_quoted_attr_set_label(label),
+                    syntax::maybe_quoted_attr_set_label_from_identifier(label),
                     self.wrap_child_expression(value),
                 )
             });
@@ -1342,18 +1345,6 @@ pub fn string<'a>(value: &'a str, tracker: &mut UsageTracker) -> Document<'a> {
     .surround("\"", "\"")
 }
 
-/// Generates a valid Nix string from some string contents.
-/// Assumes said contents won't include any escape sequences
-/// (in particular, any backslashes), therefore the tracker
-/// isn't needed.
-pub fn string_without_escapes(value: &str) -> Document<'_> {
-    match syntax::sanitize_string(value) {
-        Cow::Owned(string) => Document::String(string),
-        Cow::Borrowed(value) => value.to_doc(),
-    }
-    .surround("\"", "\"")
-}
-
 fn form_feed_or_unicode_escape_sequence_pattern() -> &'static Regex {
     static PATTERN: OnceLock<Regex> = OnceLock::new();
     PATTERN.get_or_init(|| {
@@ -1587,17 +1578,6 @@ pub fn fun_args(args: &'_ [TypedArg]) -> Document<'_> {
         }
         Some(name) => maybe_escape_identifier_doc(name),
     }))
-}
-
-/// If the label would be a keyword, it is quoted.
-/// Assumes the label is a valid Gleam identifier, thus doesn't check for other
-/// invalid attribute names.
-pub fn maybe_quoted_attr_set_label(label: &str) -> Document<'_> {
-    if is_nix_keyword(label) {
-        string_without_escapes(label)
-    } else {
-        label.to_doc()
-    }
 }
 
 /// Borrow-less version of the generator's `local_var`.
