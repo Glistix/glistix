@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "import inherit.{with}\n\npub fn in() {\n  with()\n}\n"
+---
+let
+  mod''inherit' = builtins.import ./../inherit.nix;
+  inherit (builtins.import ./../inherit.nix) with';
+  
+  in' = {}: with' {};
+in { inherit in'; }

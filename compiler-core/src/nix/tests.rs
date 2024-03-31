@@ -17,6 +17,7 @@ mod blocks;
 mod bools;
 mod case;
 mod case_clause_guards;
+mod functions;
 mod modules;
 mod numbers;
 mod panic;
