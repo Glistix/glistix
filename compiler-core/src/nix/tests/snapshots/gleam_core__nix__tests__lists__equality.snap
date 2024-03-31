@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/nix/tests/lists.rs
+expression: "\nfn go() {\n  [] == [1]\n  [] != [1]\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) toList;
+  
+  go =
+    {}:
+      let
+        _'0 = (toList [ ]) == (toList [ 1 ]);
+      in (toList [ ]) != (toList [ 1 ]);
+in {}

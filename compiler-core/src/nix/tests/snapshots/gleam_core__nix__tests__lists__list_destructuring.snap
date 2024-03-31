@@ -1,0 +1,35 @@
+---
+source: compiler-core/src/nix/tests/lists.rs
+expression: "\nfn go(x, y) {\n  let assert [] = x\n  let assert [a] = x\n  let assert [1, 2] = x\n  let assert [_, #(3, b)] = y\n  let assert [head, ..tail] = y\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) listHasAtLeastLength listHasLength;
+  
+  go =
+    x: y:
+      let
+        _assert' =
+          if !(listHasLength x 0)
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        _'0 = builtins.seq _assert' x;
+        _assert''1 =
+          if !(listHasLength x 1)
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        a = builtins.seq _assert''1 x.head;
+        _assert''2 =
+          if !(listHasLength x 2) || x.head != 1 || x.tail.head != 2
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        _'1 = builtins.seq _assert''2 x;
+        _assert''3 =
+          if !(listHasLength y 2) || (builtins.elemAt y.tail.head 0) != 3
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        b = builtins.seq _assert''3 (builtins.elemAt y.tail.head 1);
+      in
+        if !(listHasAtLeastLength y 1)
+        then builtins.throw "Assignment pattern did not match"
+        else y;
+in {}

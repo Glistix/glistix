@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/lists.rs
+expression: "\nfn go(x) {\n    [{True 1}]\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) toList;
+  
+  go = x: toList [ (let _'0 = true; in 1) ];
+in {}
