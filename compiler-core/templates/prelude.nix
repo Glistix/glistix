@@ -78,7 +78,16 @@ let
         (builtins.foldl' (acc: elem: builtins.seq elem acc) null exprs)
         returning;
 
-  # --- bit array ---
+  # --- bit array and related definitions ---
+
+  UtfCodepoint =
+    value:
+      {
+        __gleamTag = "UtfCodepoint";
+        __gleamBuiltIn = "UtfCodepoint";
+        inherit value;
+      };
+
   BitArray =
     buffer:
       if !(builtins.isList buffer)
@@ -129,6 +138,7 @@ in {
   inherit
     Ok
     Error
+    UtfCodepoint
     BitArray
     isOk
     remainderInt
