@@ -1033,6 +1033,16 @@ impl Generator<'_> {
                         ])
                     }
 
+                    // UTF8 codepoints
+                    [BitArrayOption::Utf8Codepoint { .. }] => {
+                        self.tracker.codepoint_bit_array_segment_used = true;
+                        Ok(docvec![
+                            "(",
+                            syntax::fn_call("codepointBits".to_doc(), [value]),
+                            ")"
+                        ])
+                    }
+
                     // Bit strings
                     [BitArrayOption::Bytes { .. } | BitArrayOption::Bits { .. }] => {
                         Ok(docvec![value, ".buffer"])

@@ -244,6 +244,57 @@ let
       in
         builtins.genList (i: byteStringToInt (charAt i)) (builtins.stringLength s);
 
+  # @internal
+  # Convert a codepoint to an array of UTF-8 bytes as unsigned 8-bit integers.
+  codepointBits =
+    let
+      last1Byte = 127;  # 0x007f
+      last2Bytes = 2047;  # 0x07ff
+      last3Bytes = 65535;  # 0xffff
+      last4Bytes = 1114111;  # 0x10ffff
+      oneOneHeader = 128;  # 0b1000_0000
+      twoOnesHeader = 128 + 64;  # 0b1100_0000
+      threeOnesHeader = 128 + 64 + 32;  # 0b1110_0000
+      fourOnesHeader = 128 + 64 + 32 + 16;  # 0b1111_0000
+      withMask = builtins.bitAnd;
+      maskHalfByte0 = withMask 15;                                 # 0x00000f
+      maskHalfByte1h1 = n: (withMask 48 n) / 16;                   # 0x000030 (lower half) >> 4
+      maskHalfByte1h2 = n: (withMask 192 n) / (16*4);              # 0x0000c0 (higher half) >> 6
+      maskHalfByte2 = n: (withMask 3840 n) / (16*16);              # 0x000f00 >> 16
+      maskHalfByte3 = n: (withMask 61440 n) / (16*16*16);          # 0x00f000 >> 16
+      maskHalfByte4h1 = n: (withMask 196608 n) / (16*16*16*16);    # 0x030000 (lower half) >> 64
+      maskHalfByte4h2 = n: (withMask 786432 n) / (16*16*16*16*4);  # 0x0c0000 (higher half) >> 96
+      maskHalfByte5 = n: (withMask 15728640 n) / (16*16*16*16*16); # 0xf00000 >> 256
+    in
+      c:
+        if c <= last1Byte
+        then [ c ]
+        else if c > last4Bytes
+        then [ 0 ]
+        else if c <= last2Bytes
+        then
+          [
+            # (110)22211 (10)110000
+            (twoOnesHeader + (maskHalfByte2 c) * 4 + (maskHalfByte1h2 c))
+            (oneOneHeader + (maskHalfByte1h1 c) * 16 + (maskHalfByte0 c))
+          ]
+        else if c <= last3Bytes
+        then
+          [
+            # (1110)3333 (10)222211 (10)110000
+            (threeOnesHeader + (maskHalfByte3 c))
+            (oneOneHeader + (maskHalfByte2 c) * 4 + (maskHalfByte1h2 c))
+            (oneOneHeader + (maskHalfByte1h1 c) * 16 + (maskHalfByte0 c))
+          ]
+        else
+          [
+            # (11110)544 (10)443333 (10)222211 (10)110000
+            (fourOnesHeader + (maskHalfByte5 c) * 4 + (maskHalfByte4h2 c))
+            (oneOneHeader + (maskHalfByte4h1 c) * 16 + (maskHalfByte3 c))
+            (oneOneHeader + (maskHalfByte2 c) * 4 + (maskHalfByte1h2 c))
+            (oneOneHeader + (maskHalfByte1h1 c) * 16 + (maskHalfByte0 c))
+          ];
+
   # --- bit array ---
 
   BitArray =
@@ -313,6 +364,7 @@ in {
     parseEscape
     seqAll
     stringBits
+    codepointBits
     sizedInt
     toBitArray
     bitArrayByteSize;

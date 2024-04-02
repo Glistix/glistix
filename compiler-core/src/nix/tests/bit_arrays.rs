@@ -110,16 +110,16 @@ fn go(x) {
     );
 }
 
-// #[test]
-// fn utf8_codepoint() {
-//     assert_nix!(
-//         r#"
-// fn go(x) {
-//   <<x:utf8_codepoint, "Gleam":utf8>>
-// }
-// "#,
-//     );
-// }
+#[test]
+fn utf8_codepoint() {
+    assert_nix!(
+        r#"
+fn go(x) {
+  <<x:utf8_codepoint, "Gleam":utf8>>
+}
+"#,
+    );
+}
 
 #[test]
 fn bit_string() {
