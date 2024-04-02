@@ -99,16 +99,16 @@ fn go(x) {
     );
 }
 
-// #[test]
-// fn utf8() {
-//     assert_nix!(
-//         r#"
-// fn go(x) {
-//   <<256, 4, x, "Gleam":utf8>>
-// }
-// "#,
-//     );
-// }
+#[test]
+fn utf8() {
+    assert_nix!(
+        r#"
+fn go(x) {
+  <<256, 4, x, "Gleam":utf8>>
+}
+"#,
+    );
+}
 
 // #[test]
 // fn utf8_codepoint() {

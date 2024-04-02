@@ -590,10 +590,10 @@ impl<'module> Generator<'module> {
             register_prelude_member("sizedInt", None);
         }
 
-        // if self.tracker.string_bit_array_segment_used {
-        //     self.register_prelude_usage(&mut imports, "stringBits", None);
-        // }
-        //
+        if self.tracker.string_bit_array_segment_used {
+            register_prelude_member("stringBits", None);
+        }
+
         // if self.tracker.codepoint_bit_array_segment_used {
         //     self.register_prelude_usage(&mut imports, "codepointBits", None);
         // }
@@ -697,7 +697,7 @@ pub(crate) struct UsageTracker {
     // pub object_equality_used: bool,
     pub bit_array_literal_used: bool,
     pub sized_integer_segment_used: bool,
-    // pub string_bit_array_segment_used: bool,
+    pub string_bit_array_segment_used: bool,
     // pub codepoint_bit_array_segment_used: bool,
     // pub float_bit_array_segment_used: bool,
     pub seq_all_used: bool,

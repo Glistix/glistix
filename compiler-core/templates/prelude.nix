@@ -78,7 +78,7 @@ let
         (builtins.foldl' (acc: elem: builtins.seq elem acc) null exprs)
         returning;
 
-  # --- bit array and related definitions ---
+  # --- UTF-8 ---
 
   UtfCodepoint =
     value:
@@ -87,6 +87,164 @@ let
         __gleamBuiltIn = "UtfCodepoint";
         inherit value;
       };
+
+  decToHex =
+    let
+      digitMap = [ "0" "1" "2" "3" "4" "5" "6" "7" "8" "9" "A" "B" "C" "D" "E" "F" ];
+      remHex = n: n - (16 * (n / 16));
+    in
+      n:
+        let
+          lastDigitValue = remHex n;
+          lastDigit = builtins.elemAt digitMap lastDigitValue;
+          otherDigits = n / 16;
+        in
+          if n < 16
+          then lastDigit
+          else decToHex otherDigits + lastDigit;
+
+  # @internal
+  # Converts a codepoint's integer value to its UTF-8 string representation
+  # by invoking a \U(hex) escape sequence within TOML and reading it.
+  # Using TOML over JSON is necessary because JSON restricts the \u escape
+  # sequence to up to 4 hex digits instead of 6, requiring workarounds.
+  intCodepointToStringInternal =
+    n:
+      let
+        hex = decToHex n;
+        zeroes = builtins.substring 0 (8 - (builtins.stringLength hex)) "00000000";
+      in (builtins.fromTOML "x = \"\\U${zeroes}${hex}\"").x;
+
+
+  # @internal
+  asciiChars = builtins.genList (i: intCodepointToStringInternal i) 128;
+
+  # @internal
+  # See comment at 'intCodepointToStringInternal'.
+  # Also applies a fast ASCII table lookup if possible.
+  intCodepointToString =
+    n:
+      if n < 128
+      then builtins.elemAt asciiChars n
+      else intCodepointToStringInternal n;
+
+  # @internal
+  # Prepares a table mapping each possible UTF-8 byte as a string to the corresponding integers.
+  # Valid UTF-8 byte integers include 0-243, excluding 192 and 193.
+  # What this function does is generate one UTF-8 codepoint for each valid UTF-8 byte and extract
+  # a single byte from that codepoint's representation as a string.
+  # We then map each pair (char, value) through the provided function. For example, a pair can be
+  # mapped to '{ name = char; value = value; }' in order to be able to use 'builtins.listToAttrs'
+  # to generate an attribute set mapping each single UTF-8 byte string to its integer value.
+  # Then, we return arrays corresponding to each kind of UTF-8 byte
+  # (ASCII, 10..., 110..., 1110... or 11110...). This is because it might be necessary to insert some
+  # padding between 10... and 110... characters before joining them into a single array, given that bytes
+  # 192 and 193, a.k.a. 0b1100_0000 and 0b1100_0001, do not appear in any valid UTF-8 codepoint's representation.
+  utf8ByteTableGen = charValueMapper:
+    let
+      charAt = i: builtins.substring i 1;
+      first10Codepoint = 8 * 16; # 0x0080
+      first110Codepoint = 8 * 16; # 0x0080
+      first1110Codepoint = 8 * 16 * 16; # 0x0800
+      first11110Codepoint = 16 * 16 * 16 * 16; # 0x10000
+      minInvalidChar = 55296; # 0xd800 - 0xdfff (57343) are invalid UTF-8
+      asciiBytes = builtins.genList (i: charValueMapper { char = builtins.elemAt asciiChars i; value = i; }) 128;
+
+      # Generator for arrays of UTF-8 bytes following a certain pattern. Generates the codepoints
+      # necessary to extract their bytes. 'byteIndex' is the index of the byte to extract from each
+      # generated codepoint; 'k_i' is a function which converts the current iteration index to the
+      # corresponding codepoint (usually in the form 'firstCodepointInRange + offsetToIncreaseByte * i');
+      # 'v_i' is a function which returns the actual numeric value of the byte we expect to extract
+      # (usually in the form 'firstPossibleByte + i'); and 'max_i' is the maximum iteration number
+      # (amount of bytes to generate - 1).
+      codepointGen =
+        { byteIndex, k_i, v_i, max_i }:
+          let
+            gen =
+              i:
+                let
+                  code = k_i i;
+
+                  # It appears that 0xd800 is actually reached in our algorithm for
+                  # bytes starting with 1110... after 13 iterations.
+                  # This results in a missing 237 byte (with leading 'd' in hexadecimal).
+                  # Therefore, go back to 0xd799 so we still get 'd'.
+                  actualCode =
+                    if code == minInvalidChar
+                    then minInvalidChar - 1
+                    else code;
+
+                  # Obtain the byte by converting the codepoint to a string and obtaining
+                  # the byte at the relevant index.
+                  character = charAt byteIndex (intCodepointToStringInternal actualCode);
+                in charValueMapper { char = character; value = v_i i; };
+          in builtins.genList gen (max_i + 1);
+
+      # 0x0080 + 0..63, converted to string, will generate all possible 0x10... bytes at the second byte.
+      startsWith10 =
+        codepointGen { byteIndex = 1; k_i = i: first10Codepoint + i; v_i = i: first10Codepoint + i; max_i = 63; };
+
+      # 0x0080 + 64 * (0..29), converted to string, will generate all possible 0x110... bytes at the first byte.
+      startsWith110 =
+        codepointGen { byteIndex = 0; k_i = i: first110Codepoint + 64 * i; v_i = i: 194 + i; max_i = 29; };
+
+      # 0x0800 + 4096 * (0..15), converted to string, will generate all possible 0x1110... bytes at the first byte.
+      startsWith1110 =
+        codepointGen { byteIndex = 0; k_i = i: first1110Codepoint + 4096 * i; v_i = i: 224 + i; max_i = 15; };
+
+      # 0x10000 + 262144 * (0..3), converted to string, will generate all possible 0x11110... bytes at the first byte.
+      startsWith11110 =
+        codepointGen { byteIndex = 0; k_i = i: first11110Codepoint + 262144 * i; v_i = i: 240 + i; max_i = 3; };
+    in { inherit asciiBytes startsWith10 startsWith110 startsWith1110 startsWith11110; };
+
+  # @internal
+  # Attribute set mapping each possible UTF-8 byte as a string to its integer value.
+  # Used to quickly map bytes in a string to integers.
+  utf8ByteTable =
+    let
+      # Convert each (char, value) to a format understood by 'builtins.listToAttrs'.
+      gen = { char, value }: { name = char; inherit value; };
+
+      # Join all UTF-8 byte kinds into one large array of name/value pairs.
+      listsToAttrsList =
+        { asciiBytes, startsWith10, startsWith110, startsWith1110, startsWith11110 }:
+          asciiBytes ++ startsWith10 ++ startsWith110 ++ startsWith1110 ++ startsWith11110;
+    in builtins.listToAttrs (listsToAttrsList (utf8ByteTableGen gen));
+
+  # @internal
+  # The inverse of 'utf8ByteTable'.
+  # Contains a list with all possible UTF-8 bytes. Their indices correspond to their integer values.
+  # As such, one can index into this list to convert an integer to the corresponding UTF-8 byte.
+  # Note that only indices up to 243 are valid, excluding 192 and 193.
+  utf8ByteInvTable =
+    let
+      # In the resulting arrays, just keep the byte strings, as we'll use list indexing instead of
+      # attribute sets.
+      gen = { char, value }: char;
+
+      # Bytes 192 and 193 don't exist, so we insert two empty strings at their positions
+      # to "pad" indices. All other bytes (up to 243) are present and sorted in ascending order.
+      supplement = [ "" "" ];
+
+      # Join all the lists of UTF-8 byte kinds, with the padding above where 192 and 193 would be.
+      genList =
+        { asciiBytes, startsWith10, startsWith110, startsWith1110, startsWith11110 }:
+          asciiBytes ++ startsWith10 ++ supplement ++ startsWith110 ++ startsWith1110 ++ startsWith11110;
+    in genList (utf8ByteTableGen gen);
+
+  # @internal
+  # Convert a string to an array of UTF-8 bytes as unsigned 8-bit integers.
+  stringBits =
+    s:
+      let
+        charAt = n: builtins.substring n 1 s;
+
+        # Invalid UTF-8 bytes are represented as 0 instead of throwing.
+        byteStringToInt = char: utf8ByteTable."${char}" or 0;
+      in
+        builtins.genList (i: byteStringToInt (charAt i)) (builtins.stringLength s);
+
+  # --- bit array ---
 
   BitArray =
     buffer:
@@ -154,6 +312,7 @@ in {
     parseNumber
     parseEscape
     seqAll
+    stringBits
     sizedInt
     toBitArray
     bitArrayByteSize;

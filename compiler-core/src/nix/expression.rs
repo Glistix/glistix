@@ -1023,6 +1023,16 @@ impl Generator<'_> {
                         ])
                     }
 
+                    // UTF8 strings
+                    [BitArrayOption::Utf8 { .. }] => {
+                        self.tracker.string_bit_array_segment_used = true;
+                        Ok(docvec![
+                            "(",
+                            syntax::fn_call("stringBits".to_doc(), [value]),
+                            ")"
+                        ])
+                    }
+
                     // Bit strings
                     [BitArrayOption::Bytes { .. } | BitArrayOption::Bits { .. }] => {
                         Ok(docvec![value, ".buffer"])
