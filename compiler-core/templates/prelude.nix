@@ -245,8 +245,8 @@ let
         builtins.genList (i: byteStringToInt (charAt i)) (builtins.stringLength s);
 
   # @internal
-  # Convert a codepoint to an array of UTF-8 bytes as unsigned 8-bit integers.
-  codepointBits =
+  # Convert a codepoint (integer) to an array of UTF-8 bytes as unsigned 8-bit integers.
+  intCodepointBits =
     let
       last1Byte = 127;  # 0x007f
       last2Bytes = 2047;  # 0x07ff
@@ -294,6 +294,10 @@ let
             (oneOneHeader + (maskHalfByte2 c) * 4 + (maskHalfByte1h2 c))
             (oneOneHeader + (maskHalfByte1h1 c) * 16 + (maskHalfByte0 c))
           ];
+
+  # @internal
+  # Convert a codepoint (UtfCodepoint) to an array of UTF-8 bytes as unsigned 8-bit integers.
+  codepointBits = c: intCodepointBits c.value;
 
   # --- bit array ---
 
