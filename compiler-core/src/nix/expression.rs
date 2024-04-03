@@ -1528,6 +1528,26 @@ fn constant_bit_array<'a>(
                     ])
                 }
 
+                // UTF8 strings
+                [BitArrayOption::Utf8 { .. }] => {
+                    tracker.string_bit_array_segment_used = true;
+                    Ok(docvec![
+                        "(",
+                        syntax::fn_call("stringBits".to_doc(), [value]),
+                        ")"
+                    ])
+                }
+
+                // UTF8 codepoints
+                [BitArrayOption::Utf8Codepoint { .. }] => {
+                    tracker.codepoint_bit_array_segment_used = true;
+                    Ok(docvec![
+                        "(",
+                        syntax::fn_call("codepointBits".to_doc(), [value]),
+                        ")"
+                    ])
+                }
+
                 // Bit strings
                 [BitArrayOption::Bits { .. }] => Ok(docvec![value, ".buffer"]),
 

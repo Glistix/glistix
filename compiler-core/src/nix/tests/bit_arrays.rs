@@ -142,3 +142,24 @@ fn go(x) {
 "#,
     );
 }
+
+#[test]
+fn as_module_const() {
+    assert_nix!(
+        r#"
+          pub const data = <<
+            0x1,
+            2,
+            2:size(16),
+            0x4:size(32),
+            "Gleam":utf8,
+            // 4.2:float,
+            <<
+              <<1, 2, 3>>:bits,
+              "Gleam":utf8,
+              1024
+            >>:bits
+          >>
+        "#
+    )
+}
