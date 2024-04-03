@@ -332,6 +332,7 @@ let
         in (builtins.foldl' foldFun { value = int; arr = []; } byteArray).arr;
 
   # @internal
+  # Joins an array of bit array segments (arrays themselves) into one BitArray.
   toBitArray =
     segments:
       let
@@ -345,7 +346,38 @@ let
       in BitArray buffer;
 
   # Get the amount of bytes in the bitarray.
-  bitArrayByteSize = array: builtins.length array.buffer;
+  byteSize = array: builtins.length array.buffer;
+
+  # @internal
+  byteAt = array: i: if i >= byteSize array then null else builtins.elemAt array.buffer i;
+
+  # @internal
+  # A list with elements between i=start and i<end within list 'l'.
+  sublist =
+    l: start: end:
+      let
+        len = builtins.length l;
+        fixedEnd = if end > len then len else end;
+        fixedStart = if start > end then end else start;
+      in builtins.genList (i: builtins.elemAt l (i + fixedStart)) (fixedEnd - fixedStart);
+
+  # @internal
+  # Bytes after the given index within the bitarray.
+  bitSliceAfter = array: start: binaryFromBitSlice array start (byteSize array);
+
+  # @internal
+  # BitArray with bytes between i=start and i<end within existing BitArray 'array'.
+  binaryFromBitSlice = array: start: end: BitArray (sublist array.buffer start end);
+
+  # @internal
+  intFromBitSlice =
+    array: start: end:
+      let
+        subArray = binaryFromBitSlice array start end;
+      in byteArrayToInt subArray;
+
+  # @internal
+  byteArrayToInt = array: builtins.foldl' (acc: elem: acc * 256 + elem) 0 array.buffer;
 
 in {
   inherit
@@ -371,5 +403,10 @@ in {
     codepointBits
     sizedInt
     toBitArray
-    bitArrayByteSize;
+    byteSize
+    byteAt
+    bitSliceAfter
+    binaryFromBitSlice
+    intFromBitSlice
+    byteArrayToInt;
 }

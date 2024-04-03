@@ -598,9 +598,29 @@ impl<'module> Generator<'module> {
             register_prelude_member("codepointBits", None);
         }
 
+        if self.tracker.bit_array_byte_size_used {
+            register_prelude_member("byteSize", None);
+        }
+
         // if self.tracker.float_bit_array_segment_used {
         //     self.register_prelude_usage(&mut imports, "float64Bits", None);
         // }
+
+        if self.tracker.bit_array_byte_at_used {
+            register_prelude_member("byteAt", None);
+        }
+
+        if self.tracker.bit_array_int_from_slice_used {
+            register_prelude_member("intFromBitSlice", None);
+        }
+
+        if self.tracker.bit_array_binary_from_slice_used {
+            register_prelude_member("binaryFromBitSlice", None);
+        }
+
+        if self.tracker.bit_array_slice_after_used {
+            register_prelude_member("bitSliceAfter", None);
+        }
 
         if self.tracker.seq_all_used {
             register_prelude_member("seqAll", None);
@@ -700,6 +720,11 @@ pub(crate) struct UsageTracker {
     pub string_bit_array_segment_used: bool,
     pub codepoint_bit_array_segment_used: bool,
     // pub float_bit_array_segment_used: bool,
+    pub bit_array_byte_size_used: bool,
+    pub bit_array_byte_at_used: bool,
+    pub bit_array_int_from_slice_used: bool,
+    pub bit_array_binary_from_slice_used: bool,
+    pub bit_array_slice_after_used: bool,
     pub seq_all_used: bool,
 }
 

@@ -1,0 +1,17 @@
+---
+source: compiler-core/src/nix/tests/bit_arrays.rs
+expression: "\nfn go(x) {\n  let assert <<1, y>> = x\n  y\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) byteSize byteAt;
+  
+  go =
+    x:
+      let
+        _assert' =
+          if (byteAt x 0) != 1 || byteSize x != 2
+          then builtins.throw "Assignment pattern did not match"
+          else null;
+        y = builtins.seq _assert' (byteAt x 1);
+      in builtins.seq _assert' y;
+in {}

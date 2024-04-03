@@ -144,6 +144,88 @@ fn go(x) {
 }
 
 #[test]
+fn empty_match() {
+    assert_nix!(
+        r#"
+fn go(x) {
+  let assert <<>> = x
+}
+"#,
+    );
+}
+
+#[test]
+fn match_bytes() {
+    assert_nix!(
+        r#"
+fn go(x) {
+  let assert <<1, y>> = x
+  y
+}
+"#,
+    );
+}
+
+#[test]
+fn match_sized() {
+    assert_nix!(
+        r#"
+fn go(x) {
+  let assert <<a:16, b:8>> = x
+  #(a, b)
+}
+"#,
+    );
+}
+
+#[test]
+fn discard_sized() {
+    assert_nix!(
+        r#"
+fn go(x) {
+  let assert <<_:16, _:8>> = x
+}
+"#,
+    );
+}
+
+#[test]
+fn match_sized_value() {
+    assert_nix!(
+        r#"
+fn go(x) {
+  let assert <<258:16>> = x
+}
+"#,
+    );
+}
+
+#[test]
+fn match_rest() {
+    assert_nix!(
+        r#"
+fn go(x) {
+  let assert <<_, b:bytes>> = <<1,2,3>>
+  b
+}
+"#,
+    );
+}
+
+#[test]
+fn match_binary_size() {
+    assert_nix!(
+        r#"
+fn go(x) {
+  let assert <<_, a:2-bytes>> = x
+  let assert <<_, b:bytes-size(2)>> = x
+  #(a, b)
+}
+"#,
+    );
+}
+
+#[test]
 fn as_module_const() {
     assert_nix!(
         r#"

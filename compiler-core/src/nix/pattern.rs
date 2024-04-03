@@ -21,6 +21,7 @@ enum Index<'a> {
     String(&'a str),
     ByteAt(usize),
     IntFromSlice(usize, usize),
+    #[allow(dead_code)]
     FloatAt(usize),
     BinaryFromSlice(usize, usize),
     SliceAfter(usize),
@@ -113,22 +114,31 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
     }
 
     fn push_byte_at(&mut self, i: usize) {
+        self.expression_generator.tracker.bit_array_byte_at_used = true;
         self.path.push(Index::ByteAt(i));
     }
 
     fn push_int_from_slice(&mut self, start: usize, end: usize) {
+        self.expression_generator
+            .tracker
+            .bit_array_int_from_slice_used = true;
         self.path.push(Index::IntFromSlice(start, end));
     }
 
-    fn push_float_at(&mut self, i: usize) {
-        self.path.push(Index::FloatAt(i));
+    #[allow(dead_code)]
+    fn push_float_at(&mut self, _i: usize) {
+        panic!("Floats in bit arrays are not yet supported");
     }
 
     fn push_binary_from_slice(&mut self, start: usize, end: usize) {
+        self.expression_generator
+            .tracker
+            .bit_array_binary_from_slice_used = true;
         self.path.push(Index::BinaryFromSlice(start, end));
     }
 
     fn push_rest_from(&mut self, i: usize) {
+        self.expression_generator.tracker.bit_array_slice_after_used = true;
         self.path.push(Index::SliceAfter(i));
     }
 
@@ -154,27 +164,32 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
         let mut path = SubjectPath::new();
 
         for segment in &self.path {
-            match segment {
-                Index::Int(i) => {
-                    path = path.add_right_component(Document::String(format!("._{i}")))
-                }
-                Index::Tuple(i) => {
-                    path = path
-                        .add_component("(builtins.elemAt ".to_doc(), docvec!(" ", i.to_doc(), ")"))
-                }
-                Index::String(s) => {
-                    path = path.add_right_component(docvec!(".", maybe_escape_identifier_doc(s)))
-                }
-                Index::ByteAt(_i) => todo!("bitarray"),
-                Index::IntFromSlice(_start, _end) => todo!("bitarray"),
-                Index::FloatAt(_i) => todo!("bitarray"),
-                Index::BinaryFromSlice(_start, _end) => todo!("bitarray"),
-                Index::SliceAfter(_i) => todo!("bitarray"),
-                Index::StringPrefixSlice(i) => {
-                    path = path
-                        .add_component(docvec!("(builtins.substring ", i, " (-1) "), ")".to_doc())
-                }
-            }
+            path =
+                match segment {
+                    Index::Int(i) => path.add_right_component(Document::String(format!("._{i}"))),
+                    Index::Tuple(i) => path
+                        .add_component("(builtins.elemAt ".to_doc(), docvec!(" ", i.to_doc(), ")")),
+                    Index::String(s) => {
+                        path.add_right_component(docvec!(".", maybe_escape_identifier_doc(s)))
+                    }
+                    Index::ByteAt(i) => {
+                        path.add_component("(byteAt ".to_doc(), docvec!(" ", i.to_doc(), ")"))
+                    }
+                    Index::IntFromSlice(start, end) => path.add_component(
+                        "(intFromBitSlice ".to_doc(),
+                        docvec!(" ", start, " ", end, ")"),
+                    ),
+                    Index::FloatAt(_i) => unreachable!("unsupported"),
+                    Index::BinaryFromSlice(start, end) => path.add_component(
+                        "(binaryFromBitSlice ".to_doc(),
+                        docvec!(" ", start, " ", end, ")"),
+                    ),
+                    Index::SliceAfter(i) => {
+                        path.add_component("(bitSliceAfter ".to_doc(), docvec!(" ", i, ")"))
+                    }
+                    Index::StringPrefixSlice(i) => path
+                        .add_component(docvec!("(builtins.substring ", i, " (-1) "), ")".to_doc()),
+                };
         }
 
         path
@@ -554,13 +569,88 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                 Ok(())
             }
 
-            Pattern::BitArray {
-                segments: _,
-                location,
-            } => Err(Error::Unsupported {
-                feature: "Pattern matching on bit arrays".into(),
-                location: *location,
-            }),
+            Pattern::BitArray { segments, .. } => {
+                use crate::ast::BitArrayOption as Opt;
+
+                let mut offset = Offset::new();
+                for segment in segments {
+                    match segment.options.as_slice() {
+                        [] | [Opt::Int { .. }] => {
+                            self.push_byte_at(offset.bytes);
+                            self.traverse_pattern(subject, &segment.value)?;
+                            self.pop_segment();
+                            offset.increment(1);
+                            Ok(())
+                        }
+
+                        [Opt::Size { value: size, .. }] => match &**size {
+                            Pattern::Int { value, .. } => {
+                                let start = offset.bytes;
+                                let increment = value
+                                    .parse::<usize>()
+                                    .expect("part of an Int node should always parse as integer");
+                                offset.increment(increment / 8);
+                                let end = offset.bytes;
+
+                                self.push_int_from_slice(start, end);
+                                self.traverse_pattern(subject, &segment.value)?;
+                                self.pop_segment();
+                                Ok(())
+                            }
+                            _ => Err(Error::Unsupported {
+                                feature: "This bit array size option in patterns".into(),
+                                location: segment.location,
+                            }),
+                        },
+
+                        // [Opt::Float { .. }] => {
+                        //     self.push_float_at(offset.bytes);
+                        //     self.traverse_pattern(subject, &segment.value)?;
+                        //     self.pop();
+                        //     offset.increment(8);
+                        //     Ok(())
+                        // }
+                        [Opt::Bytes { .. }] => {
+                            self.push_rest_from(offset.bytes);
+                            self.traverse_pattern(subject, &segment.value)?;
+                            self.pop_segment();
+                            offset.set_open_ended();
+                            Ok(())
+                        }
+
+                        [Opt::Bytes { .. }, Opt::Size { value: size, .. }]
+                        | [Opt::Size { value: size, .. }, Opt::Bytes { .. }] => match &**size {
+                            Pattern::Int { value, .. } => {
+                                let start = offset.bytes;
+                                let increment = value
+                                    .parse::<usize>()
+                                    .expect("part of an Int node should always parse as integer");
+                                offset.increment(increment);
+                                let end = offset.bytes;
+
+                                self.push_binary_from_slice(start, end);
+                                self.traverse_pattern(subject, &segment.value)?;
+                                self.pop_segment();
+                                Ok(())
+                            }
+
+                            _ => Err(Error::Unsupported {
+                                feature: "This bit array size option in patterns".into(),
+                                location: segment.location,
+                            }),
+                        },
+
+                        _ => Err(Error::Unsupported {
+                            feature: "This bit array segment option in patterns".into(),
+                            location: segment.location,
+                        }),
+                    }?;
+                }
+
+                self.push_bit_array_length_check(subject.clone(), offset.bytes, offset.open_ended);
+                Ok(())
+            }
+
             Pattern::VarUsage { location, .. } => Err(Error::Unsupported {
                 feature: "Bit array matching".into(),
                 location: *location,
@@ -879,7 +969,26 @@ impl<'a> Check<'a> {
                     docvec!["!(", length_check, ")"]
                 }
             }
-            Check::BitArrayLength { .. } => todo!("bit array"),
+            Check::BitArrayLength {
+                subject,
+                path,
+                expected_bytes,
+                has_tail_spread,
+            } => {
+                tracker.bit_array_byte_size_used = true;
+
+                let length_check = Document::String(if has_tail_spread {
+                    let operator = if match_desired { ">=" } else { "<" };
+                    format!(" {operator} {expected_bytes}")
+                } else {
+                    let operator = if match_desired { "==" } else { "!=" };
+                    format!(" {operator} {expected_bytes}")
+                });
+                let len =
+                    syntax::fn_call("byteSize".to_doc(), [path.into_doc_with_subject(subject)]);
+
+                docvec![len, length_check]
+            }
             Check::StringPrefix {
                 subject,
                 path,
