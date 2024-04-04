@@ -127,6 +127,11 @@ pub fn typescript_prelude() -> Result<()> {
     Ok(())
 }
 
+pub fn nix_prelude() -> Result<()> {
+    print!("{}", gleam_core::nix::PRELUDE);
+    Ok(())
+}
+
 pub fn package_interface(path: Utf8PathBuf) -> Result<()> {
     // Build the project
     let mut built = crate::build::main(
