@@ -784,7 +784,7 @@ impl Generator<'_> {
 
     fn todo<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
         let message = match message {
-            Some(m) => self.expression(m)?,
+            Some(m) => self.wrap_child_expression(m)?,
             None => "\"This has not yet been implemented\"".to_doc(),
         };
 
@@ -793,13 +793,16 @@ impl Generator<'_> {
 
     fn panic<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
         let message = match message {
-            Some(m) => self.expression(m)?,
+            Some(m) => self.wrap_child_expression(m)?,
             None => "\"panic expression evaluated\"".to_doc(),
         };
 
         Ok(self.throw_error("todo", &message, *location, vec![]))
     }
 
+    /// Generates an error throw call.
+    /// Assumes the message is an expression which is wrapped in parentheses
+    /// if necessary (it will be in child position).
     fn throw_error<'a, Fields>(
         &mut self,
         _error_name: &'a str,

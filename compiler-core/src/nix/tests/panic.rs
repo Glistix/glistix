@@ -70,3 +70,14 @@ fn go(x) {
 "#,
     );
 }
+
+#[test]
+fn panic_with_call() {
+    assert_nix! {
+        r#"
+fn go(x) {
+  panic as x(5, "abc")
+}
+"#
+    }
+}

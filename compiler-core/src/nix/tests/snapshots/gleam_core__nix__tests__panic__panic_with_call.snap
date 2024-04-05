@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/panic.rs
+expression: "\nfn go(x) {\n  panic as x(5, \"abc\")\n}\n"
+---
+let go = x: builtins.throw (x 5 "abc"); in {}
