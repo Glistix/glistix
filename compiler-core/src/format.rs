@@ -629,6 +629,10 @@ impl<'comments> Formatter<'comments> {
             Some((m, f)) => attributes.append(external("javascript", m, f)),
             None => attributes,
         };
+        let attributes = match function.external_nix.as_ref() {
+            Some((m, f)) => attributes.append(external("nix", m, f)),
+            None => attributes,
+        };
 
         // Fn name and args
         let signature = pub_(function.publicity)
