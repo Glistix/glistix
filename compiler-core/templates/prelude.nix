@@ -379,6 +379,53 @@ let
   # @internal
   byteArrayToInt = array: builtins.foldl' (acc: elem: acc * 256 + elem) 0 array.buffer;
 
+  # @internal
+  byteArrayToUtf8String =
+    let
+      lastAsciiByte = 127; # 0b0111_1111
+      lastSingleByte = 191; # 0b1011_1111
+      lastDoubleByte = 223; # 0b1101_1111
+      lastTripleByte = 239; # 0b1110_1111
+      maybeInvalidInitialByte = 237;  # 0b1110_1101, aka codepoints in the form 0xd???
+      firstInvalidFollowupByte = 160;  # 0b1010_0000, aka second byte in 0xd800, since 0xd800 - 0xdfff is invalid
+      byteAsString = builtins.elemAt utf8ByteInvTable;
+      buildString =
+        builtins.foldl'
+        (acc@{ string, maybeInvalidByteFound, remainingSingleBytes, invalid }: byte:
+          let
+            updatedState =
+              acc
+                // {
+                  string = string + byteAsString byte;
+
+                  # If the current byte is 237, then check next byte to see if it
+                  # would place us within the invalid codepoint range
+                  maybeInvalidByteFound = byte == maybeInvalidInitialByte;
+                };
+          in
+            if invalid
+            then acc
+            else if byte == 192 || byte == 193 || byte >= builtins.length utf8ByteInvTable
+            then acc // { invalid = true; } # no codepoint has this byte
+            else if maybeInvalidByteFound && byte >= firstInvalidFollowupByte
+            then acc // { invalid = true; } # found a codepoint within 0xd800 - 0xdfff, which is invalid in UTF-8
+            else if byte <= lastAsciiByte # 0b0???_????
+            then updatedState // { remainingSingleBytes = 0; invalid = remainingSingleBytes > 0; }
+            else if byte <= lastSingleByte # 0b10??_????
+            then updatedState // { remainingSingleBytes = remainingSingleBytes - 1; invalid = remainingSingleBytes <= 0; }
+            else if byte <= lastDoubleByte # 0b110?_????
+            then updatedState // { remainingSingleBytes = 1; invalid = remainingSingleBytes > 0; }
+            else if byte <= lastTripleByte # 0b1110_????
+            then updatedState // { remainingSingleBytes = 2; invalid = remainingSingleBytes > 0; }
+            else # 0b1111_0???
+              updatedState // { remainingSingleBytes = 3; invalid = remainingSingleBytes > 0; })
+        { string = ""; maybeInvalidByteFound = false; remainingSingleBytes = 0; invalid = false; };
+    in
+      array:
+        let
+          result = buildString array.buffer;
+        in if result.invalid || result.remainingSingleBytes > 0 then null else result.string;
+
 in {
   inherit
     Ok
@@ -408,5 +455,6 @@ in {
     bitSliceAfter
     binaryFromBitSlice
     intFromBitSlice
-    byteArrayToInt;
+    byteArrayToInt
+    byteArrayToUtf8String;
 }
