@@ -3,7 +3,18 @@ source: compiler-core/src/nix/tests/externals.rs
 expression: "\n@external(erlang, \"one\", \"one_erl\")\nfn one(x: Int) -> Int {\n  todo\n}\n\npub fn main() {\n  one(1)\n}\n"
 ---
 let
-  one = x: builtins.throw "This has not yet been implemented";
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  one =
+    x:
+      builtins.throw
+        (makeError
+          "todo"
+          "my/mod"
+          4
+          "one"
+          "This has not yet been implemented"
+          {});
   
   main = {}: one 1;
 in { inherit main; }

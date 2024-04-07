@@ -3,9 +3,19 @@ source: compiler-core/src/nix/tests/numbers.rs
 expression: "\nfn main(x) {\n  let assert 09_179.1 = x\n}\n"
 ---
 let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
   main =
     x:
       if x != 9179.1
-      then builtins.throw "Assignment pattern did not match"
+      then
+        builtins.throw
+          (makeError
+            "assignment_no_match"
+            "my/mod"
+            3
+            "main"
+            "Assignment pattern did not match"
+            { value = x; })
       else x;
 in {}

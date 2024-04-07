@@ -3,6 +3,8 @@ source: compiler-core/src/nix/tests/basic.rs
 expression: "\nfn condman(a, b) {\n  let p1 = case a > b {\n    True -> 5\n    False -> 6\n  }\n\n  let p2 = case a > b {\n    True -> 5\n    _ -> 6\n  }\n\n  let p3 = case a > b {\n    False -> 6\n    True -> 5\n  }\n\n  let p4 = case a > b {\n    False -> 6\n    _ -> 5\n  }\n\n  let v1 = True\n  let v2 = False\n  let vv1 = case v1 { _ -> 10 }\n  let vv2 = case v2 { True -> 50 _ -> 10 }\n  let vv3 = case True { True -> 50 _ -> 10 }\n\n  #(p1, p2, p3, p4, vv1, vv2, vv3)\n}\n\npub fn fact(n: Int) -> #(Nil, Int) {\n  let res = case n < 0 {\n    True -> panic as \"Don't.\"\n    False -> Nil\n  }\n  #(res, case n {\n    0 -> 1\n    _ -> n * fact(n - 1).1\n  })\n}\n"
 ---
 let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
   condman =
     a: b:
       let
@@ -23,6 +25,10 @@ let
         res =
           let
             _pat' = n < 0;
-          in if _pat' then builtins.throw "Don't." else null;
+          in
+            if _pat'
+            then
+              builtins.throw (makeError "panic" "my/mod" 34 "fact" "Don't." {})
+            else null;
       in [ res (if n == 0 then 1 else n * (builtins.elemAt (fact (n - 1)) 1)) ];
 in { inherit fact; }

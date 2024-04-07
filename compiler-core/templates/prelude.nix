@@ -78,6 +78,75 @@ let
         (builtins.foldl' (acc: elem: builtins.seq elem acc) null exprs)
         returning;
 
+  # @internal
+  # Create a friendly error indicating where it occurred.
+  makeError =
+    variant: module: line: function: message: extra:
+      let
+        mappedExtraProperties =
+          builtins.map
+            (name: "\n${name} = ${simpleInspect extra.${name} 0}")
+            (builtins.attrNames extra);
+
+        extraProperties =
+          builtins.concatStringsSep
+            "\n"
+            mappedExtraProperties;
+      in
+        ''
+          ${message}
+
+          gleam_error = ${builtins.toJSON variant}
+          module = ${builtins.toJSON module}
+          line = ${builtins.toString line}
+          function = ${builtins.toJSON function}${extraProperties}
+        '';
+
+  # @internal
+  # An attempt at rendering arbitrary Nix values in a friendlier way.
+  # Currently this leaks the internal representation of records,
+  # linked lists and so on, but this is consistent with other Gleam
+  # targets.
+  simpleInspect =
+    x: depth:
+      if builtins.isInt x || builtins.isPath x then builtins.toString x
+      else if
+        builtins.isBool x
+        || builtins.isFloat x
+        || builtins.isNull x
+        || builtins.isString x
+      then builtins.toJSON x
+      else if builtins.isFunction x
+      then surroundWithAngleBrackets "lambda"
+      else if builtins.isList x
+      then
+        if depth == 0
+        then
+          let
+            mappedElems = builtins.map (el: " ${simpleInspect el (depth + 1)}") x;
+          in "[${builtins.concatStringsSep "" mappedElems} ]"
+        else "[ ... ]"
+      else if builtins.isAttrs x
+      then
+        if x.type or null == "derivation"
+        then surroundWithAngleBrackets "derivation ${x.outPath or "???"}"
+        else if depth == 0
+        then
+          let
+            names = builtins.attrNames x;
+            inspectAttr = name: " ${builtins.toJSON name} = ${simpleInspect x.${name} (depth + 1)};";
+            mappedAttrs = builtins.map inspectAttr names;
+          in "{${builtins.concatStringsSep "" mappedAttrs} }"
+        else "{ ... }"
+      else surroundWithAngleBrackets "unknown";
+
+  # @internal
+  surroundWithAngleBrackets =
+    let
+      leftAngleBracket = builtins.fromJSON ''"\u00AB"'';
+      rightAngleBracket = builtins.fromJSON ''"\u00BB"'';
+    in x: "${leftAngleBracket}${x}${rightAngleBracket}";
+
   # --- UTF-8 ---
 
   UtfCodepoint =
@@ -446,6 +515,7 @@ in {
     parseNumber
     parseEscape
     seqAll
+    makeError
     stringBits
     codepointBits
     sizedInt

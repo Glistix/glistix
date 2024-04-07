@@ -1,4 +1,3 @@
-use crate::analyse::TargetSupport;
 use crate::ast::{
     Arg, BinOp, BitArrayOption, BitArraySegment, CallArg, Constant, SrcSpan, Statement, TypedArg,
     TypedAssignment, TypedClause, TypedConstant, TypedExpr, TypedExprBitArraySegment, TypedModule,
@@ -19,12 +18,15 @@ use std::borrow::Cow;
 use std::sync::{Arc, OnceLock};
 use vec1::Vec1;
 
-/// Generates a Nix expression.
+/// Generates a Nix expression, usually for a single Gleam function at a time.
+///
+/// The fields `module`, `line_numbers` and `function_name` are used to provide
+/// proper error messages at runtime when `panic` or `todo` are invoked.
 #[derive(Debug)]
 pub(crate) struct Generator<'module> {
     module: &'module TypedModule,
     line_numbers: &'module LineNumbers,
-    target_support: TargetSupport,
+    function_name: Option<EcoString>,
     current_scope_vars: im::HashMap<EcoString, usize>,
     /// Variables which must be forcibly evaluated at the end of the scope.
     /// These include assertions and unassigned expressions.
@@ -41,14 +43,14 @@ impl<'module> Generator<'module> {
     pub fn new(
         module: &'module TypedModule,
         line_numbers: &'module LineNumbers,
-        target_support: TargetSupport,
+        function_name: Option<EcoString>,
         current_scope_vars: im::HashMap<EcoString, usize>,
         tracker: &'module mut UsageTracker,
     ) -> Self {
         Self {
             module,
             line_numbers,
-            target_support,
+            function_name,
             current_scope_vars,
             strict_eval_vars: vec![],
             tracker,
@@ -797,7 +799,7 @@ impl Generator<'_> {
             None => "\"panic expression evaluated\"".to_doc(),
         };
 
-        Ok(self.throw_error("todo", &message, *location, vec![]))
+        Ok(self.throw_error("panic", &message, *location, vec![]))
     }
 
     /// Generates an error throw call.
@@ -805,23 +807,48 @@ impl Generator<'_> {
     /// if necessary (it will be in child position).
     fn throw_error<'a, Fields>(
         &mut self,
-        _error_name: &'a str,
+        error_name: &'a str,
         message: &Document<'a>,
-        _location: SrcSpan,
-        _fields: Fields,
+        location: SrcSpan,
+        fields: Fields,
     ) -> Document<'a>
     where
         Fields: IntoIterator<Item = (&'a str, Document<'a>)>,
     {
-        // let module = self.module.name.clone().to_doc().surround('"', '"');
-        // TODO: Function name
-        // let line = self.line_numbers.line_number(location.start).to_doc();
+        self.tracker.make_error_used = true;
 
-        // TODO: Use prelude error, pass fields
-        // let fields = wrap_attr_set(fields.into_iter().map(|(k, v)| (k.to_doc(), Some(v))));
+        let module = self.module.name.clone().to_doc().surround('"', '"');
+        let function = self
+            .function_name
+            .clone()
+            .unwrap_or_default()
+            .to_doc()
+            .surround("\"", "\"");
+        let line = self.line_numbers.line_number(location.start).to_doc();
 
-        // TODO: Insert module and line
-        syntax::fn_call("builtins.throw".to_doc(), [message.clone()])
+        let fields = syntax::wrap_attr_set(fields.into_iter().map(|(k, v)| {
+            (
+                syntax::maybe_quoted_attr_set_label_from_identifier(k),
+                Some(v),
+            )
+        }));
+
+        let error_message = syntax::fn_call(
+            "makeError".to_doc(),
+            [
+                syntax::string_escaping_backslashes_and_quotes(error_name),
+                module,
+                line,
+                function,
+                message.clone(),
+                fields,
+            ],
+        );
+
+        syntax::fn_call(
+            "builtins.throw".to_doc(),
+            [docvec!["(", error_message, ")"]],
+        )
     }
 }
 

@@ -3,11 +3,19 @@ source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "\nfn go(x) {\n  let assert <<>> = x\n}\n"
 ---
 let
-  inherit (builtins.import ./../gleam.nix) byteSize;
+  inherit (builtins.import ./../gleam.nix) makeError byteSize;
   
   go =
     x:
       if byteSize x != 0
-      then builtins.throw "Assignment pattern did not match"
+      then
+        builtins.throw
+          (makeError
+            "assignment_no_match"
+            "my/mod"
+            3
+            "go"
+            "Assignment pattern did not match"
+            { value = x; })
       else x;
 in {}

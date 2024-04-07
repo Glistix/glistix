@@ -2,4 +2,11 @@
 source: compiler-core/src/nix/tests/panic.rs
 expression: "\nfn go(x) {\n  case x {\n    _ -> panic\n  }\n}\n"
 ---
-let go = x: builtins.throw "panic expression evaluated"; in {}
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  go =
+    x:
+      builtins.throw
+        (makeError "panic" "my/mod" 4 "go" "panic expression evaluated" {});
+in {}

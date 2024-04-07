@@ -3,9 +3,19 @@ source: compiler-core/src/nix/tests/strings.rs
 expression: "\nfn go(x) {\n  let assert \"Hello\" = x\n}\n"
 ---
 let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
   go =
     x:
       if x != "Hello"
-      then builtins.throw "Assignment pattern did not match"
+      then
+        builtins.throw
+          (makeError
+            "assignment_no_match"
+            "my/mod"
+            3
+            "go"
+            "Assignment pattern did not match"
+            { value = x; })
       else x;
 in {}

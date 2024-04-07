@@ -2,4 +2,11 @@
 source: compiler-core/src/nix/tests/todo.rs
 expression: "\nfn go() {\n    todo\n}\n"
 ---
-let go = {}: builtins.throw "This has not yet been implemented"; in {}
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  go =
+    {}:
+      builtins.throw
+        (makeError "todo" "my/mod" 3 "go" "This has not yet been implemented" {});
+in {}

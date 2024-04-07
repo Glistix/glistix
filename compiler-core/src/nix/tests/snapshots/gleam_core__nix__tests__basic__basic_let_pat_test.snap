@@ -3,7 +3,7 @@ source: compiler-core/src/nix/tests/basic.rs
 expression: "\npub type Test {\n  A\n  B(Int)\n  C(a: Int, b: Float)\n}\n\npub type Simple {\n  Simple\n}\npub type Simple2 {\n  Simple2(Int)\n}\npub type Simple3 {\n  Simple3(inherit: Bool, x: Float)\n}\n\npub fn pat_test() {\n  let Nil = Nil\n  let x = Simple\n  let Simple = x\n  let Simple = Simple\n  let _ = Simple2(5)\n  let _ignored = Simple2(5)\n  let Simple2(a) = Simple2(5)\n  let Simple3(a, b) = Simple3(True, 5.0)\n\n  #(a, b)\n}\n\npub fn pat_assert_test() {\n  let assert True = True\n  let assert False = True\n  let assert A = A\n  let assert B(x) = B(5)\n  let assert C(a: a, b: b) = C(a: 5, b: 5.5e5)\n  let assert C(a: a, b: b) = C(a: 5, b: 5.5e5)\n}\n"
 ---
 let
-  inherit (builtins.import ./../gleam.nix) seqAll;
+  inherit (builtins.import ./../gleam.nix) makeError seqAll;
   
   A = { __gleamTag = "A"; };
   
@@ -43,31 +43,71 @@ let
         _pat' = true;
         _assert' =
           if !_pat'
-          then builtins.throw "Assignment pattern did not match"
+          then
+            builtins.throw
+              (makeError
+                "assignment_no_match"
+                "my/mod"
+                32
+                "pat_assert_test"
+                "Assignment pattern did not match"
+                { value = _pat'; })
           else null;
         _' = builtins.seq _assert' _pat';
         _pat''1 = true;
         _assert''1 =
           if _pat''1
-          then builtins.throw "Assignment pattern did not match"
+          then
+            builtins.throw
+              (makeError
+                "assignment_no_match"
+                "my/mod"
+                33
+                "pat_assert_test"
+                "Assignment pattern did not match"
+                { value = _pat''1; })
           else null;
         _'1 = builtins.seq _assert''1 _pat''1;
         _pat''2 = A;
         _assert''2 =
           if _pat''2.__gleamTag != "A"
-          then builtins.throw "Assignment pattern did not match"
+          then
+            builtins.throw
+              (makeError
+                "assignment_no_match"
+                "my/mod"
+                34
+                "pat_assert_test"
+                "Assignment pattern did not match"
+                { value = _pat''2; })
           else null;
         _'2 = builtins.seq _assert''2 _pat''2;
         _pat''3 = (B 5);
         _assert''3 =
           if _pat''3.__gleamTag != "B"
-          then builtins.throw "Assignment pattern did not match"
+          then
+            builtins.throw
+              (makeError
+                "assignment_no_match"
+                "my/mod"
+                35
+                "pat_assert_test"
+                "Assignment pattern did not match"
+                { value = _pat''3; })
           else null;
         x = builtins.seq _assert''3 _pat''3._0;
         _pat''4 = (C 5 5.5e5);
         _assert''4 =
           if _pat''4.__gleamTag != "C"
-          then builtins.throw "Assignment pattern did not match"
+          then
+            builtins.throw
+              (makeError
+                "assignment_no_match"
+                "my/mod"
+                36
+                "pat_assert_test"
+                "Assignment pattern did not match"
+                { value = _pat''4; })
           else null;
         a = builtins.seq _assert''4 _pat''4.a;
         b = builtins.seq _assert''4 _pat''4.b;
@@ -78,6 +118,14 @@ let
             _pat''5 = (C 5 5.5e5);
           in
             if _pat''5.__gleamTag != "C"
-            then builtins.throw "Assignment pattern did not match"
+            then
+              builtins.throw
+                (makeError
+                  "assignment_no_match"
+                  "my/mod"
+                  37
+                  "pat_assert_test"
+                  "Assignment pattern did not match"
+                  { value = _pat''5; })
             else _pat''5);
 in { inherit A B C Simple Simple2 Simple3 pat_test pat_assert_test; }

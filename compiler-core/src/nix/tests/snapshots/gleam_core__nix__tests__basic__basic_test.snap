@@ -6,6 +6,7 @@ let
   inherit
     (builtins.import ./../gleam.nix)
     toList
+    makeError
     remainderInt
     divideFloat
     divideInt
@@ -47,10 +48,20 @@ let
             _pipe'1 = (_capture: foo _capture a'1 50) _pipe;
           in (x: x) _pipe'1;
         pipes2 = let _pipe = a'1; in (i: i) _pipe;
-        _'3 = builtins.throw "amongus";
-        _'4 = builtins.throw "amongus";
-        _'5 = builtins.throw "panic expression evaluated";
-        _'6 = builtins.throw "This has not yet been implemented";
+        _'3 = builtins.throw (makeError "panic" "my/mod" 45 "go" "amongus" {});
+        _'4 = builtins.throw (makeError "todo" "my/mod" 46 "go" "amongus" {});
+        _'5 =
+          builtins.throw
+            (makeError "panic" "my/mod" 47 "go" "panic expression evaluated" {});
+        _'6 =
+          builtins.throw
+            (makeError
+              "todo"
+              "my/mod"
+              48
+              "go"
+              "This has not yet been implemented"
+              {});
         y = (((-500) + 10) - (-a'1)) - (-5);
         yy = toList [ (-a'1) (-5) (-y) ];
         f = (-5.5) - 5.2e-5;

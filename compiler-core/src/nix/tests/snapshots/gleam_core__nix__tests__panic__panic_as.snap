@@ -2,4 +2,12 @@
 source: compiler-core/src/nix/tests/panic.rs
 expression: "\nfn go() {\n  let x = \"wibble\"\n  panic as x\n}\n"
 ---
-let go = {}: let x = "wibble"; in builtins.throw x; in {}
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  go =
+    {}:
+      let
+        x = "wibble";
+      in builtins.throw (makeError "panic" "my/mod" 4 "go" x {});
+in {}

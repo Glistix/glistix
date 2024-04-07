@@ -217,7 +217,7 @@ impl<'module> Generator<'module> {
         let mut generator = expression::Generator::new(
             self.module,
             self.line_numbers,
-            self.target_support,
+            Some(function.name.clone()),
             self.module_scope.clone(),
             &mut self.tracker,
         );
@@ -562,9 +562,9 @@ impl<'module> Generator<'module> {
             register_prelude_member("listHasLength", None);
         }
 
-        // if self.tracker.make_error_used {
-        //     self.register_prelude_usage(&mut imports, "makeError", None);
-        // }
+        if self.tracker.make_error_used {
+            register_prelude_member("makeError", None);
+        }
 
         if self.tracker.int_remainder_used {
             register_prelude_member("remainderInt", None);
@@ -710,7 +710,7 @@ pub(crate) struct UsageTracker {
     pub parse_escape_used: bool,
     pub parse_number_used: bool,
     pub int_remainder_used: bool,
-    // pub make_error_used: bool,
+    pub make_error_used: bool,
     // pub custom_type_used: bool,
     pub int_division_used: bool,
     pub float_division_used: bool,
