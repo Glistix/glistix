@@ -261,9 +261,6 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     #[error("The --nix-prelude flag must be given when compiling to Nix")]
     NixPreludeRequired,
 
-    #[error("It is not yet possible to `gleam run` a Nix project")]
-    CannotRunNix,
-
     #[error("The modules {unfinished:?} contain todo expressions and so cannot be published")]
     CannotPublishTodo { unfinished: Vec<EcoString> },
 
@@ -3245,14 +3242,6 @@ but you are using v{gleam_version}.",
             Error::NixPreludeRequired => Diagnostic {
                 title: "Nix prelude required".into(),
                 text: "The --nix-prelude flag must be given when compiling to Nix.".into(),
-                level: Level::Error,
-                location: None,
-                hint: None,
-            },
-
-            Error::CannotRunNix => Diagnostic {
-                title: "Cannot run Nix".into(),
-                text: "It is not yet possible to `gleam run` a Nix project.".into(),
                 level: Level::Error,
                 location: None,
                 hint: None,
