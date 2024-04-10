@@ -6,4 +6,5 @@
 .idea/*
 erl_crash.dump
 *.lock
+!flake.lock
 node_modules/
