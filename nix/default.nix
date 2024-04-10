@@ -1,0 +1,3 @@
+{
+  buildGlistixPackage = import ./build.nix;
+}

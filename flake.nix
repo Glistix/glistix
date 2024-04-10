@@ -10,10 +10,13 @@
 
       imports = [
         flake-parts.flakeModules.easyOverlay
+        ./nix/flake-builders.nix
       ];
 
       perSystem = { self', pkgs, lib, ... }:
         let
+          expressions = import ./nix;
+
           makePackage = pkgs:
             pkgs.rustPlatform.buildRustPackage {
               pname = "gleam";
@@ -43,6 +46,10 @@
         in
         {
           formatter = pkgs.nixpkgs-fmt;
+
+          builders.buildGlistixPackage =
+            expressions.buildGlistixPackage
+            { stdenv = pkgs.stdenv; gleam = self'.packages.default; };
 
           packages = {
             default = gleam;
