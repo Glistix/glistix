@@ -49,7 +49,7 @@
 
           builders.buildGlistixPackage =
             expressions.buildGlistixPackage
-            { stdenv = pkgs.stdenv; gleam = self'.packages.default; };
+            { inherit (pkgs) stdenv fetchurl; gleam = self'.packages.default; };
 
           packages = {
             default = gleam;
