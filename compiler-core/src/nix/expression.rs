@@ -1316,6 +1316,9 @@ fn wrap_child_constant_expression<'a>(
             // Will call 'parseNumber'
             Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
         }
+        Constant::Int { value, .. } | Constant::Float { value, .. } if value.starts_with('-') => {
+            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+        }
         Constant::List { .. } | Constant::BitArray { .. } => {
             Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
         }
@@ -1335,6 +1338,13 @@ pub(crate) fn wrap_child_guard_constant_expression<'a>(
     match expression {
         Constant::Int { value, .. } if int_requires_parsing(value) => {
             // Will call 'parseNumber'
+            Ok(docvec!(
+                "(",
+                guard_constant_expression(assignments, tracker, expression)?,
+                ")"
+            ))
+        }
+        Constant::Int { value, .. } | Constant::Float { value, .. } if value.starts_with('-') => {
             Ok(docvec!(
                 "(",
                 guard_constant_expression(assignments, tracker, expression)?,
