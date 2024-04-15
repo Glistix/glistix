@@ -45,6 +45,22 @@ Glistix is not currently available through Nixpkgs.
 
 <!-- TODO -->
 
+### Using with editors / Gleam LSP
+
+To properly use Glistix with editors and LSPs, you will need to configure them to use the `glistix` program instead of `gleam`. Otherwise, they won't recognize `@target(nix)` and `@external(nix, ..., ...)` in your projects.
+
+The VSCode Extension for Gleam does not have this option at the moment, so you will have to alias `gleam` to `glistix`. Which should be OK as `glistix` also supports the Erlang and JavaScript targets (we currently aim to be fully compatible with existing non-Nix projects).
+
+However, you can also apply this alias change in a per-project basis through `direnv`. You can do this by
+linking the `glistix` executable as `gleam` to a folder
+and then adding an `.envrc` file to your project with contents such as
+
+```sh
+export PATH="path/to/folder/with/link:$PATH"
+```
+
+which will let you use the `direnv` extension (which requires `direnv` to be installed) to automatically load that alias as needed. This applies to other editors supporting `direnv` as well; for those which don't, you will have to run `direnv` through the command line and start the editor there (e.g. `cd project && direnv allow && zed` for the Zed editor).
+
 ## Important notes
 
 ### Overriding packages incompatible with Nix
