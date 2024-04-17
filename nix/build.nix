@@ -90,10 +90,10 @@ stdenv.mkDerivation (args // {
 
     # Relative path to the package's entrypoint
     # from the derivation's root directory.
-    gleamMain = "${pkgName}/${pkgName}.nix";
+    gleamMain = "nix/${pkgName}/${pkgName}.nix";
 
     # Relative path to the package's testing entrypoint
     # from the derivation's root directory.
-    gleamTest = "${pkgName}/${pkgName}_test.nix";
+    gleamTest = "nix/${pkgName}/${pkgName}_test.nix";
   };
 })
