@@ -1,6 +1,8 @@
 <h1><p align="center">✨ <i> Glistix</i> ❄️</p></h1>
 <h3><p align="center">The power of Nix meets the simplicity and safety of Gleam</p></h3>
 
+<h3><p align="center"><i><a href="https://glistix.github.io/book">Read the official Glistix book here!</a></i></p></h3>
+
 <!-- A spacer -->
 <div>&nbsp;</div>
 
