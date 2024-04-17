@@ -1,5 +1,5 @@
 [package]
-name = "gleam"
+name = "glistix"
 version = "1.1.0"
 authors = ["Louis Pilfold <louis@lpil.uk>"]
 edition = "2021"
@@ -7,7 +7,7 @@ license-file = "LICENCE"
 
 [dependencies]
 # The pure compiler
-gleam-core = { path = "../compiler-core" }
+glistix-core = { path = "../compiler-core" }
 # OS SIGINT and SIGTERM signal handling
 ctrlc = { version = "3.2.1", features = ["termination"] }
 # Command line interface

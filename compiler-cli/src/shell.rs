@@ -1,4 +1,4 @@
-use gleam_core::{
+use glistix_core::{
     analyse::TargetSupport,
     build::{Codegen, Mode, Options, Target},
     error::Error,

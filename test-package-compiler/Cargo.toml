@@ -6,7 +6,7 @@ edition = "2021"
 license-file = "LICENCE"
 
 [dependencies]
-gleam-core = { path = "../compiler-core" }
+glistix-core = { path = "../compiler-core" }
 toml.workspace = true
 im.workspace = true
 itertools.workspace = true

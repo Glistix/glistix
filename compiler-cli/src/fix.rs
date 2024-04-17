@@ -1,5 +1,5 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use gleam_core::{
+use glistix_core::{
     error::{FileIoAction, FileKind},
     Error, Result,
 };
@@ -39,7 +39,7 @@ you will need to update it to use the BitArray class instead.
 
 fn fix_file(path: Utf8PathBuf) -> Result<()> {
     let src = crate::fs::read(&path)?;
-    let out = gleam_core::fix::parse_fix_and_format(&src.into(), &path)?;
+    let out = glistix_core::fix::parse_fix_and_format(&src.into(), &path)?;
     crate::fs::write(&path, &out)?;
     Ok(())
 }

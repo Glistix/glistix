@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf;
-use gleam_core::{
+use glistix_core::{
     analyse::TargetSupport,
     build::{Codegen, Mode, Options, Target},
     Result,
@@ -118,17 +118,17 @@ Your hex tarball has been generated in {}.
 }
 
 pub fn javascript_prelude() -> Result<()> {
-    print!("{}", gleam_core::javascript::PRELUDE);
+    print!("{}", glistix_core::javascript::PRELUDE);
     Ok(())
 }
 
 pub fn typescript_prelude() -> Result<()> {
-    print!("{}", gleam_core::javascript::PRELUDE_TS_DEF);
+    print!("{}", glistix_core::javascript::PRELUDE_TS_DEF);
     Ok(())
 }
 
 pub fn nix_prelude() -> Result<()> {
-    print!("{}", gleam_core::nix::PRELUDE);
+    print!("{}", glistix_core::nix::PRELUDE);
     Ok(())
 }
 
@@ -146,7 +146,7 @@ pub fn package_interface(path: Utf8PathBuf) -> Result<()> {
     )?;
     built.root_package.attach_doc_and_module_comments();
 
-    let out = gleam_core::docs::generate_json_package_interface(path, &built.root_package);
+    let out = glistix_core::docs::generate_json_package_interface(path, &built.root_package);
     crate::fs::write_outputs_under(&[out], crate::find_project_paths()?.root())?;
     Ok(())
 }

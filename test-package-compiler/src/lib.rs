@@ -7,7 +7,7 @@
 #[cfg(test)]
 mod generated_tests;
 
-use gleam_core::{
+use glistix_core::{
     build::{
         ErlangAppCodegenConfiguration, Mode, NullTelemetry, StaleTracker, Target,
         TargetCodegenConfiguration,
@@ -44,7 +44,7 @@ pub fn prepare(path: &str) -> String {
         },
     };
 
-    let ids = gleam_core::uid::UniqueIdGenerator::new();
+    let ids = glistix_core::uid::UniqueIdGenerator::new();
     let mut modules = im::HashMap::new();
     let warnings = VectorWarningEmitterIO::default();
     let warning_emitter = WarningEmitter::new(Arc::new(warnings.clone()));
@@ -53,7 +53,7 @@ pub fn prepare(path: &str) -> String {
     let root = Utf8PathBuf::from("");
     let out = Utf8PathBuf::from("/out/lib/the_package");
     let lib = Utf8PathBuf::from("/out/lib");
-    let mut compiler = gleam_core::build::PackageCompiler::new(
+    let mut compiler = glistix_core::build::PackageCompiler::new(
         &config,
         Mode::Dev,
         &root,
@@ -102,7 +102,7 @@ fn normalise_diagnostic(text: &str) -> String {
 #[derive(Debug)]
 pub struct TestCompileOutput {
     files: HashMap<Utf8PathBuf, Content>,
-    warnings: Vec<gleam_core::Warning>,
+    warnings: Vec<glistix_core::Warning>,
 }
 
 impl TestCompileOutput {

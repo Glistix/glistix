@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
-use gleam_core::Error;
+use glistix_core::Error;
 
 #[test]
 fn new() {
