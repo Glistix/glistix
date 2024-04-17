@@ -5,8 +5,15 @@
   };
 
   outputs = inputs@{ nixpkgs, flake-parts, systems, ... }:
+    let
+      expressions = import ./nix;
+    in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import systems;
+
+      flake = {
+        lib = { inherit (expressions) loadGlistixPackage; };
+      };
 
       imports = [
         flake-parts.flakeModules.easyOverlay
@@ -15,8 +22,6 @@
 
       perSystem = { self', pkgs, lib, ... }:
         let
-          expressions = import ./nix;
-
           glistix = pkgs.callPackage expressions.glistix { };
         in
         {

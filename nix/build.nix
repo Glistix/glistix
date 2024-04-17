@@ -1,12 +1,16 @@
 # A builder for Glistix packages.
 #
-{ stdenv, fetchurl, gleam }:
+{ stdenv, fetchurl, glistix }@defaults:
 
 { pname ? null
 , version ? null
+, src
 , sourceRoot ? "."
-, gleamToml
-, manifestFile
+, gleamToml ? src + "/gleam.toml"
+, manifestFile ? src + "/manifest.toml"
+, stdenv ? defaults.stdenv
+, fetchurl ? defaults.fetchurl
+, glistix ? defaults.glistix
 , ...
 }@args:
 
@@ -16,9 +20,9 @@ let
     if builtins.isPath gleamToml
     then builtins.readFile gleamToml
     else gleamToml;
-  gleamConfig = builtins.fromTOML gleamTomlContents;
-  pkgVersion = gleamConfig.version;
-  pkgName = gleamConfig.name;
+  projectConfig = builtins.fromTOML gleamTomlContents;
+  pkgVersion = projectConfig.version;
+  pkgName = projectConfig.name;
 
   manifest = parseManifest { manifestContents = builtins.readFile manifestFile; };
 
@@ -45,7 +49,7 @@ stdenv.mkDerivation (args // {
   pname = if pname != null then pname else pkgName;
   version = if version != null then version else pkgVersion;
 
-  buildInputs = [ gleam ];
+  buildInputs = [ glistix ];
 
   # Symlink dependencies to a directory which Gleam has access to
   configurePhase = ''
@@ -71,7 +75,7 @@ stdenv.mkDerivation (args // {
   buildPhase = ''
     runHook preBuild
 
-    gleam build --target nix
+    glistix build --target nix
 
     runHook postBuild
   '';
@@ -86,14 +90,14 @@ stdenv.mkDerivation (args // {
   '';
 
   passthru = {
-    gleamPackage = pkgName;
+    glistixPackage = pkgName;
 
     # Relative path to the package's entrypoint
     # from the derivation's root directory.
-    gleamMain = "nix/${pkgName}/${pkgName}.nix";
+    glistixMain = "nix/${pkgName}/${pkgName}.nix";
 
     # Relative path to the package's testing entrypoint
     # from the derivation's root directory.
-    gleamTest = "nix/${pkgName}/${pkgName}_test.nix";
+    glistixTest = "nix/${pkgName}/${pkgName}_test.nix";
   };
 })
