@@ -1,3 +1,3 @@
 FROM elixir:latest
-COPY gleam /bin
-CMD ["gleam"]
+COPY glistix /bin
+CMD ["glistix"]

@@ -1,3 +1,3 @@
 FROM elixir:alpine
-COPY gleam /bin
-CMD ["gleam"]
+COPY glistix /bin
+CMD ["glistix"]
