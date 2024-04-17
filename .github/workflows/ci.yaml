@@ -108,7 +108,7 @@ jobs:
         with:
           key: v1-${{ matrix.target }}
 
-      - name: Install Gleam
+      - name: Install Glistix
         uses: actions-rs/cargo@v1
         with:
           command: install
@@ -125,39 +125,39 @@ jobs:
 
       - name: test/project_erlang (non-windows)
         run: |
-          gleam run && cd src && gleam run && cd ..
-          gleam check
-          gleam test && cd src && gleam test && cd ..
-          gleam docs build
+          glistix run && cd src && glistix run && cd ..
+          glistix check
+          glistix test && cd src && glistix test && cd ..
+          glistix docs build
         working-directory: ./test/project_erlang
         if: ${{ runner.os != 'Windows' && matrix.run-integration-tests }}
 
       - name: test/project_erlang (windows)
         run: |
-          gleam run && cd src && gleam run && cd ..
-          gleam check
-          gleam test && cd src && gleam test && cd ..
-          gleam docs build
+          glistix run && cd src && glistix run && cd ..
+          glistix check
+          glistix test && cd src && glistix test && cd ..
+          glistix docs build
         working-directory: ./test/project_erlang_windows
         if: ${{ runner.os == 'Windows' && matrix.run-integration-tests }}
 
       - name: test/project_erlang export erlang-shipment (non-windows)
         run: |
-          gleam export erlang-shipment
+          glistix export erlang-shipment
           ./build/erlang-shipment/entrypoint.sh run
         working-directory: ./test/project_erlang
         if: ${{ runner.os != 'Windows' && matrix.run-integration-tests }}
 
       - name: test/project_erlang export erlang-shipment (windows)
         run: |
-          gleam export erlang-shipment
+          glistix export erlang-shipment
           .\build\erlang-shipment\entrypoint.ps1 run
         working-directory: ./test/project_erlang_windows
         if: ${{ runner.os == 'Windows' && matrix.run-integration-tests }}
 
       - name: test/project_erlang export package-interface
         run: |
-          gleam export package-interface --out="interface.json"
+          glistix export package-interface --out="interface.json"
           cat interface.json
         working-directory: ./test/project_erlang
         if: ${{ matrix.run-integration-tests }}
@@ -167,7 +167,7 @@ jobs:
         working-directory: ./test/external_only_javascript
         if: ${{ matrix.run-integration-tests }}
         env:
-          GLEAM_COMMAND: gleam
+          GLEAM_COMMAND: glistix
 
 
       - name: test/external_only_erlang
@@ -175,31 +175,31 @@ jobs:
         working-directory: ./test/external_only_erlang
         if: ${{ matrix.run-integration-tests }}
         env:
-          GLEAM_COMMAND: gleam
+          GLEAM_COMMAND: glistix
 
       - name: test/project_javascript
         run: |
-          gleam run
-          gleam check
-          gleam test
-          gleam docs build
+          glistix run
+          glistix check
+          glistix test
+          glistix docs build
         working-directory: ./test/project_javascript
         if: ${{ matrix.run-integration-tests }}
 
       - name: test/project_path_deps
         run: |
-          gleam update
-          gleam check
+          glistix update
+          glistix check
         working-directory: ./test/project_path_deps/project_a
         if: ${{ matrix.run-integration-tests }}
 
       - name: Test project generation
         run: |
-          gleam new lib_project
+          glistix new lib_project
           cd lib_project
-          gleam run
-          gleam test
-          gleam docs build
+          glistix run
+          glistix test
+          glistix docs build
 
           # Assert that module metadata has been written
           ls build/dev/erlang/lib_project/_gleam_artefacts/lib_project.cache
@@ -344,8 +344,8 @@ jobs:
       - name: Upload artifact (Ubuntu)
         uses: actions/upload-artifact@v4
         with:
-          name: gleam
-          path: target/debug/gleam
+          name: glistix
+          path: target/debug/glistix
 
   test-projects:
     name: test-projects
@@ -371,18 +371,18 @@ jobs:
           elixir-version: "1.16.1"
           rebar3-version: "3"
 
-      - name: Download Gleam binary from previous job
+      - name: Download Glistix binary from previous job
         uses: actions/download-artifact@v4
         with:
-          name: gleam
+          name: glistix
           path: ./test
 
-      - name: Configure test projects to use Gleam binary
+      - name: Configure test projects to use Glistix binary
         run: |
           echo $PWD/ >> $GITHUB_PATH
-          chmod +x ./gleam
-          sed -i 's/cargo run --quiet --/gleam/' */Makefile
-          sed -i 's/cargo run --/gleam/' */Makefile
+          chmod +x ./glistix
+          sed -i 's/cargo run --quiet --/glistix/' */Makefile
+          sed -i 's/cargo run --/glistix/' */Makefile
         working-directory: ./test
 
       - name: test/language Erlang
