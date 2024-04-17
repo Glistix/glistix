@@ -16,10 +16,17 @@ let
       let
         sourceRoot = args.sourceRoot or "source";
         matchedRoot = builtins.match "^([^/]*)(/.*)?$" sourceRoot;
-        restOfRoot =
+        matchedRestOfRoot =
           if builtins.length matchedRoot > 1
           then builtins.elemAt matchedRoot 1
           else null;
+        # Normalize so we don't add null to path
+        # When there is nothing to add after the first segment,
+        # just don't add anything.
+        restOfRoot =
+          if matchedRestOfRoot == null
+          then ""
+          else matchedRestOfRoot;
         correspondingSourcePath =
           name:
             let
@@ -30,7 +37,7 @@ let
             then
               builtins.throw
                 "Expected source root to correspond to a valid path within given `srcs`"
-            else "${builtins.head filteredSources}";
+            else "${builtins.head filteredSources}" + restOfRoot;
         effectiveRoot =
           if args ? src
           then "${args.src}" + restOfRoot
