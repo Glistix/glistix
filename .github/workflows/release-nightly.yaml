@@ -2,8 +2,8 @@ name: release-nightly
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '45 0 * * *'
+  # schedule:
+  #   - cron: '45 0 * * *'
 
 env:
   CARGO_TERM_COLOR: always
