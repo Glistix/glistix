@@ -28,8 +28,9 @@
           formatter = pkgs.nixpkgs-fmt;
 
           builders.buildGlistixPackage =
+            pkgs.callPackage
             expressions.buildGlistixPackage
-            { inherit (pkgs) stdenv fetchurl; glistix = self'.packages.default; };
+            { glistix = self'.packages.default; };
 
           packages = {
             default = glistix;

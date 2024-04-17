@@ -1,13 +1,49 @@
 # A builder for Glistix packages.
 #
-{ stdenv, fetchurl, glistix }@defaults:
+{ stdenv, glistix, lib }@defaults:
+
+let
+  # Converts a "sourceRoot" string to a store path we can
+  # retrieve files from.
+  # For a single src, it is in the form "source/<something>",
+  # so we just strip the first path segment.
+  # For srcs, it is in the form "<src name>/<...>", so we take
+  # the first segment and find the corresponding derivation
+  # in srcs.
+  # Consider this to be a best effort.
+  sourceRootPath =
+    args: add:
+      let
+        sourceRoot = args.sourceRoot or "source";
+        matchedRoot = builtins.match "^([^/]*)(/.*)?$" sourceRoot;
+        restOfRoot =
+          if builtins.length matchedRoot > 1
+          then builtins.elemAt matchedRoot 1
+          else null;
+        correspondingSourcePath =
+          name:
+            let
+              filteredSources =
+                builtins.filter (drv: drv.name or drv == name) args.srcs;
+            in
+            if builtins.length filteredSources == 0
+            then
+              builtins.throw
+                "Expected source root to correspond to a valid path within given `srcs`"
+            else "${builtins.head filteredSources}";
+        effectiveRoot =
+          if args ? src
+          then "${args.src}" + restOfRoot
+          else if args ? srcs
+          then correspondingSourcePath
+          else builtins.throw "Expected Glistix builder args to have either src or srcs";
+      in effectiveRoot + add;
+in
 
 { pname ? null
 , version ? null
-, src
-, sourceRoot ? "."
-, gleamToml ? src + "/gleam.toml"
-, manifestFile ? src + "/manifest.toml"
+, gleamToml ? sourceRootPath args "/gleam.toml"
+, manifestToml ? { file = sourceRootPath args "/manifest.toml"; }
 , stdenv ? defaults.stdenv
 , fetchurl ? defaults.fetchurl
 , glistix ? defaults.glistix
@@ -16,22 +52,19 @@
 
 let
   parseManifest = import ./manifest.nix;
-  gleamTomlContents =
-    if builtins.isPath gleamToml
-    then builtins.readFile gleamToml
-    else gleamToml;
+  gleamTomlContents = gleamToml.contents or builtins.readFile gleamToml;
   projectConfig = builtins.fromTOML gleamTomlContents;
   pkgVersion = projectConfig.version;
   pkgName = projectConfig.name;
 
-  manifest = parseManifest { manifestContents = builtins.readFile manifestFile; };
+  manifest = parseManifest { manifestContents = builtins.readFile manifestToml.file; };
 
   hexPackages = builtins.filter (pkg: pkg.source == "hex") manifest;
 
   hexTarballURL = name: version: "https://repo.hex.pm/tarballs/${name}-${version}.tar";
 
   # Fetch a hex package, but only the tarball, as that's what Gleam caches
-  fetchHex = { pkg, version, sha256 }: fetchurl { url = hexTarballURL pkg version; inherit sha256; };
+  fetchHex = { pkg, version, sha256 }: lib.fetchurl { url = hexTarballURL pkg version; inherit sha256; };
 
   fetchedHexPackages =
     map
@@ -44,7 +77,7 @@ in
 assert gleamToml != null;
 assert builtins.match "[a-zA-Z0-9_-]+" pkgName != null;
 
-stdenv.mkDerivation (args // {
+stdenv.mkDerivation (self': args // {
   inherit fetchedHexPackagePaths;
   pname = if pname != null then pname else pkgName;
   version = if version != null then version else pkgVersion;
@@ -80,11 +113,11 @@ stdenv.mkDerivation (args // {
     runHook postBuild
   '';
 
-  # The generated Nix files are our output
+  # The build directory is our output
   installPhase = ''
     runHook preInstall
 
-    cp build/dev/nix -rT "$out"
+    cp build -rT "$out"
 
     runHook postInstall
   '';
@@ -92,12 +125,14 @@ stdenv.mkDerivation (args // {
   passthru = {
     glistixPackage = pkgName;
 
+    glistixNixRoot = "dev/nix";
+
     # Relative path to the package's entrypoint
     # from the derivation's root directory.
-    glistixMain = "nix/${pkgName}/${pkgName}.nix";
+    glistixMain = "${self'.passthru.glistixNixRoot}/${pkgName}/${pkgName}.nix";
 
     # Relative path to the package's testing entrypoint
     # from the derivation's root directory.
-    glistixTest = "nix/${pkgName}/${pkgName}_test.nix";
+    glistixTest = "${self'.passthru.glistixNixRoot}/${pkgName}/${pkgName}_test.nix";
   };
 })
