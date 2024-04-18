@@ -169,9 +169,10 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                     Index::Int(i) => path.add_right_component(Document::String(format!("._{i}"))),
                     Index::Tuple(i) => path
                         .add_component("(builtins.elemAt ".to_doc(), docvec!(" ", i.to_doc(), ")")),
-                    Index::String(s) => {
-                        path.add_right_component(docvec!(".", maybe_escape_identifier_doc(s)))
-                    }
+                    Index::String(s) => path.add_right_component(docvec!(
+                        ".",
+                        syntax::maybe_quoted_attr_set_label_from_identifier(s)
+                    )),
                     Index::ByteAt(i) => {
                         path.add_component("(byteAt ".to_doc(), docvec!(" ", i.to_doc(), ")"))
                     }
@@ -347,7 +348,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                 docvec!(
                     self.wrapped_guard(container)?,
                     ".",
-                    maybe_escape_identifier_doc(label)
+                    syntax::maybe_quoted_attr_set_label_from_identifier(label)
                 )
             }
 

@@ -15,7 +15,8 @@ let
   
   Simple2 = x0: { __gleamTag = "Simple2"; _0 = x0; };
   
-  Simple3 = inherit': x: { __gleamTag = "Simple3"; inherit inherit' x; };
+  Simple3 =
+    inherit': x: { __gleamTag = "Simple3"; inherit x; "inherit" = inherit'; };
   
   pat_test =
     {}:
@@ -33,7 +34,7 @@ let
         _pat''4 = (Simple2 5);
         a = _pat''4._0;
         _pat''5 = (Simple3 true 5.0);
-        a'1 = _pat''5.inherit';
+        a'1 = _pat''5."inherit";
         b = _pat''5.x;
       in seqAll [ _' _'1 _'2 _'3 _'4 ] [ a'1 b ];
   

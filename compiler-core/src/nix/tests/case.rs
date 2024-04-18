@@ -235,3 +235,21 @@ pub fn main() {
 "#
     )
 }
+
+#[test]
+fn matching_on_record_with_keyword_field() {
+    assert_nix!(
+        r#"
+type Bad {
+  Bad(inherit: Int)
+}
+
+pub fn main() {
+  case Bad(inherit: 5) {
+    Bad(inherit: 10) -> True
+    Bad(inherit: inherit) -> False
+  }
+}
+"#
+    )
+}

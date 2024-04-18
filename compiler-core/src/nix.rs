@@ -301,14 +301,20 @@ impl<'module> Generator<'module> {
 
         let args = syntax::wrap_args(constructor.arguments.iter().enumerate().map(parameter));
 
-        // Named fields will always correspond to their parameters (both are
-        // renamed in the same way when they clash with keywords).
-        // Thus, they are added through 'inherit' instead of 'field = field'.
+        // Named fields will always correspond to their parameters, unless
+        // they are keywords (in which case the parameter will be escaped
+        // and the associated attribute will be quoted) or important names (in
+        // which case the parameter will be escaped but the attribute won't).
+        // Thus, named fields with ordinary names are added through 'inherit'
+        // instead of 'field = field' to make the declaration shorter and more
+        // concise.
         let (inherited_fields, other_fields) = constructor
             .arguments
             .iter()
             .enumerate()
-            .partition::<Vec<_>, _>(|(_, arg)| arg.label.is_some());
+            .partition::<Vec<_>, _>(|(_, arg)| {
+                arg.label.as_deref().is_some_and(is_usable_nix_identifier)
+            });
 
         let inherited_fields = if inherited_fields.is_empty() {
             nil()
@@ -316,11 +322,10 @@ impl<'module> Generator<'module> {
             docvec![
                 break_("", " "),
                 syntax::inherit(inherited_fields.iter().map(|(_, arg)| {
-                    maybe_escape_identifier_doc(
-                        arg.label
-                            .as_ref()
-                            .expect("presence of label should already have been checked"),
-                    )
+                    arg.label
+                        .as_ref()
+                        .expect("presence of label should already have been checked")
+                        .to_doc()
                 }))
             ]
         };
@@ -328,8 +333,16 @@ impl<'module> Generator<'module> {
         let other_fields = concat(other_fields.iter().map(|(i, arg)| {
             let parameter = parameter((*i, arg));
             let assignment = if let Some(label) = &arg.label {
-                syntax::assignment_line(maybe_escape_identifier_doc(label), parameter)
+                // Add "quotes" around attribute name if it would be a keyword.
+                // The quotes are needed on declaration site and also on field
+                // access, but the underlying attribute name isn't changed.
+                syntax::assignment_line(
+                    syntax::maybe_quoted_attr_set_label_from_identifier(label),
+                    parameter,
+                )
             } else {
+                // Positional arguments are represented as '_NUMBER'.
+                // They might not start at zero.
                 syntax::assignment_line(Document::String(format!("_{i}")), parameter)
             };
 

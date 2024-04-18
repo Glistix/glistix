@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "\npub type A {\n  A(inherit: Int, builtins: Bool)\n}\n\npub fn main(x: A) {\n  case x {\n    _ if x.inherit == 5 || x.builtins -> True\n    _ -> False\n  }\n}\n"
+---
+let
+  A =
+    inherit': builtins':
+      { __gleamTag = "A"; "inherit" = inherit'; builtins = builtins'; };
+  
+  main = x: if (x."inherit" == 5) || x.builtins then true else false;
+in { inherit A main; }

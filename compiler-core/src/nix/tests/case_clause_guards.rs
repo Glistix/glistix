@@ -245,6 +245,24 @@ pub fn a(a: A) {
 }
 
 #[test]
+fn record_access_on_keyword() {
+    assert_nix!(
+        r#"
+pub type A {
+  A(inherit: Int, builtins: Bool)
+}
+
+pub fn main(x: A) {
+  case x {
+    _ if x.inherit == 5 || x.builtins -> True
+    _ -> False
+  }
+}
+"#
+    );
+}
+
+#[test]
 fn module_string_access() {
     assert_nix!(
         (

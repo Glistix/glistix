@@ -957,10 +957,8 @@ impl Generator<'_> {
 
     fn record_access<'a>(&mut self, record: &'a TypedExpr, label: &'a str) -> Output<'a> {
         let record = self.wrap_child_expression(record)?;
-        // Escape as an identifier (that is, add `'` after the label if it
-        // would clash with a keyword or important name), since that's how
-        // we generate fields at a record constructor.
-        let escaped_label = maybe_escape_identifier_doc(label);
+        // Only keywords need to be escaped here with "quotes".
+        let escaped_label = syntax::maybe_quoted_attr_set_label_from_identifier(label);
         Ok(docvec![record, ".", escaped_label])
     }
 
@@ -1003,6 +1001,7 @@ impl Generator<'_> {
             "null".to_doc()
         } else {
             // Use the record constructor directly.
+            // No need to escape the name as it must start with an uppercase letter.
             match qualifier {
                 Some(module) => docvec![module_var_name_doc(module), ".", name],
                 None => name.to_doc(),
@@ -1018,6 +1017,9 @@ impl Generator<'_> {
     ) -> Document<'a> {
         match constructor {
             ModuleValueConstructor::Fn { .. } | ModuleValueConstructor::Constant { .. } => {
+                // Escape as an identifier, not with "quotes", as we're dealing with
+                // module-level functions and constants, whose names are declared with
+                // and escaped as identifiers.
                 docvec!(
                     module_var_name_doc(module),
                     ".",
@@ -1375,6 +1377,7 @@ fn construct_record<'a>(
     name: &'a str,
     arguments: Vec<Document<'a>>,
 ) -> Document<'a> {
+    // No need to escape a record name as it has an uppercase letter.
     let name = if let Some(module) = module {
         docvec![module_var_name_doc(module), ".", name]
     } else {
