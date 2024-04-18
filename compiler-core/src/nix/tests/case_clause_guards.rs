@@ -42,6 +42,25 @@ fn bitarray_with_var() {
 }
 
 #[test]
+fn keyword_var() {
+    assert_nix!(
+        r#"
+pub const inherit = 5
+pub const builtins = 10
+pub fn main() {
+  let then = 5
+  let or = 10
+  case 5 {
+    _ if or == then -> True
+    _ if inherit == builtins -> True
+    _ -> False
+  }
+}
+"#,
+    );
+}
+
+#[test]
 fn operator_wrapping_right() {
     assert_nix!(
         r#"pub fn main(xs, y: Bool, z: Bool) {
@@ -380,6 +399,29 @@ fn module_nested_access() {
             let name = "Bruce Wayne"
             case name {
               n if n == hero.batman.secret_identity.name -> True
+              _ -> False
+            }
+          }
+        "#
+    );
+}
+
+#[test]
+fn module_access_with_escaping() {
+    assert_nix!(
+        (
+            "package",
+            "hero",
+            r#"
+              pub const inherit = "Tony Stark"
+            "#
+        ),
+        r#"
+          import hero
+          pub fn main() {
+            let name = "Tony Stark"
+            case name {
+              n if n == hero.inherit -> True
               _ -> False
             }
           }

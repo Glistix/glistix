@@ -1301,8 +1301,12 @@ pub(crate) fn constant_expression<'a>(
 
         Constant::Var { name, module, .. } => Ok({
             match module {
-                None => name.to_doc(),
-                Some(module) => docvec![module_var_name_doc(module), ".", name],
+                None => maybe_escape_identifier_doc(name),
+                Some(module) => docvec![
+                    module_var_name_doc(module),
+                    ".",
+                    maybe_escape_identifier_doc(name)
+                ],
             }
         }),
     }

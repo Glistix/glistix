@@ -1,0 +1,19 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "\npub const inherit = 5\npub const builtins = 10\npub fn main() {\n  let then = 5\n  let or = 10\n  case 5 {\n    _ if or == then -> True\n    _ if inherit == builtins -> True\n    _ -> False\n  }\n}\n"
+---
+let
+  inherit' = 5;
+  
+  builtins' = 10;
+  
+  main =
+    {}:
+      let
+        then' = 5;
+        or' = 10;
+      in
+        let
+          _pat' = 5;
+        in if or' == then' then true else if 5 == 10 then true else false;
+in { inherit inherit' builtins' main; }

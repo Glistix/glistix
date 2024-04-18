@@ -176,3 +176,34 @@ pub fn nasa_go() { go() }
 "#
     );
 }
+
+#[test]
+fn import_with_keyword() {
+    assert_nix!(
+        (
+            CURRENT_PACKAGE,
+            "rocket_ship",
+            r#"
+pub const inherit = 1
+pub const true = 2
+"#
+        ),
+        r#"
+import rocket_ship.{inherit, true as false}
+pub fn main() {
+  #(inherit, false)
+}
+"#
+    );
+}
+
+#[test]
+fn constant_module_access_with_keyword() {
+    assert_nix!(
+        (CURRENT_PACKAGE, "rocket_ship", r#"pub const inherit = 1"#),
+        r#"
+import rocket_ship
+pub const variable = rocket_ship.inherit
+"#,
+    );
+}

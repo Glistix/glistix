@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/modules.rs
+expression: "\nimport rocket_ship.{inherit, true as false}\npub fn main() {\n  #(inherit, false)\n}\n"
+---
+let
+  rocket_ship' = builtins.import ./../rocket_ship.nix;
+  inherit (builtins.import ./../rocket_ship.nix) inherit';
+  false' = (builtins.import ./../rocket_ship.nix).true';
+  
+  main = {}: [ inherit' false' ];
+in { inherit main; }
