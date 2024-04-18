@@ -1237,7 +1237,7 @@ pub(crate) fn guard_constant_expression<'a>(
                     .clone()
                     .into_doc_with_subject(assignment.subject.clone())
             })
-            .unwrap_or_else(|| name.to_doc())),
+            .unwrap_or_else(|| maybe_escape_identifier_doc(name))),
         expression => constant_expression(tracker, expression),
     }
 }

@@ -50,10 +50,14 @@ pub const builtins = 10
 pub fn main() {
   let then = 5
   let or = 10
-  case 5 {
+  let in = 7
+  case in {
     _ if or == then -> True
+    _ if [or] == [5] -> True
+    inherit if #(inherit) == #(5) -> False
     _ if inherit == builtins -> True
-    _ -> False
+    with if with > 5 -> False
+    rec -> False
   }
 }
 "#,
