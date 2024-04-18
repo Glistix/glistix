@@ -52,7 +52,7 @@ in
 , gleamToml ? sourceRootPath args "/gleam.toml"
 , manifestToml ? { file = sourceRootPath args "/manifest.toml"; }
 , stdenv ? defaults.stdenv
-, fetchurl ? defaults.fetchurl
+, fetchurl ? defaults.lib.fetchurl
 , glistix ? defaults.glistix
 , ...
 }@args:
