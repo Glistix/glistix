@@ -34,13 +34,13 @@ fn print_compiler_bug_message(info: &PanicInfo<'_>) {
     buffer.set_color(&ColorSpec::new()).unwrap();
     writeln!(
         buffer,
-        "This is a bug in the Gleam compiler, sorry!
+        "This is a bug in the Glistix compiler, sorry!
 
-Please report this crash to https://github.com/gleam-lang/gleam/issues/new
+Please report this crash to https://github.com/glistix/glistix/issues/new
 and include this error message with your report.
 
 Panic: {location}{message}
-Gleam version: {version}
+Glistix version: {version}
 Operating system: {os}
 
 If you can also share your code and say what file you were editing or any

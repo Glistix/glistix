@@ -271,7 +271,7 @@ pub fn create(options: NewOptions, version: &'static str) -> Result<()> {
         "Your Gleam project {} has been successfully created.
 The project can be compiled and tested by running these commands:
 
-{}\tgleam test
+{}\tglistix test
 ",
         creator.project_name, cd_folder,
     );
