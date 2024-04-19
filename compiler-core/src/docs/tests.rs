@@ -11,6 +11,7 @@ use crate::{
 };
 use camino::Utf8PathBuf;
 use ecow::EcoString;
+use hexpm::version::Version;
 use itertools::Itertools;
 
 fn compile_with_markdown_pages(
@@ -105,7 +106,11 @@ pub fn compile(config: PackageConfig, modules: Vec<(&str, &str)>) -> EcoString {
 
 #[test]
 fn hello_docs() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    // We replace the compiler version in the output,
+    // so let's distinguish the package version from the
+    // compiler version by setting it to v0.1.49
+    config.version = Version::new(0, 1, 49);
     let modules = vec![(
         "app.gleam",
         r#"
@@ -121,7 +126,8 @@ pub fn one() {
 // https://github.com/gleam-lang/gleam/issues/2347
 #[test]
 fn tables() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     let modules = vec![(
         "app.gleam",
         r#"
@@ -141,7 +147,8 @@ pub fn one() {
 // https://github.com/gleam-lang/gleam/issues/2202
 #[test]
 fn long_function_wrapping() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     let modules = vec![(
         "app.gleam",
         r#"
@@ -167,7 +174,8 @@ pub fn lazy_or(first: Option(a), second: fn() -> Option(a)) -> Option(a) {
 
 #[test]
 fn internal_definitions_are_not_included() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     let modules = vec![(
         "app.gleam",
         r#"
@@ -190,7 +198,8 @@ pub fn one() { 1 }
 // https://github.com/gleam-lang/gleam/issues/2561
 #[test]
 fn discarded_arguments_are_not_shown() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     let modules = vec![("app.gleam", "pub fn discard(_discarded: a) -> Int { 1 }")];
     insta::assert_snapshot!(compile(config, modules));
 }
@@ -198,7 +207,8 @@ fn discarded_arguments_are_not_shown() {
 // https://github.com/gleam-lang/gleam/issues/2631
 #[test]
 fn docs_of_a_type_constructor_are_not_used_by_the_following_function() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     let modules = vec![(
         "app.gleam",
         r#"
@@ -217,7 +227,8 @@ pub fn main() { todo }
 
 #[test]
 fn markdown_code_from_standalone_pages_is_not_trimmed() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     let pages = vec![(
         "one",
         "
@@ -233,7 +244,8 @@ pub fn indentation_test() {
 
 #[test]
 fn markdown_code_from_function_comment_is_trimmed() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     let modules = vec![(
         "app.gleam",
         "
@@ -253,7 +265,8 @@ pub fn indentation_test() {
 
 #[test]
 fn markdown_code_from_module_comment_is_trimmed() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     let modules = vec![(
         "app.gleam",
         "

@@ -9,7 +9,7 @@ expression: "compile_with_markdown_pages(config, vec![], pages)"
   <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>one ·  · v0.1.0</title>
+    <title>one ·  · v0.1.49</title>
     <meta name="description" content=""/>
     <meta name="theme-color" content="#ffaff3" media="(prefers-color-scheme: light)"/>
     <meta name="theme-color" content="#33384d" media="(prefers-color-scheme: dark)"/>
@@ -150,13 +150,13 @@ expression: "compile_with_markdown_pages(config, vec![], pages)"
       <h2>
         <a href="./"></a>
         <span id="project-version">
-          <span> - v0.1.0 </span>
+          <span> - v0.1.49 </span>
         </span>
         <script>
           "use strict";
 
           if ("undefined" !== typeof versionNodes) {
-            const currentVersion = "v0.1.0";
+            const currentVersion = "v0.1.49";
             if (! versionNodes.find(element => element.version === currentVersion)) {
               versionNodes.unshift({ version: currentVersion, url: "#" });
             }
