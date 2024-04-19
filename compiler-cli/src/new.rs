@@ -143,6 +143,7 @@ pub fn hello_world_test() {
             Self::GleamToml => Some(format!(
                 r#"name = "{project_name}"
 version = "1.0.0"
+target = "nix"
 
 # Fill out these fields if you intend to generate HTML documentation or publish
 # your project to the Hex package manager.
@@ -268,7 +269,7 @@ pub fn create(options: NewOptions, version: &'static str) -> Result<()> {
     };
 
     println!(
-        "Your Gleam project {} has been successfully created.
+        "Your Glistix project {} has been successfully created.
 The project can be compiled and tested by running these commands:
 
 {}\tglistix test
