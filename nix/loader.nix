@@ -1,9 +1,7 @@
-# Generates a function which allows quickly loading a Glistix package
+# A function which allows quickly loading a Glistix package
 # by importing its main Nix file (at least by default).
-# The arguments to the generator are defaults which can be overridden
-# by passing the same arguments to the generated function.
 #
-# Its project folder is all that is needed if we're looking for
+# Its project folder ("src") is all that is needed if we're looking for
 # the package's main function and it has an output folder inside
 # its project folder.
 # The "src" can be omitted when a non-default output is given,
@@ -25,12 +23,13 @@
 # ```nix
 # let
 #   loadGlistixPackage =
-#     glistix.lib.makeGlistixPackageLoader {
-#       src = ./.;
-#       # assuming output is at ./output
-#       package = "pkgname";
-#       module = "pkgname";
-#     };
+#     { ... }@overrides:
+#       glistix.lib.loadGlistixPackage ({
+#         src = ./.;
+#         # assuming output is at ./output
+#         package = "pkgname";
+#         module = "pkgname";
+#       } // overrides);
 # in { inherit loadGlistixPackage; }
 # ```
 #
@@ -41,33 +40,34 @@
 #   result = (mypkg.loadGlistixPackage {}).main {};
 # in result
 # ```
-{ src ? null
-, output ? null
-, derivation ? null
-, nixRoot ? null
-, package ? null
-, module ? null
-}@defaults:
 
-# Allow overriding
-{ output ? defaults.output or (src + "/output")
-, derivation ? defaults.derivation or null
-, nixRoot ? defaults.nixRoot or derivation.nixRoot or "dev/nix"
-, package ? defaults.package or derivation.glistixPackage or (builtins.fromTOML (builtins.readFile (src + "/gleam.toml"))).name
-, module ? defaults.module or package
+let
+  # :: path-like -> any
+  tryReadGleamToml =
+    src:
+      if builtins.pathExists (src + "/gleam.toml")
+      then builtins.fromTOML (builtins.readFile (src + "/gleam.toml"))
+      else {};
+in
+{ src ? null
+, output ? src + "/output"
+, derivation ? null
+, nixRoot ? derivation.nixRoot or "dev/nix"
+, package ? derivation.glistixPackage or (tryReadGleamToml src).name or null
+, module ? package
 , fileToLoad ? "${nixRoot}/${package}/${module}.nix"
 }:
 
-assert builtins.match "[a-zA-Z0-9_\\-]+" (builtins.toString package) != null;
-assert builtins.match "[a-zA-Z0-9_\\-\\/]+" module != null;
-
 let
-  hasOutput = output != null && builtins.pathExists (output + "/dev/nix");
+  hasOutput = output != null && builtins.pathExists (output + "/${nixRoot}");
   importPath =
     if hasOutput
     then output + "/${fileToLoad}"
     else derivation.outPath + "/${fileToLoad}";
 in
+
+assert builtins.match "[a-zA-Z0-9_\\-]+" (builtins.toString package) != null;
+assert builtins.match "[a-zA-Z0-9_\\-\\/]+" module != null;
 
 # Either have your package's build output be somewhere in specific,
 # or build it from scratch.

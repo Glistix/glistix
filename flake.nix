@@ -12,7 +12,7 @@
       systems = import systems;
 
       flake = {
-        lib = { inherit (expressions) makeGlistixPackageLoader; };
+        lib = { inherit (expressions) loadGlistixPackage; };
       };
 
       imports = [
