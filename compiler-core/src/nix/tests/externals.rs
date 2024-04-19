@@ -27,12 +27,6 @@ pub fn show(x: anything) -> Nil"#,
 fn valid_patterns() {
     assert_nix!(
         r#"
-@external(nix, "/abs/path", "inspect")
-fn abs_path(x: anything) -> Nil
-
-@external(nix, "/", "inspect")
-fn root(x: anything) -> Nil
-
 @external(nix, "./a", "inspect")
 fn current_dir_path(x: anything) -> Nil
 
@@ -295,6 +289,23 @@ fn not_relative() {
 pub fn one(x: Int) -> Int {
   1
 }
+"#
+    );
+}
+
+#[test]
+fn abs_path() {
+    assert_module_error!(
+        r#"
+@external(nix, "/abs/path", "inspect")
+fn abs_path(x: anything) -> Nil
+"#
+    );
+
+    assert_module_error!(
+        r#"
+@external(nix, "/", "inspect")
+fn root(x: anything) -> Nil
 "#
     );
 }

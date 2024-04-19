@@ -711,7 +711,7 @@ fn assert_valid_nix_external(
     // "./word" or "../word". You can also import from "." or "..".
     // We should expand this in the future.
     if !MODULE
-        .get_or_init(|| Regex::new("^(?:\\.\\.?|\\.?\\.?/[a-zA-Z0-9\\./:_-]*)$").expect("regex"))
+        .get_or_init(|| Regex::new("^(?:\\.\\.?|\\.\\.?/[a-zA-Z0-9\\./:_-]*)$").expect("regex"))
         .is_match(module)
     {
         return Err(Error::InvalidExternalNixModule {
