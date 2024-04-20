@@ -2,20 +2,20 @@
 # by importing its main Nix file (at least by default).
 #
 # Its project folder ("src") is all that is needed if we're looking for
-# the package's main function and it has an output folder inside
-# its project folder.
+# the package's main function and it has an "output/" folder inside
+# its project folder with built Nix files at "output/dev/nix".
 # The "src" can be omitted when a non-default output is given,
 # or when a derivation which compiles the Glistix package from scratch
 # with the compiler is given.
 #
 # You can pick which package and module you want to import.
-# By default, this will be `(package name)/(package name.nix)`,
-# so you can load your main function.
+# By default, this will be `(package name)/(package name).nix`,
+# so you can load your main function with "(loadGlistixPackage {}).main {}".
 # The "nixRoot" parameter lets you customize the path relative
 # to the output / derivation output root folder which contains
 # the generated Nix files.
 # You can also completely override "fileToLoad" to load some
-# arbitrary file relative to the generated Nix directory.
+# arbitrary file relative to the build output directory.
 #
 # SAMPLE USAGE:
 #
