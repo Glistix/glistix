@@ -49,8 +49,21 @@ in
 
 { pname ? null
 , version ? null
+
+# Path to gleam.toml which we can read from.
+# This is used to automatically determine 'pname'
+# and 'version' based on your package's name and version.
 , gleamToml ? sourceRootPath args "/gleam.toml"
+
+# The file attribute must be a path to a valid manifest.toml file.
+# This specifies how to fetch each dependency before building.
 , manifestToml ? { file = sourceRootPath args "/manifest.toml"; }
+
+# Submodules in the format { src = PATH, dest = "RELATIVE PATH STRING" }.
+# Basically any extra (usually Git) dependencies, which are copied to the
+# given destinations at build-time.
+, submodules ? [ ]
+
 , stdenv ? defaults.stdenv
 , fetchurl ? defaults.lib.fetchurl
 , glistix ? defaults.glistix
@@ -63,6 +76,8 @@ let
   projectConfig = builtins.fromTOML gleamTomlContents;
   pkgVersion = projectConfig.version;
   pkgName = projectConfig.name;
+
+  convertedSubmodules = import ./submodules.nix { inherit submodules; };
 
   manifest = parseManifest { manifestContents = builtins.readFile manifestToml.file; };
 
@@ -85,9 +100,13 @@ assert gleamToml != null;
 assert builtins.match "[a-zA-Z0-9_-]+" pkgName != null;
 
 stdenv.mkDerivation (self': args // {
-  inherit fetchedHexPackagePaths;
   pname = if pname != null then pname else pkgName;
   version = if version != null then version else pkgVersion;
+
+  # for hex.sh
+  inherit fetchedHexPackagePaths;
+  # for submodules.sh
+  inherit (convertedSubmodules) submodules;
 
   buildInputs = [ glistix ];
 
@@ -95,22 +114,14 @@ stdenv.mkDerivation (self': args // {
   configurePhase = ''
     runHook preConfigure
 
-    export XDG_CACHE_HOME="$TEMPDIR/.gleam_cache"
-    hexdir="''${XDG_CACHE_HOME}/gleam/hex/hexpm/packages"
-    mkdir -p "$hexdir"
+    ${builtins.readFile ./hex.sh}
 
-    IFS=$'\n'
-    for package in $fetchedHexPackagePaths;
-    do
-      dest="$hexdir/$(basename "$package" | cut -d '-' -f1 --complement)"
-      echo "Linking $package to $dest"
-      ln -s "$package" -T "$dest"
-    done
+    ${builtins.readFile ./submodules.sh}
 
     runHook postConfigure
   '';
 
-  # TODO: prefetch deps
+  # TODO: prefetch and expand deps
   # Build using Glistix
   buildPhase = ''
     runHook preBuild
