@@ -1,5 +1,5 @@
 {
-  buildGlistixPackage = import ./build.nix;
+  buildGlistixPackage = import ./build;
   glistix = import ./glistix.nix;
   loadGlistixPackage = import ./loader.nix;
 }
