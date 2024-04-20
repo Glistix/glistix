@@ -1,6 +1,6 @@
 # Populates Gleam's cache of hex packages.
 export XDG_CACHE_HOME="$TEMPDIR/.gleam_cache"
-hexdir="''${XDG_CACHE_HOME}/gleam/hex/hexpm/packages"
+hexdir="${XDG_CACHE_HOME}/gleam/hex/hexpm/packages"
 mkdir -p "$hexdir"
 
 IFS=$'\n'
