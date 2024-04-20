@@ -21,6 +21,9 @@ const ERLANG_OTP_VERSION: &str = "26.0.2";
 const REBAR3_VERSION: &str = "3";
 const ELIXIR_VERSION: &str = "1.15.4";
 
+const GLISTIX_STDLIB_URL: &str = "https://github.com/glistix/stdlib";
+const GLISTIX_GLEEUNIT_URL: &str = "https://github.com/glistix/gleeunit";
+
 #[derive(
     Debug, Serialize, Deserialize, Display, EnumString, VariantNames, ValueEnum, Clone, Copy,
 )]
@@ -36,6 +39,9 @@ pub struct Creator {
     test: Utf8PathBuf,
     github: Utf8PathBuf,
     workflows: Utf8PathBuf,
+    external: Utf8PathBuf,
+    external_stdlib: Utf8PathBuf,
+    external_gleeunit: Utf8PathBuf,
     gleam_version: &'static str,
     options: NewOptions,
     project_name: String,
@@ -157,10 +163,19 @@ target = "nix"
 # https://gleam.run/writing-gleam/gleam-toml/.
 
 [dependencies]
-gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
+# Run 'git submodule add --name stdlib -- https://github.com/glistix/stdlib external/stdlib'
+# to clone Glistix's stdlib patch to the local path specified below.
+gleam_stdlib = {{ path = "./external/stdlib" }}
+# Uncomment (i.e. remove '#' from) the line below when publishing your package to Hex, as Hex
+# packages cannot have dependencies on local packages.
+# gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
 
 [dev-dependencies]
-gleeunit = "{GLEEUNIT_REQUIREMENT}"
+# Run 'git submodule add --name gleeunit -- https://github.com/glistix/gleeunit external/gleeunit'
+# to clone Glistix's gleeunit patch to the local path specified below.
+gleeunit = {{ path = "./external/gleeunit" }}
+# Uncomment the line below if needed.
+# gleeunit = "{GLEEUNIT_REQUIREMENT}"
 "#,
             )),
 
@@ -212,12 +227,19 @@ impl Creator {
         let test = root.join("test");
         let github = root.join(".github");
         let workflows = github.join("workflows");
+        // External folder: we will clone stdlib and gleeunit there if possible.
+        let external = root.join("external");
+        let external_stdlib = external.join("stdlib");
+        let external_gleeunit = external.join("gleeunit");
         let me = Self {
             root: root.clone(),
             src,
             test,
             github,
             workflows,
+            external,
+            external_stdlib,
+            external_gleeunit,
             gleam_version,
             options,
             project_name,
@@ -232,14 +254,35 @@ impl Creator {
         crate::fs::mkdir(&self.root)?;
         crate::fs::mkdir(&self.src)?;
         crate::fs::mkdir(&self.test)?;
+        crate::fs::mkdir(&self.external)?;
 
         if !self.options.skip_git && !self.options.skip_github {
             crate::fs::mkdir(&self.github)?;
             crate::fs::mkdir(&self.workflows)?;
         }
 
-        if !self.options.skip_git {
+        if self.options.skip_git {
+            eprintln!(
+                "WARNING: Skipping Git procedures. You will have to manually clone the \
+Glistix patches for 'stdlib' and 'gleeunit'. You can do so with the command \
+'git clone -- https://github.com/glistix/NAME external/NAME', where NAME is one of \
+stdlib or gleeunit. You can also use 'git submodule add --name NAME' instead of 'git clone' \
+if you plan on creating a git repository at your new project's directory."
+            )
+        } else {
             crate::fs::git_init(&self.root)?;
+            crate::fs::git_submodule_add(
+                "stdlib",
+                GLISTIX_STDLIB_URL,
+                &self.root,
+                &self.external_stdlib,
+            )?;
+            crate::fs::git_submodule_add(
+                "gleeunit",
+                GLISTIX_GLEEUNIT_URL,
+                &self.root,
+                &self.external_gleeunit,
+            )?;
         }
 
         match self.options.template {

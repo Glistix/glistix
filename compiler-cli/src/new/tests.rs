@@ -29,6 +29,10 @@ fn new() {
     assert!(path.join("test/my_project_test.gleam").exists());
     assert!(path.join(".github/workflows/test.yml").exists());
 
+    // Don't add external/{stdlib,gleeunit} to testing as they depend on
+    // the network
+    assert!(path.join("external").exists());
+
     let toml = crate::fs::read(path.join("gleam.toml")).unwrap();
     assert!(toml.contains("name = \"my_project\""));
 }
