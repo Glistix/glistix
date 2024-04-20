@@ -52,22 +52,36 @@ in
 { src ? null
 , output ? src + "/output"
 , derivation ? null
-, nixRoot ? derivation.nixRoot or "dev/nix"
-, package ? derivation.glistixPackage or (tryReadGleamToml src).name or null
+, nixRoot ? null
+, package ? (tryReadGleamToml src).name or derivation.glistixPackage or null
 , module ? package
-, fileToLoad ? "${nixRoot}/${package}/${module}.nix"
+, fileToLoad ? null
 }:
 
 let
-  hasOutput = output != null && builtins.pathExists (output + "/${nixRoot}");
+  effectiveNixRoot =
+    if nixRoot != null
+    then nixRoot
+    else if output != null && builtins.pathExists (output + "/dev/nix")
+    then "dev/nix" # ignore the derivation when the output is going to be used
+    else derivation.glistixNixRoot or "dev/nix";
+
+  effectiveFileToLoad =
+    if fileToLoad != null
+    then fileToLoad # allow caller to fully customize the file to load
+    else "${effectiveNixRoot}/${package}/${module}.nix";
+
+  hasOutput = output != null && builtins.pathExists (output + "/${effectiveNixRoot}");
   importPath =
     if hasOutput
-    then output + "/${fileToLoad}"
-    else derivation.outPath + "/${fileToLoad}";
+    then output + "/${effectiveFileToLoad}"
+    else derivation.outPath + "/${effectiveFileToLoad}";
 in
 
-assert builtins.match "[a-zA-Z0-9_\\-]+" (builtins.toString package) != null;
-assert builtins.match "[a-zA-Z0-9_\\-\\/]+" module != null;
+# When the file to load isn't fully overridden, ensure we won't create invalid
+# paths
+assert fileToLoad == null -> builtins.match "[a-zA-Z0-9_\\-]+" (builtins.toString package) != null;
+assert fileToLoad == null -> builtins.match "[a-zA-Z0-9_\\-\\/]+" module != null;
 
 # Either have your package's build output be somewhere in specific,
 # or build it from scratch.
