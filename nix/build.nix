@@ -1,6 +1,15 @@
 # A builder for Glistix packages.
 #
-{ stdenv, glistix, lib }@defaults:
+# Prepares the package's Gleam dependencies as specified in manifest.toml
+# and runs 'glistix build' to generate the final Nix artifacts.
+#
+# Basically the only required parameter for the builder is 'src'
+# (or 'srcs' with 'sourceRoot' if needed). The rest can be figured out
+# based on gleam.toml and manifest.toml, assuming they are directly under
+# the sourceRoot.
+#
+# The derivation's 'out' output corresponds to the generated 'build' folder.
+{ stdenv, glistix, fetchurl }@defaults:
 
 let
   # Converts a "sourceRoot" string to a store path we can
@@ -65,35 +74,28 @@ in
 , submodules ? [ ]
 
 , stdenv ? defaults.stdenv
-, fetchurl ? defaults.lib.fetchurl
+, fetchurl ? defaults.fetchurl
 , glistix ? defaults.glistix
 , ...
 }@args:
 
 let
-  parseManifest = import ./manifest.nix;
   gleamTomlContents = gleamToml.contents or builtins.readFile gleamToml;
   projectConfig = builtins.fromTOML gleamTomlContents;
   pkgVersion = projectConfig.version;
   pkgName = projectConfig.name;
 
+  # Create env variable with locations of submodules and their destinations
   convertedSubmodules = import ./submodules.nix { inherit submodules; };
 
+  # Parse packages in the manifest
+  parseManifest = import ./manifest.nix;
   manifest = parseManifest { manifestContents = builtins.readFile manifestToml.file; };
 
   hexPackages = builtins.filter (pkg: pkg.source == "hex") manifest;
 
-  hexTarballURL = name: version: "https://repo.hex.pm/tarballs/${name}-${version}.tar";
-
-  # Fetch a hex package, but only the tarball, as that's what Gleam caches
-  fetchHex = { pkg, version, sha256 }: lib.fetchurl { url = hexTarballURL pkg version; inherit sha256; };
-
-  fetchedHexPackages =
-    map
-    ({ name, version, sha256, ... }: fetchHex { inherit version sha256; pkg = name; })
-    hexPackages;
-
-  fetchedHexPackagePaths = builtins.concatStringsSep "\n" fetchedHexPackages;
+  # Fetch hex packages before building
+  hexFetchResult = import ./hex.nix { packages = hexPackages; inherit fetchurl; };
 in
 
 assert gleamToml != null;
@@ -104,7 +106,7 @@ stdenv.mkDerivation (self': args // {
   version = if version != null then version else pkgVersion;
 
   # for hex.sh
-  inherit fetchedHexPackagePaths;
+  inherit (hexFetchResult) fetchedHexPackagePaths;
   # for submodules.sh
   inherit (convertedSubmodules) submodules;
 
@@ -141,16 +143,21 @@ stdenv.mkDerivation (self': args // {
   '';
 
   passthru = {
+    # Name of the Glistix package this derivation corresponds to.
     glistixPackage = pkgName;
 
+    # Relative path to the built Nix files
+    # from the derivation's root directory.
     glistixNixRoot = "dev/nix";
 
     # Relative path to the package's entrypoint
     # from the derivation's root directory.
+    # You can import "${self}/${self.glistixMain}".
     glistixMain = "${self'.passthru.glistixNixRoot}/${pkgName}/${pkgName}.nix";
 
     # Relative path to the package's testing entrypoint
     # from the derivation's root directory.
+    # You can import "${self}/${self.glistixTest}".
     glistixTest = "${self'.passthru.glistixNixRoot}/${pkgName}/${pkgName}_test.nix";
   };
 })
