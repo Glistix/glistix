@@ -19,7 +19,7 @@ let
     inherit': x: { __gleamTag = "Simple3"; inherit x; "inherit" = inherit'; };
   
   pat_test =
-    {}:
+    { }:
       let
         _pat' = null;
         _' = _pat';
@@ -39,7 +39,7 @@ let
       in seqAll [ _' _'1 _'2 _'3 _'4 ] [ a'1 b ];
   
   pat_assert_test =
-    {}:
+    { }:
       let
         _pat' = true;
         _assert' =

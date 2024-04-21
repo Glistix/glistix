@@ -5,5 +5,5 @@ expression: "\n@external(erlang, \"one\", \"one\")\n@external(javascript, \"./on
 let
   one = (builtins.import ./one.nix).oneNix;
   
-  main = {}: one 1;
+  main = { }: one 1;
 in { inherit one main; }

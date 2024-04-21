@@ -15,6 +15,6 @@ let
             4
             "go"
             "This has not yet been implemented"
-            {})
+            { })
       else 1;
-in {}
+in { }

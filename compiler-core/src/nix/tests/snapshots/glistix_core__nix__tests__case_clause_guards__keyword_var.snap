@@ -10,7 +10,7 @@ let
   builtins' = 10;
   
   main =
-    {}:
+    { }:
       let
         then' = 5;
         or' = 10;

@@ -3,9 +3,9 @@ source: compiler-core/src/nix/tests/assignments.rs
 expression: "\nconst a = True\n\nfn go() {\n  a\n  let a = 10\n  a + 20\n}\n\nfn second() {\n  let a = 10\n  a + 20\n}\n"
 ---
 let
-  second = {}: let a'1 = 10; in a'1 + 20;
+  second = { }: let a'1 = 10; in a'1 + 20;
   
   a = true;
   
-  go = {}: let _' = a; a'1 = 10; in builtins.seq _' (a'1 + 20);
-in {}
+  go = { }: let _' = a; a'1 = 10; in builtins.seq _' (a'1 + 20);
+in { }

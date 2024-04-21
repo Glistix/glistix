@@ -6,5 +6,5 @@ let
   rocket_ship' = builtins.import ./../rocket_ship.nix;
   boom_time = (builtins.import ./../rocket_ship.nix).launch;
   
-  go = {}: boom_time {};
+  go = { }: boom_time { };
 in { inherit go; }

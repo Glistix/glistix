@@ -746,7 +746,7 @@ impl Generator<'_> {
                 let fun = self.wrap_child_expression(fun)?;
                 let arguments = if arguments.is_empty() {
                     // Single argument functions receive a single empty set.
-                    vec!["{}".to_doc()]
+                    vec!["{ }".to_doc()]
                 } else {
                     arguments
                 };
@@ -780,7 +780,7 @@ impl Generator<'_> {
             // Normally it wouldn't be a function (it would just be equal to its
             // body), but Nix code can have side effects, e.g. `builtins.trace` which
             // prints to stderr, so we have to keep it as a function.
-            "{}:".to_doc()
+            "{ }:".to_doc()
         } else {
             fun_args(arguments)
         };

@@ -10,6 +10,6 @@ let
       let
         _' =
           builtins.throw
-            (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" {});
+            (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" { });
       in builtins.seq _' at_the_disco;
-in {}
+in { }

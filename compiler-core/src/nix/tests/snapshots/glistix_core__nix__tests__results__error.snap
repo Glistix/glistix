@@ -5,5 +5,5 @@ expression: "pub fn main() { Error(1) }"
 let
   inherit (builtins.import ./../gleam.nix) Error;
   
-  main = {}: Error 1;
+  main = { }: Error 1;
 in { inherit main; }

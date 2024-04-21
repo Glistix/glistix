@@ -107,7 +107,7 @@ impl<'module> Generator<'module> {
         let exports = if exported_names.peek().is_some() {
             syntax::attr_set(syntax::inherit(exported_names))
         } else {
-            "{}".to_doc()
+            "{ }".to_doc()
         };
 
         // Assignment of top-level module names, exported or not.

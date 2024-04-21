@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/assignments.rs
 expression: "pub fn x() { \n  Nil\n}\n        \npub fn main() {\n  let x = False\n  x\n}\n"
 ---
-let x = {}: null; main = {}: let x'1 = false; in x'1; in { inherit x main; }
+let x = { }: null; main = { }: let x'1 = false; in x'1; in { inherit x main; }

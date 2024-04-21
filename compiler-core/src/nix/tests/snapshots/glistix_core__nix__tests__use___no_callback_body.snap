@@ -6,12 +6,12 @@ let
   inherit (builtins.import ./../gleam.nix) makeError;
   
   main =
-    {}:
+    { }:
       let
-        thingy = f: f {};
+        thingy = f: f { };
       in
       thingy
-        ({}:
+        ({ }:
           builtins.throw
             (makeError
               "todo"
@@ -19,5 +19,5 @@ let
               4
               "main"
               "This has not yet been implemented"
-              {}));
+              { }));
 in { inherit main; }

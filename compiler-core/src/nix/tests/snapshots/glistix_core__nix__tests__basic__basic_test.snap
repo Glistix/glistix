@@ -48,11 +48,11 @@ let
             _pipe'1 = (_capture: foo _capture a'1 50) _pipe;
           in (x: x) _pipe'1;
         pipes2 = let _pipe = a'1; in (i: i) _pipe;
-        _'3 = builtins.throw (makeError "panic" "my/mod" 45 "go" "amongus" {});
-        _'4 = builtins.throw (makeError "todo" "my/mod" 46 "go" "amongus" {});
+        _'3 = builtins.throw (makeError "panic" "my/mod" 45 "go" "amongus" { });
+        _'4 = builtins.throw (makeError "todo" "my/mod" 46 "go" "amongus" { });
         _'5 =
           builtins.throw
-            (makeError "panic" "my/mod" 47 "go" "panic expression evaluated" {});
+            (makeError "panic" "my/mod" 47 "go" "panic expression evaluated" { });
         _'6 =
           builtins.throw
             (makeError
@@ -61,7 +61,7 @@ let
               48
               "go"
               "This has not yet been implemented"
-              {});
+              { });
         y = (((-500) + 10) - (-a'1)) - (-5);
         yy = toList [ (-a'1) (-5) (-y) ];
         f = (-5.5) - 5.2e-5;
@@ -77,10 +77,10 @@ let
         amagus_a = AmogusA;
         amagus_b = AmogusB 10 15;
         amagus_c = AmogusC 10 5.5;
-        simplefunc = {}: 5;
-        gg = (simplefunc {}) + 10;
-        less_simple_func = x: {}: x;
-        gg'1 = ((less_simple_func 5) {}) + 10;
+        simplefunc = { }: 5;
+        gg = (simplefunc { }) + 10;
+        less_simple_func = x: { }: x;
+        gg'1 = ((less_simple_func 5) { }) + 10;
         mnull = null;
         sus'1 = "hey! I'm still sus :(";
         x'1 = tata;
@@ -89,8 +89,8 @@ let
   mongus =
     a: b: c:
       let
-        x = {}: 5 + 5;
-        y = x {};
+        x = { }: 5 + 5;
+        y = x { };
       in
       [
         1

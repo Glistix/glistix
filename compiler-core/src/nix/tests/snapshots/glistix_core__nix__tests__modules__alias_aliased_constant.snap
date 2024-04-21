@@ -7,4 +7,4 @@ let
   y = (builtins.import ./../rocket_ship.nix).x;
   
   z = y;
-in {}
+in { }

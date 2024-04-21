@@ -10,9 +10,9 @@ let
       let
         boop =
           builtins.throw
-            (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" {});
+            (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" { });
       in
       f
         (builtins.throw
-          (makeError "panic" "my/mod" 4 "go" "panic expression evaluated" {}));
-in {}
+          (makeError "panic" "my/mod" 4 "go" "panic expression evaluated" { }));
+in { }

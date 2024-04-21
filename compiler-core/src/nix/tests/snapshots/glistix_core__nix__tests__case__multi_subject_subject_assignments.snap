@@ -4,5 +4,5 @@ expression: "\nfn go() {\n  case True, False {\n    True, True -> 1\n    _, _ ->
 ---
 let
   go =
-    {}: let _pat' = true; _pat''1 = false; in if _pat' && _pat''1 then 1 else 0;
-in {}
+    { }: let _pat' = true; _pat''1 = false; in if _pat' && _pat''1 then 1 else 0;
+in { }

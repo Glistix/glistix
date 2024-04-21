@@ -5,5 +5,5 @@ expression: "\nfn go() {\n  5 % 0 // => 0\n}\n"
 let
   inherit (builtins.import ./../gleam.nix) remainderInt;
   
-  go = {}: remainderInt 5 0;
-in {}
+  go = { }: remainderInt 5 0;
+in { }

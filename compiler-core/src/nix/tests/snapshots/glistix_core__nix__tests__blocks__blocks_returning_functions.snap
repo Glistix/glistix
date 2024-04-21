@@ -5,5 +5,5 @@ expression: "\nfn b() {\n  {\n    fn(cb) { cb(1) }\n  }\n  {\n    fn(cb) { cb(2)
 let
   inherit (builtins.import ./../gleam.nix) seqAll;
   
-  b = {}: let _' = cb: cb 1; _'1 = cb: cb 2; in seqAll [ _' _'1 ] 3;
-in {}
+  b = { }: let _' = cb: cb 1; _'1 = cb: cb 2; in seqAll [ _' _'1 ] 3;
+in { }

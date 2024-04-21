@@ -11,4 +11,4 @@ let
           b = (builtins.elemAt (builtins.elemAt x 1) 1);
         in a + b
       else 1;
-in {}
+in { }

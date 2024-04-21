@@ -8,4 +8,4 @@ let
   a = toList [ ];
   
   b = toList [ 1 2 3 ];
-in {}
+in { }

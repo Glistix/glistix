@@ -4,8 +4,8 @@ expression: "\nfn go() {\n  let x = {\n    1\n    {\n      2\n      3\n    }\n  
 ---
 let
   go =
-    {}:
+    { }:
       let
         x = let _' = 1; in builtins.seq _' (let _'1 = 2; in builtins.seq _'1 3);
       in x;
-in {}
+in { }

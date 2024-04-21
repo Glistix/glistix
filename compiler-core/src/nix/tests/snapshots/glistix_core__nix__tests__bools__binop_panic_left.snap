@@ -8,5 +8,5 @@ let
   negate =
     x:
       (builtins.throw
-        (makeError "panic" "my/mod" 2 "negate" "panic expression evaluated" {})) && x;
+        (makeError "panic" "my/mod" 2 "negate" "panic expression evaluated" { })) && x;
 in { inherit negate; }

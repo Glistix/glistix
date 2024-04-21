@@ -39,4 +39,4 @@ let
           else null;
         b = builtins.seq _assert''1 (binaryFromBitSlice x 1 3);
       in seqAll [ _assert' _assert''1 ] [ a b ];
-in {}
+in { }

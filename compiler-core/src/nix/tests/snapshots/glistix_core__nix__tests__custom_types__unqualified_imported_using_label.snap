@@ -6,5 +6,5 @@ let
   other' = builtins.import ./../other.nix;
   inherit (builtins.import ./../other.nix) Two;
   
-  main = {}: Two 1;
+  main = { }: Two 1;
 in { inherit main; }

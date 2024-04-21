@@ -14,5 +14,5 @@ let
           2
           "negate"
           "This has not yet been implemented"
-          {})) && x;
+          { })) && x;
 in { inherit negate; }

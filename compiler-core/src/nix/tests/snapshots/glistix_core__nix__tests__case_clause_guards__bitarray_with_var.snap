@@ -6,7 +6,7 @@ let
   inherit (builtins.import ./../gleam.nix) toBitArray;
   
   main =
-    {}:
+    { }:
       let
         _pat' = 5;
       in

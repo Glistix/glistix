@@ -7,12 +7,12 @@ let
   
   int_identity_alias = int_identity;
   
-  use_int_identity_alias = {}: int_identity_alias 42;
+  use_int_identity_alias = { }: int_identity_alias 42;
   
   compound = [ int_identity int_identity_alias ];
   
   use_compound =
-    {}: (builtins.elemAt compound 0) ((builtins.elemAt compound 1) 42);
+    { }: (builtins.elemAt compound 0) ((builtins.elemAt compound 1) 42);
 in
 {
   inherit

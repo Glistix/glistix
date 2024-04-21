@@ -4,15 +4,15 @@ expression: "\nfn function_with_a_long_name_that_is_intended_to_sit_right_on_the
 ---
 let
   function_with_a_long_name_that_is_intended_to_sit_right_on_the_limit =
-    {}: null;
+    { }: null;
   
   identity = x: x;
   
   main =
-    {}:
+    { }:
       let
         _pipe =
           function_with_a_long_name_that_is_intended_to_sit_right_on_the_limit
-            {};
+            { };
       in identity _pipe;
 in { inherit main; }

@@ -6,7 +6,7 @@ let
   add = x: y: x + y;
   
   long =
-    {}:
+    { }:
       add
         1
         (add

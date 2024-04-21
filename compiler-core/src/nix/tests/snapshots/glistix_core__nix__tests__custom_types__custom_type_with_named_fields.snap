@@ -10,7 +10,7 @@ let
   Box = occupant: { __gleamTag = "Box"; inherit occupant; };
   
   go =
-    {}:
+    { }:
       let
         _' = Cat "Nubi" 1;
         _'1 = Cat "Nubi" 2;
@@ -18,7 +18,7 @@ let
   
   access = cat: cat.cuteness;
   
-  new_cat = {}: Cat "Beau" 11;
+  new_cat = { }: Cat "Beau" 11;
   
   update =
     cat:
@@ -28,7 +28,7 @@ let
           cat // {
             name = "Bartholemew Wonder Puss the Fourth !!!!!!!!!!!!!!!!";
           };
-        _'2 = (new_cat {}) // { name = "Molly"; };
+        _'2 = (new_cat { }) // { name = "Molly"; };
         box = Box cat;
       in
       seqAll
@@ -38,4 +38,4 @@ let
   felix = Cat "Felix" 12;
   
   tom = Cat "Tom" 1;
-in {}
+in { }

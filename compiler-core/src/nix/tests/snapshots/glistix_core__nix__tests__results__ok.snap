@@ -5,5 +5,5 @@ expression: "pub fn main() { Ok(1) }"
 let
   inherit (builtins.import ./../gleam.nix) Ok;
   
-  main = {}: Ok 1;
+  main = { }: Ok 1;
 in { inherit main; }

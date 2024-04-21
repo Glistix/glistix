@@ -3,7 +3,7 @@ use crate::{assert_nix, assert_nix_with_multiple_imports};
 
 #[test]
 fn empty_module() {
-    assert_nix!("", "{}\n")
+    assert_nix!("", "{ }\n")
 }
 
 #[test]

@@ -5,5 +5,5 @@ expression: "\nfn go() {\n  <<>>\n}\n"
 let
   inherit (builtins.import ./../gleam.nix) toBitArray;
   
-  go = {}: toBitArray [ ];
-in {}
+  go = { }: toBitArray [ ];
+in { }

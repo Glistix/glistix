@@ -5,5 +5,5 @@ expression: "import gleam\npub fn main() { gleam.Error }"
 let
   gleam' = builtins.import ./../gleam.nix;
   
-  main = {}: gleam'.Error;
+  main = { }: gleam'.Error;
 in { inherit main; }

@@ -5,5 +5,5 @@ expression: "import other\n\npub fn main() {\n  other.One\n}\n"
 let
   other' = builtins.import ./../other.nix;
   
-  main = {}: other'.One;
+  main = { }: other'.One;
 in { inherit main; }

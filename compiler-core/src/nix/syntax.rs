@@ -229,7 +229,7 @@ pub fn wrap_attr_set<'a>(
     let fields = join(fields, break_("", " "));
 
     if empty {
-        "{}".to_doc()
+        "{ }".to_doc()
     } else {
         docvec![
             docvec!["{", break_("", " "), fields]

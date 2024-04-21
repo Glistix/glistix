@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/functions.rs
 expression: "pub fn main() {\n  fn(x) { x }(1)\n}\n"
 ---
-let main = {}: (x: x) 1; in { inherit main; }
+let main = { }: (x: x) 1; in { inherit main; }

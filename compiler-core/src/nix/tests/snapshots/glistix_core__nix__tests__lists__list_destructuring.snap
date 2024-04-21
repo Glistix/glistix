@@ -74,4 +74,4 @@ let
               "Assignment pattern did not match"
               { value = y; })
         else y);
-in {}
+in { }

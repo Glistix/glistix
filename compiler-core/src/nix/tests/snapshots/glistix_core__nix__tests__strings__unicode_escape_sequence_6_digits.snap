@@ -5,5 +5,5 @@ expression: "\npub fn unicode_escape_sequence_6_digits() -> String {\n  \"\\u{10
 let
   inherit (builtins.import ./../gleam.nix) parseEscape;
   
-  unicode_escape_sequence_6_digits = {}: "${parseEscape "\\U0010abcd"}";
+  unicode_escape_sequence_6_digits = { }: "${parseEscape "\\U0010abcd"}";
 in { inherit unicode_escape_sequence_6_digits; }

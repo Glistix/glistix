@@ -4,7 +4,7 @@ expression: "\nfn go() {\n  let x = {\n    1\n    {\n      2\n      case True {\
 ---
 let
   go =
-    {}:
+    { }:
       let
         x =
           let
@@ -16,4 +16,4 @@ let
               _'1 = 2;
             in builtins.seq _'1 (let _pat' = true; in 3));
       in x;
-in {}
+in { }

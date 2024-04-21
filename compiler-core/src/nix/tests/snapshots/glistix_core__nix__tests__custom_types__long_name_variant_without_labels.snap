@@ -14,5 +14,5 @@ let
         _4 = x4;
       };
   
-  go = {}: TypeWithALongNameAndSeveralArguments;
-in {}
+  go = { }: TypeWithALongNameAndSeveralArguments;
+in { }

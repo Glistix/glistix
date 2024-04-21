@@ -28,4 +28,4 @@ let
           else null;
         b = builtins.seq _assert' (bitSliceAfter _pat' 1);
       in builtins.seq _assert' b;
-in {}
+in { }

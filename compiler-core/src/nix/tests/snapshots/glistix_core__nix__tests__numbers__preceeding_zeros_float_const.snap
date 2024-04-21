@@ -2,4 +2,4 @@
 source: compiler-core/src/nix/tests/numbers.rs
 expression: "\nconst x = 09_179.1\n"
 ---
-let x = 9179.1; in {}
+let x = 9179.1; in { }

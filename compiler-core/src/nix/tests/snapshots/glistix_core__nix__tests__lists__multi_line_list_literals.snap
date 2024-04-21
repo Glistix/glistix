@@ -6,4 +6,4 @@ let
   inherit (builtins.import ./../gleam.nix) toList;
   
   go = x: toList [ (let _' = true; in builtins.seq _' 1) ];
-in {}
+in { }

@@ -12,11 +12,11 @@ let
     };
   
   go =
-    {}:
+    { }:
       let
         _' = This;
       in
       builtins.seq
         _'
         ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant;
-in {}
+in { }

@@ -20,4 +20,4 @@ let
             "Assignment pattern did not match"
             { value = _pat'; })
       else _pat';
-in {}
+in { }

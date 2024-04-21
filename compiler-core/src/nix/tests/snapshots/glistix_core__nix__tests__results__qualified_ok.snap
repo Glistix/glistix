@@ -5,5 +5,5 @@ expression: "import gleam\npub fn main() { gleam.Ok(1) }"
 let
   gleam' = builtins.import ./../gleam.nix;
   
-  main = {}: gleam'.Ok 1;
+  main = { }: gleam'.Ok 1;
 in { inherit main; }

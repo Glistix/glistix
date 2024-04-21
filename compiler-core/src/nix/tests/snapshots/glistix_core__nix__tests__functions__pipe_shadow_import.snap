@@ -7,5 +7,5 @@ let
   inherit (builtins.import ./../foo.nix) println;
   
   main =
-    {}: let println'1 = let _pipe = "oh dear"; in println _pipe; in println'1;
+    { }: let println'1 = let _pipe = "oh dear"; in println _pipe; in println'1;
 in { inherit main; }

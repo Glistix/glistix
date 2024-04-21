@@ -5,5 +5,5 @@ expression: "\n@external(nix, \"./module\", \"string\")\nfn name() -> String\n\n
 let
   name = (builtins.import ./module).string;
   
-  main = {}: let name'1 = name {}; in name'1;
+  main = { }: let name'1 = name { }; in name'1;
 in { inherit main; }

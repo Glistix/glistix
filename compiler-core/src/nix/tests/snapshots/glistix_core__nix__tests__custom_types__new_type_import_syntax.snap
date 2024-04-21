@@ -6,5 +6,5 @@ let
   a' = builtins.import ./../../package/a.nix;
   inherit (builtins.import ./../../package/a.nix) A;
   
-  main = {}: A;
+  main = { }: A;
 in { inherit main; }

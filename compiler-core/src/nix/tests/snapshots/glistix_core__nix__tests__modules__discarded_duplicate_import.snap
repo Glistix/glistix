@@ -5,5 +5,5 @@ expression: "\nimport esa/rocket_ship\nimport nasa/rocket_ship as _nasa_rocket\n
 let
   rocket_ship' = builtins.import ./../esa/rocket_ship.nix;
   
-  go = {}: rocket_ship'.go {};
+  go = { }: rocket_ship'.go { };
 in { inherit go; }

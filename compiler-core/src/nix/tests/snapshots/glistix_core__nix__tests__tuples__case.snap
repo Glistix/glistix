@@ -12,4 +12,4 @@ let
           a'1 = (builtins.elemAt a 0);
           b = (builtins.elemAt a 1);
         in a'1 + b;
-in {}
+in { }

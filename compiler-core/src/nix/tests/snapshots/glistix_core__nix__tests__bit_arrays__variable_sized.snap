@@ -6,4 +6,4 @@ let
   inherit (builtins.import ./../gleam.nix) toBitArray sizedInt;
   
   go = x: y: toBitArray [ (sizedInt x y) ];
-in {}
+in { }

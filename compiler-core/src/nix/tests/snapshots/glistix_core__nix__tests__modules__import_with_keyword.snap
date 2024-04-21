@@ -7,5 +7,5 @@ let
   inherit (builtins.import ./../rocket_ship.nix) inherit';
   false' = (builtins.import ./../rocket_ship.nix).true';
   
-  main = {}: [ inherit' false' ];
+  main = { }: [ inherit' false' ];
 in { inherit main; }

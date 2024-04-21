@@ -5,5 +5,5 @@ expression: "\n@external(nix, \"./one.nix\", \"oneNix\")\npub fn one(x: Int) -> 
 let
   one = (builtins.import ./one.nix).oneNix;
   
-  main = {}: one 1;
+  main = { }: one 1;
 in { inherit one main; }

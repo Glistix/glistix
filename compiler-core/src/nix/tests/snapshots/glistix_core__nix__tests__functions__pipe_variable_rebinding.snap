@@ -7,5 +7,5 @@ let
   
   version = n: Ok 1;
   
-  main = {}: let version'1 = let _pipe = 1; in version _pipe; in version'1;
+  main = { }: let version'1 = let _pipe = 1; in version _pipe; in version'1;
 in { inherit version main; }

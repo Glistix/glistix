@@ -21,4 +21,4 @@ let
           else null;
         y = builtins.seq _assert' (byteAt x 1);
       in builtins.seq _assert' y;
-in {}
+in { }

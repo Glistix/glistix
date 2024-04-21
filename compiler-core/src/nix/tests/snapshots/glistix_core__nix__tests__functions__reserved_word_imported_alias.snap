@@ -6,5 +6,5 @@ let
   or'' = builtins.import ./../inherit.nix;
   null' = (builtins.import ./../inherit.nix).with';
   
-  in' = {}: let rec' = or''.with'; in null' {};
+  in' = { }: let rec' = or''.with'; in null' { };
 in { inherit in'; }

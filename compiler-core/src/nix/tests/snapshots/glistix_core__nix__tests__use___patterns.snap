@@ -7,5 +7,5 @@ let
   
   apply = arg: fun: fun arg;
   
-  main = {}: apply (Box 1) (_use0: let x = _use0._0; in x);
+  main = { }: apply (Box 1) (_use0: let x = _use0._0; in x);
 in { inherit main; }

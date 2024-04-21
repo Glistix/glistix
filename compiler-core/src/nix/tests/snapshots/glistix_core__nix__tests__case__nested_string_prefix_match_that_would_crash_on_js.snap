@@ -6,7 +6,7 @@ let
   inherit (builtins.import ./../gleam.nix) Ok strHasPrefix toList listHasLength;
   
   main =
-    {}:
+    { }:
       let
         _pat' = Ok (toList [ "b c" "d" ]);
       in
@@ -17,4 +17,4 @@ let
         _pat'._0.tail.head == "d"
       then 1
       else 1;
-in {}
+in { }

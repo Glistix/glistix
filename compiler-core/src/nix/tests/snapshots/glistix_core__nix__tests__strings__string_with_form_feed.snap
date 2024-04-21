@@ -6,7 +6,7 @@ let
   inherit (builtins.import ./../gleam.nix) strHasPrefix parseEscape;
   
   go =
-    {}:
+    { }:
       let
         form_feed =
           "${parseEscape "\\f"} a${parseEscape "\\f"}b ${parseEscape "\\f"}";

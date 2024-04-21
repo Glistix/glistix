@@ -5,5 +5,5 @@ expression: "import one\npub fn go() { one.go() }\n"
 let
   one' = builtins.import ./../../other_package/one.nix;
   
-  go = {}: one'.go {};
+  go = { }: one'.go { };
 in { inherit go; }

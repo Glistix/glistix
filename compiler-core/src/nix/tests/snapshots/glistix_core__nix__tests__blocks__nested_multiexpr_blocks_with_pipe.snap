@@ -6,7 +6,7 @@ let
   add1 = a: a + 1;
   
   go =
-    {}:
+    { }:
       let
         x =
           let
@@ -21,4 +21,4 @@ let
                 in builtins.seq _'1 (let _pipe = 3; in add1 _pipe);
             in add1 _pipe);
       in x;
-in {}
+in { }

@@ -6,5 +6,6 @@ let
   inherit (builtins.import ./../gleam.nix) makeError;
   
   go =
-    {}: builtins.throw (makeError "todo" "my/mod" 3 "go" "I should do this" {});
-in {}
+    { }:
+      builtins.throw (makeError "todo" "my/mod" 3 "go" "I should do this" { });
+in { }

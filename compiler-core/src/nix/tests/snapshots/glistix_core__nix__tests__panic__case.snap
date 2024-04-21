@@ -8,5 +8,5 @@ let
   go =
     x:
       builtins.throw
-        (makeError "panic" "my/mod" 4 "go" "panic expression evaluated" {});
-in {}
+        (makeError "panic" "my/mod" 4 "go" "panic expression evaluated" { });
+in { }

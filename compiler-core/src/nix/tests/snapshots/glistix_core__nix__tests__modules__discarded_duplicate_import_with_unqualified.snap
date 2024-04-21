@@ -6,7 +6,7 @@ let
   rocket_ship' = builtins.import ./../esa/rocket_ship.nix;
   inherit (builtins.import ./../nasa/rocket_ship.nix) go;
   
-  esa_go = {}: rocket_ship'.go {};
+  esa_go = { }: rocket_ship'.go { };
   
-  nasa_go = {}: go {};
+  nasa_go = { }: go { };
 in { inherit esa_go nasa_go; }
