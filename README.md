@@ -81,7 +81,7 @@ This also allows **using packages from the Gleam ecosystem** within Nix. Note th
 
 Consider this example code in `src/example.gleam`, added after running `glistix new example`:
 
-```rs
+```gleam
 pub type Time {
   Seconds(Int)
   Minutes(amount: Int)
@@ -144,7 +144,7 @@ Make sure to check out the chapter on the Nix target of [the official Glistix bo
 
 You can add `.nix` files to your `src` and import them from Gleam. For example, consider the Gleam code below at `src/example.gleam`:
 
-```rs
+```gleam
 // We will need some help from Nix to check
 // if a string contains a comma. (In practice,
 // you'd use Gleam's stdlib for this.)
