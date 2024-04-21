@@ -10,7 +10,7 @@ let
       let
         name = "Tony Stark";
       in
-        if name == (builtins.elemAt hero'.hero 1)
-        then let n = name; in true
-        else false;
+      if name == (builtins.elemAt hero'.hero 1)
+      then let n = name; in true
+      else false;
 in { inherit main; }

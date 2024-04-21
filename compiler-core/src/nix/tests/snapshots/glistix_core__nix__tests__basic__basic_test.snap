@@ -92,17 +92,17 @@ let
         x = {}: 5 + 5;
         y = x {};
       in
-        [
-          1
-          2
-          3
-          (x: x + 1)
-          (let
-            _' = 5;
-            _'1 = 6;
-            _'2 = 10;
-          in seqAll [ _' _'1 _'2 ] (10 + 5))
-        ];
+      [
+        1
+        2
+        3
+        (x: x + 1)
+        (let
+          _' = 5;
+          _'1 = 6;
+          _'2 = 10;
+        in seqAll [ _' _'1 _'2 ] (10 + 5))
+      ];
   
   sumongus = 5;
 in { inherit AmogusA AmogusB AmogusC sus sumongus; }

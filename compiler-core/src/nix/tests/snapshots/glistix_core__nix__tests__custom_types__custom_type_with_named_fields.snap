@@ -31,9 +31,9 @@ let
         _'2 = (new_cat {}) // { name = "Molly"; };
         box = Box cat;
       in
-        seqAll
-          [ _' _'1 _'2 ]
-          (box.occupant // { cuteness = (box.occupant.cuteness + 1); });
+      seqAll
+        [ _' _'1 _'2 ]
+        (box.occupant // { cuteness = (box.occupant.cuteness + 1); });
   
   felix = Cat "Felix" 12;
   

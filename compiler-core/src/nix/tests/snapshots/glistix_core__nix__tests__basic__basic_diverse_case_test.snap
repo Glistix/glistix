@@ -18,15 +18,15 @@ let
       let
         _' = if x.__gleamTag == "SC" then Ok (Ok 100) else Error (Error 100);
       in
-        builtins.seq
-          _'
-          (if x.__gleamTag == "SA"
-          then Ok 5
-          else if x.__gleamTag == "SB"
-          then Error 10
-          else if x.__gleamTag == "SC"
-          then Ok 10
-          else Ok 10);
+      builtins.seq
+        _'
+        (if x.__gleamTag == "SA"
+        then Ok 5
+        else if x.__gleamTag == "SB"
+        then Error 10
+        else if x.__gleamTag == "SC"
+        then Ok 10
+        else Ok 10);
   
   simple_test2 =
     x: y: z: w: p:

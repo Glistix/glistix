@@ -10,10 +10,10 @@ let
           let
             _' = 1;
           in
-            builtins.seq
-              _'
-              (let
-                _'1 = 2;
-              in builtins.seq _'1 (let _pat' = true; in 3));
+          builtins.seq
+            _'
+            (let
+              _'1 = 2;
+            in builtins.seq _'1 (let _pat' = true; in 3));
       in x;
 in {}

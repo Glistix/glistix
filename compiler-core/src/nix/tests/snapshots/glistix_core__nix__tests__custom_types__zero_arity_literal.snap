@@ -16,7 +16,7 @@ let
       let
         _' = This;
       in
-        builtins.seq
-          _'
-          ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant;
+      builtins.seq
+        _'
+        ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant;
 in {}

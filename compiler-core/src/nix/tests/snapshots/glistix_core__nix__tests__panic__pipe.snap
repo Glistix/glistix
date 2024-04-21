@@ -10,7 +10,7 @@ let
       let
         _pipe = f;
       in
-        (builtins.throw
-            (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" {}))
-          _pipe;
+      (builtins.throw
+          (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" {}))
+        _pipe;
 in {}

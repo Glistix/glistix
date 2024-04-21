@@ -35,17 +35,17 @@ let
           else null;
         _'1 = builtins.seq _assert''1 x;
       in
-        seqAll
-          [ _' _assert' _'1 _assert''1 ]
-          (if y != null
-          then
-            builtins.throw
-              (makeError
-                "assignment_no_match"
-                "my/mod"
-                5
-                "go"
-                "Assignment pattern did not match"
-                { value = y; })
-          else y);
+      seqAll
+        [ _' _assert' _'1 _assert''1 ]
+        (if y != null
+        then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              5
+              "go"
+              "Assignment pattern did not match"
+              { value = y; })
+        else y);
 in {}

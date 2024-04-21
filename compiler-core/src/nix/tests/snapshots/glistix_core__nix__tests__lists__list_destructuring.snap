@@ -66,17 +66,17 @@ let
           else null;
         b = builtins.seq _assert''3 (builtins.elemAt y.tail.head 1);
       in
-        seqAll
-          [ _' _assert' _assert''1 _'1 _assert''2 _assert''3 ]
-          (if !(listHasAtLeastLength y 1)
-          then
-            builtins.throw
-              (makeError
-                "assignment_no_match"
-                "my/mod"
-                7
-                "go"
-                "Assignment pattern did not match"
-                { value = y; })
-          else y);
+      seqAll
+        [ _' _assert' _assert''1 _'1 _assert''2 _assert''3 ]
+        (if !(listHasAtLeastLength y 1)
+        then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              7
+              "go"
+              "Assignment pattern did not match"
+              { value = y; })
+        else y);
 in {}

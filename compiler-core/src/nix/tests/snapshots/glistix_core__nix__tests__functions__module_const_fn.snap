@@ -14,11 +14,11 @@ let
   use_compound =
     {}: (builtins.elemAt compound 0) ((builtins.elemAt compound 1) 42);
 in
-  {
-    inherit
-      int_identity
-      int_identity_alias
-      use_int_identity_alias
-      compound
-      use_compound;
-  }
+{
+  inherit
+    int_identity
+    int_identity_alias
+    use_int_identity_alias
+    compound
+    use_compound;
+}

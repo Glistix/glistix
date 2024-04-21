@@ -113,20 +113,20 @@ let
         a = builtins.seq _assert''4 _pat''4.a;
         b = builtins.seq _assert''4 _pat''4.b;
       in
-        seqAll
-          [ _' _assert' _'1 _assert''1 _'2 _assert''2 _assert''3 _assert''4 ]
-          (let
-            _pat''5 = (C 5 5.5e5);
-          in
-            if _pat''5.__gleamTag != "C"
-            then
-              builtins.throw
-                (makeError
-                  "assignment_no_match"
-                  "my/mod"
-                  37
-                  "pat_assert_test"
-                  "Assignment pattern did not match"
-                  { value = _pat''5; })
-            else _pat''5);
+      seqAll
+        [ _' _assert' _'1 _assert''1 _'2 _assert''2 _assert''3 _assert''4 ]
+        (let
+          _pat''5 = (C 5 5.5e5);
+        in
+        if _pat''5.__gleamTag != "C"
+        then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              37
+              "pat_assert_test"
+              "Assignment pattern did not match"
+              { value = _pat''5; })
+        else _pat''5);
 in { inherit A B C Simple Simple2 Simple3 pat_test pat_assert_test; }
