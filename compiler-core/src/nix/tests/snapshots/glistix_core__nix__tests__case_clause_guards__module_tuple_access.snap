@@ -12,4 +12,5 @@ let
     in
     if name == (builtins.elemAt hero'.hero 1) then let n = name; in true
     else false;
-in { inherit main; }
+in
+{ inherit main; }

@@ -15,6 +15,8 @@ let
       let
         rest = (builtins.substring 2 (-1) form_feed);
         ff = "${parseEscape "\\f"} ";
-      in rest
+      in
+      rest
     else "${parseEscape "\\f"}";
-in { inherit go; }
+in
+{ inherit go; }

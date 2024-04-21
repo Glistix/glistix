@@ -4,4 +4,5 @@ expression: "pub fn main() {\n  fn() { main() }\n  1\n}\n"
 ---
 let
   main = { }: let _' = { }: main { }; in builtins.seq _' 1;
-in { inherit main; }
+in
+{ inherit main; }

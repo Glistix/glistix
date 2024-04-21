@@ -7,4 +7,5 @@ let
   inherit (builtins.import ./../inherit.nix) with';
   
   in' = { }: with' { };
-in { inherit in'; }
+in
+{ inherit in'; }

@@ -6,4 +6,5 @@ let
   inherit (builtins.import ./../gleam.nix) remainderInt;
   
   go = { }: remainderInt 5 0;
-in { }
+in
+{ }

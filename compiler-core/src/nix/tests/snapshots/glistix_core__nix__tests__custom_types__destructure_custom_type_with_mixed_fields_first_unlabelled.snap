@@ -13,5 +13,7 @@ let
       y'1 = cat.cuteness;
       x'1 = cat._0;
       y'2 = cat.cuteness;
-    in x'1;
-in { }
+    in
+    x'1;
+in
+{ }

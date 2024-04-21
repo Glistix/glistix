@@ -9,5 +9,7 @@ let
     { }:
     let
       x = "wibble";
-    in builtins.throw (makeError "panic" "my/mod" 4 "go" x { });
-in { }
+    in
+    builtins.throw (makeError "panic" "my/mod" 4 "go" x { });
+in
+{ }

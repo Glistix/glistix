@@ -10,4 +10,5 @@ let
   add_two = x: twice add_one x;
   
   take_two = x: twice (y: y - 1) x;
-in { inherit twice add_one add_two take_two; }
+in
+{ inherit twice add_one add_two take_two; }

@@ -4,4 +4,5 @@ expression: "\npub fn main(x) {\n  case x {\n    0 -> Nil\n    _ -> {\n      let
 ---
 let
   main = x: if x == 0 then null else let y = x; in main (y - 1);
-in { inherit main; }
+in
+{ inherit main; }

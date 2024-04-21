@@ -6,4 +6,5 @@ let
   gleam' = builtins.import ./../gleam.nix;
   
   main = { }: gleam'.Ok;
-in { inherit main; }
+in
+{ inherit main; }

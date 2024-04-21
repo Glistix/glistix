@@ -17,7 +17,8 @@ let
       vv1 = 10;
       vv2 = if v2 then 50 else 10;
       vv3 = let _pat''4 = true; in if _pat''4 then 50 else 10;
-    in [ p1 p2 p3 p4 vv1 vv2 vv3 ];
+    in
+    [ p1 p2 p3 p4 vv1 vv2 vv3 ];
   
   fact =
     n:
@@ -29,5 +30,7 @@ let
         if _pat' then
           builtins.throw (makeError "panic" "my/mod" 34 "fact" "Don't." { })
         else null;
-    in [ res (if n == 0 then 1 else n * (builtins.elemAt (fact (n - 1)) 1)) ];
-in { inherit fact; }
+    in
+    [ res (if n == 0 then 1 else n * (builtins.elemAt (fact (n - 1)) 1)) ];
+in
+{ inherit fact; }

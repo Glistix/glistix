@@ -10,5 +10,7 @@ let
     let
       boop =
         builtins.throw (makeError "todo" "my/mod" 3 "go" "I should do this" { });
-    in f (builtins.throw (makeError "todo" "my/mod" 4 "go" "Boom" { }));
-in { }
+    in
+    f (builtins.throw (makeError "todo" "my/mod" 4 "go" "Boom" { }));
+in
+{ }

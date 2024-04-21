@@ -5,4 +5,5 @@ expression: "\nfn go(x, f) {\n  case x |> f {\n    0 -> 1\n    _ -> 2\n  }\n}\n"
 let
   go =
     x: f: let _pat' = let _pipe = x; in f _pipe; in if _pat' == 0 then 1 else 2;
-in { }
+in
+{ }

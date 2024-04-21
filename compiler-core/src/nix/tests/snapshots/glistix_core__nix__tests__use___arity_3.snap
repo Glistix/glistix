@@ -6,4 +6,5 @@ let
   trip = x: y: f: let z = f { }; in [ x y z ];
   
   main = { }: trip 1.0 "" ({ }: 123);
-in { inherit main; }
+in
+{ inherit main; }

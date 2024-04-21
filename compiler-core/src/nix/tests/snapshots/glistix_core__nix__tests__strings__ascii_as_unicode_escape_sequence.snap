@@ -6,4 +6,5 @@ let
   inherit (builtins.import ./../gleam.nix) parseEscape;
   
   y = { }: "${parseEscape "\\U00000079"}";
-in { inherit y; }
+in
+{ inherit y; }

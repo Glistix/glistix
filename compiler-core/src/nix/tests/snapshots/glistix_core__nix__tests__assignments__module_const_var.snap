@@ -13,4 +13,5 @@ let
   
   use_compound =
     { }: (builtins.elemAt compound 0) + (builtins.elemAt compound 1);
-in { inherit int int_alias use_int_alias compound use_compound; }
+in
+{ inherit int int_alias use_int_alias compound use_compound; }

@@ -15,4 +15,5 @@ let
   
   that =
     ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant;
-in { }
+in
+{ }

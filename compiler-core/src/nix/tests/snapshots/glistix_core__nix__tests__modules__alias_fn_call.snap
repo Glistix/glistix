@@ -6,4 +6,5 @@ let
   boop' = builtins.import ./../rocket_ship.nix;
   
   go = { }: boop'.go { };
-in { inherit go; }
+in
+{ inherit go; }

@@ -21,4 +21,5 @@ let
         (stringBits "Gleam")
         (toBitArray [ (toBitArray [ 1 2 3 ]).buffer (stringBits "Gleam") 1024 ]).buffer
       ];
-in { inherit data; }
+in
+{ inherit data; }

@@ -12,4 +12,5 @@ let
     in
     if _pat'.__gleamTag == "Bad" && _pat'."inherit" == 10 then true
     else let inherit' = _pat'."inherit"; in false;
-in { inherit main; }
+in
+{ inherit main; }

@@ -4,4 +4,5 @@ expression: "pub fn main(xs, y) {\n  case xs {\n    #(x) if xs == y -> x\n    _ 
 ---
 let
   main = xs: y: if xs == y then let x = (builtins.elemAt xs 0); in x else 0;
-in { inherit main; }
+in
+{ inherit main; }

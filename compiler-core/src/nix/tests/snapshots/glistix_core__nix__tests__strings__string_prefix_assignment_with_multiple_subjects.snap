@@ -10,4 +10,5 @@ let
     if strHasPrefix "1" x then let prefix = "1"; in prefix
     else if strHasPrefix "11" x then let prefix = "11"; in prefix
     else "Unknown";
-in { inherit go; }
+in
+{ inherit go; }

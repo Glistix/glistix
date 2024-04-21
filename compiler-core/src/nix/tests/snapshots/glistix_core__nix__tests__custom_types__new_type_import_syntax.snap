@@ -7,4 +7,5 @@ let
   inherit (builtins.import ./../../package/a.nix) A;
   
   main = { }: A;
-in { inherit main; }
+in
+{ inherit main; }

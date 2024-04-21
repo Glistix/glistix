@@ -11,6 +11,8 @@ let
       let
         a = x.b.a;
         b = x.b.b;
-      in a + b
+      in
+      a + b
     else 1;
-in { inherit Box; }
+in
+{ inherit Box; }

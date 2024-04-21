@@ -6,4 +6,5 @@ let
   inherit (builtins.import ./../gleam.nix) toBitArray stringBits codepointBits;
   
   go = x: toBitArray [ (codepointBits x) (stringBits "Gleam") ];
-in { }
+in
+{ }

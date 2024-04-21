@@ -19,4 +19,5 @@ let
     builtins.seq
       _'
       ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant;
-in { }
+in
+{ }

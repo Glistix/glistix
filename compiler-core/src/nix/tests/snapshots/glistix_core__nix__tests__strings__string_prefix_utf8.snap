@@ -15,7 +15,8 @@ let
         if strHasPrefix "Θ" _pat' then
           let
             rest = (builtins.substring 2 (-1) _pat');
-          in rest
+          in
+          rest
         else "";
       _'1 =
         let
@@ -24,7 +25,8 @@ let
         if strHasPrefix "🫥" _pat''1 then
           let
             rest = (builtins.substring 4 (-1) _pat''1);
-          in rest
+          in
+          rest
         else "";
       _'2 =
         let
@@ -33,7 +35,8 @@ let
         if strHasPrefix "🇺🇸" _pat''2 then
           let
             rest = (builtins.substring 8 (-1) _pat''2);
-          in rest
+          in
+          rest
         else "";
       _'3 =
         let
@@ -42,7 +45,8 @@ let
         if strHasPrefix "\"" _pat''3 then
           let
             rest = (builtins.substring 1 (-1) _pat''3);
-          in rest
+          in
+          rest
         else "";
     in
     seqAll
@@ -53,6 +57,8 @@ let
       if strHasPrefix "\\" _pat''4 then
         let
           rest = (builtins.substring 1 (-1) _pat''4);
-        in rest
+        in
+        rest
       else "");
-in { inherit go; }
+in
+{ inherit go; }

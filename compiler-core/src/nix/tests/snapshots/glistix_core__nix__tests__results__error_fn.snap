@@ -6,4 +6,5 @@ let
   inherit (builtins.import ./../gleam.nix) Error;
   
   main = { }: Error;
-in { inherit main; }
+in
+{ inherit main; }

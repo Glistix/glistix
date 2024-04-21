@@ -17,4 +17,5 @@ let
       _pat'._0.tail.head == "d"
     then 1
     else 1;
-in { }
+in
+{ }

@@ -14,7 +14,8 @@ let
     let
       _' = Cat "Nubi" 1;
       _'1 = Cat "Nubi" 2;
-    in seqAll [ _' _'1 ] (Cat "Nubi" 3);
+    in
+    seqAll [ _' _'1 ] (Cat "Nubi" 3);
   
   access = cat: cat.cuteness;
   
@@ -36,4 +37,5 @@ let
   felix = Cat "Felix" 12;
   
   tom = Cat "Tom" 1;
-in { }
+in
+{ }

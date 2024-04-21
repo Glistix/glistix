@@ -6,4 +6,5 @@ let
   one' = builtins.import ./../../other_package/one.nix;
   
   go = { }: one'.go { };
-in { inherit go; }
+in
+{ inherit go; }

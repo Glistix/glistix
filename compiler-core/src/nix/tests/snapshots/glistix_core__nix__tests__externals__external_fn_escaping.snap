@@ -8,4 +8,5 @@ let
   inherit' = (builtins.import ./ffi.nix).inherit';
   not_escaped = (builtins.import ./ffi.nix).builtins;
   also_not_escaped = (builtins.import ./ffi.nix).a'b;
-in { inherit also_not_escaped escaped_inherit inherit' not_escaped then'; }
+in
+{ inherit also_not_escaped escaped_inherit inherit' not_escaped then'; }

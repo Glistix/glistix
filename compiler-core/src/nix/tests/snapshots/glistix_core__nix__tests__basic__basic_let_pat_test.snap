@@ -36,7 +36,8 @@ let
       _pat''5 = (Simple3 true 5.0);
       a'1 = _pat''5."inherit";
       b = _pat''5.x;
-    in seqAll [ _' _'1 _'2 _'3 _'4 ] [ a'1 b ];
+    in
+    seqAll [ _' _'1 _'2 _'3 _'4 ] [ a'1 b ];
   
   pat_assert_test =
     { }:
@@ -123,4 +124,5 @@ let
             "Assignment pattern did not match"
             { value = _pat''5; })
       else _pat''5);
-in { inherit A B C Simple Simple2 Simple3 pat_test pat_assert_test; }
+in
+{ inherit A B C Simple Simple2 Simple3 pat_test pat_assert_test; }

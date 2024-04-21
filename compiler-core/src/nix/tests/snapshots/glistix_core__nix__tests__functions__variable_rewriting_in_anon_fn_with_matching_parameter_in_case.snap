@@ -4,4 +4,5 @@ expression: "pub fn bad() {\n  fn(state) {\n    let state = case Nil {\n      _ 
 ---
 let
   bad = { }: state: let state'1 = let _pat' = null; in state; in state'1;
-in { inherit bad; }
+in
+{ inherit bad; }

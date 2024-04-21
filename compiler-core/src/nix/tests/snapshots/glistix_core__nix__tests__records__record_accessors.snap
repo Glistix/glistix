@@ -8,4 +8,5 @@ let
   get_age = person: person.age;
   
   get_name = person: person.name;
-in { inherit Person get_age get_name; }
+in
+{ inherit Person get_age get_name; }

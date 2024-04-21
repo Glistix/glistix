@@ -13,5 +13,7 @@ let
     let
       _pipe =
         function_with_a_long_name_that_is_intended_to_sit_right_on_the_limit { };
-    in identity _pipe;
-in { inherit main; }
+    in
+    identity _pipe;
+in
+{ inherit main; }

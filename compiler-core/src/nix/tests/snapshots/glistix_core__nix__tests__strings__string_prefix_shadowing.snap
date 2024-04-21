@@ -11,6 +11,8 @@ let
       let
         name = (builtins.substring 7 (-1) x);
         x'1 = "Hello, ";
-      in x'1
+      in
+      x'1
     else "Unknown";
-in { inherit go; }
+in
+{ inherit go; }

@@ -6,4 +6,5 @@ let
   inherit (builtins.import ./../gleam.nix) strHasPrefix;
   
   go = x: if strHasPrefix "Hello, " x then null else null;
-in { inherit go; }
+in
+{ inherit go; }

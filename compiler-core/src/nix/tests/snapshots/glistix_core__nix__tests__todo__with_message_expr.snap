@@ -9,5 +9,7 @@ let
     { }:
     let
       x = "I should " + "do this";
-    in builtins.throw (makeError "todo" "my/mod" 4 "go" x { });
-in { }
+    in
+    builtins.throw (makeError "todo" "my/mod" 4 "go" x { });
+in
+{ }

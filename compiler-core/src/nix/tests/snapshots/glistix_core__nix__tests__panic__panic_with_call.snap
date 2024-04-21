@@ -6,4 +6,5 @@ let
   inherit (builtins.import ./../gleam.nix) makeError;
   
   go = x: builtins.throw (makeError "panic" "my/mod" 3 "go" (x 5 "abc") { });
-in { }
+in
+{ }

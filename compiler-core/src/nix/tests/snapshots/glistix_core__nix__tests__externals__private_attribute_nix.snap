@@ -6,4 +6,5 @@ let
   one = (builtins.import ./one.nix).oneNix;
   
   main = { }: one 1;
-in { inherit main; }
+in
+{ inherit main; }

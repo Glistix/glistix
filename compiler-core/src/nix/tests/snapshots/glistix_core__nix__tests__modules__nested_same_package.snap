@@ -6,4 +6,5 @@ let
   three' = builtins.import ./../one/two/three.nix;
   
   go = { }: three'.go { };
-in { inherit go; }
+in
+{ inherit go; }

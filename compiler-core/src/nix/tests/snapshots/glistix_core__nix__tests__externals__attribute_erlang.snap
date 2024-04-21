@@ -11,4 +11,5 @@ let
       (makeError "todo" "my/mod" 4 "one" "This has not yet been implemented" { });
   
   main = { }: one 1;
-in { inherit one main; }
+in
+{ inherit one main; }

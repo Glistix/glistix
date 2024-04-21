@@ -8,4 +8,5 @@ let
     if (builtins.elemAt a 0) == 2 then let a'1 = (builtins.elemAt a 1); in a'1
     else if (builtins.elemAt a 0) == 1 && (builtins.elemAt a 1) == 1 then 1
     else let a'1 = (builtins.elemAt a 0); b = (builtins.elemAt a 1); in a'1 + b;
-in { }
+in
+{ }

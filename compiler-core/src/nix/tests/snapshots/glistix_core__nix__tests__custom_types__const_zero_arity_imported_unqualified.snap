@@ -7,4 +7,5 @@ let
   inherit (builtins.import ./../other.nix) Two;
   
   a = Two;
-in { }
+in
+{ }

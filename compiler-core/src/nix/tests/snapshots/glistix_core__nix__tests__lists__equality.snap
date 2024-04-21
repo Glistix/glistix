@@ -9,5 +9,7 @@ let
     { }:
     let
       _' = (toList [ ]) == (toList [ 1 ]);
-    in builtins.seq _' ((toList [ ]) != (toList [ 1 ]));
-in { }
+    in
+    builtins.seq _' ((toList [ ]) != (toList [ 1 ]));
+in
+{ }

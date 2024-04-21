@@ -17,4 +17,5 @@ let
           "This has not yet been implemented"
           { })
     else 1;
-in { }
+in
+{ }

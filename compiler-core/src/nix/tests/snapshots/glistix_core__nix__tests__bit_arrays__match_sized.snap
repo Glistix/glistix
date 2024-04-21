@@ -21,5 +21,7 @@ let
         else null;
       a = builtins.seq _assert' (intFromBitSlice x 0 2);
       b = builtins.seq _assert' (intFromBitSlice x 2 3);
-    in builtins.seq _assert' [ a b ];
-in { }
+    in
+    builtins.seq _assert' [ a b ];
+in
+{ }

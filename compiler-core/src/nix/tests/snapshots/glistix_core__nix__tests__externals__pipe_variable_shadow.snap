@@ -6,4 +6,5 @@ let
   name = (builtins.import ./module).string;
   
   main = { }: let name'1 = name { }; in name'1;
-in { inherit main; }
+in
+{ inherit main; }

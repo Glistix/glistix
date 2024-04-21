@@ -10,4 +10,5 @@ let
   top_dir_slash = (builtins.import ./../.).inspect;
   top_dir_path = (builtins.import ./../a).inspect;
   current_dir_path = (builtins.import ./a).inspect;
-in { }
+in
+{ }

@@ -24,4 +24,5 @@ let
                   (add
                     1
                     (add 1 (add 1 (add 1 (add 1 (add 1 (add 1 (add 1 1))))))))))))));
-in { inherit add long; }
+in
+{ inherit add long; }

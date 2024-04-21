@@ -7,5 +7,7 @@ let
     x:
     let
       x'1 = x;
-    in x: let _' = x + 1; x'1 = x; x'2 = x'1; in builtins.seq _' x'2;
-in { inherit debug; }
+    in
+    x: let _' = x + 1; x'1 = x; x'2 = x'1; in builtins.seq _' x'2;
+in
+{ inherit debug; }

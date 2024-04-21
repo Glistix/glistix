@@ -8,4 +8,5 @@ let
   a = true;
   
   go = { }: let _' = a; a'1 = 10; in builtins.seq _' (a'1 + 20);
-in { }
+in
+{ }

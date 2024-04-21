@@ -9,5 +9,8 @@ let
     { }:
     let
       name = "Tony Stark";
-    in if name == hero'.ironman.name then let n = name; in true else false;
-in { inherit main; }
+    in
+    if name == hero'.ironman.name then let n = name; in true
+    else false;
+in
+{ inherit main; }

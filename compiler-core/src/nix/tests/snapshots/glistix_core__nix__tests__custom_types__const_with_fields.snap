@@ -8,4 +8,5 @@ let
   labels = Mine 1 2;
   
   no_labels = Mine 3 4;
-in { }
+in
+{ }

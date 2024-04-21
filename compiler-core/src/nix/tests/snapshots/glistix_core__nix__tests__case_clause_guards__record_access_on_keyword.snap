@@ -8,4 +8,5 @@ let
       { __gleamTag = "A"; "inherit" = inherit'; builtins = builtins'; };
   
   main = x: if (x."inherit" == 5) || x.builtins then true else false;
-in { inherit A main; }
+in
+{ inherit A main; }

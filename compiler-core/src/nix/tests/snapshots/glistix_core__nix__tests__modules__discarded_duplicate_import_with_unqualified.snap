@@ -9,4 +9,5 @@ let
   esa_go = { }: rocket_ship'.go { };
   
   nasa_go = { }: go { };
-in { inherit esa_go nasa_go; }
+in
+{ inherit esa_go nasa_go; }

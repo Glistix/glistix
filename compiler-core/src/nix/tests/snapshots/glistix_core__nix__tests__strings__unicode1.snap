@@ -6,4 +6,5 @@ let
   inherit (builtins.import ./../gleam.nix) parseEscape;
   
   emoji = { }: "${parseEscape "\\U0001f600"}";
-in { inherit emoji; }
+in
+{ inherit emoji; }

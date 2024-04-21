@@ -8,6 +8,8 @@ let
     if ((builtins.elemAt xs 0) == y) == z then
       let
         x = (builtins.elemAt xs 0);
-      in 1
+      in
+      1
     else 0;
-in { inherit main; }
+in
+{ inherit main; }

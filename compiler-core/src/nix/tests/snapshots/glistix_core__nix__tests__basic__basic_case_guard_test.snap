@@ -32,4 +32,5 @@ let
   bad = toList [ (Ok 5) (Ok 6) ];
   
   bigbad = toList [ (BigBad (Error (Ok 5)) 10) (BigBad (Error (Ok 5)) 10) ];
-in { inherit Bad guard inherit' bad; }
+in
+{ inherit Bad guard inherit' bad; }

@@ -8,4 +8,5 @@ let
   bb = (builtins.import ./../rocket_ship.nix).b;
   
   go = { }: (a { }) + (bb { });
-in { inherit go; }
+in
+{ inherit go; }

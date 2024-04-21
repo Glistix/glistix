@@ -13,10 +13,13 @@ let
     if strHasPrefix "0" _pat' then
       let
         rest = (builtins.substring 1 (-1) _pat');
-      in rest
+      in
+      rest
     else if strHasPrefix "123" _pat' then
       let
         rest = (builtins.substring 3 (-1) _pat');
-      in rest
+      in
+      rest
     else "";
-in { inherit main; }
+in
+{ inherit main; }

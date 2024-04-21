@@ -8,4 +8,5 @@ let
   
   main =
     { }: let println'1 = let _pipe = "oh dear"; in println _pipe; in println'1;
-in { inherit main; }
+in
+{ inherit main; }

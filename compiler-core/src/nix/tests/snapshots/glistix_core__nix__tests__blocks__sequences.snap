@@ -6,4 +6,5 @@ let
   inherit (builtins.import ./../gleam.nix) seqAll;
   
   go = { }: let _' = "one"; _'1 = "two"; in seqAll [ _' _'1 ] "three";
-in { }
+in
+{ }

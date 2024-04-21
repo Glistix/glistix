@@ -20,5 +20,7 @@ let
               { value = x; })
         else null;
       y = builtins.seq _assert' (byteAt x 1);
-    in builtins.seq _assert' y;
-in { }
+    in
+    builtins.seq _assert' y;
+in
+{ }

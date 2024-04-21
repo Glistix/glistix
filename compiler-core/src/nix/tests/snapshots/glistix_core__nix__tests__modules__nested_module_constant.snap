@@ -6,4 +6,5 @@ let
   launcher' = builtins.import ./../rocket_ship/launcher.nix;
   
   go = { }: launcher'.x;
-in { inherit go; }
+in
+{ inherit go; }

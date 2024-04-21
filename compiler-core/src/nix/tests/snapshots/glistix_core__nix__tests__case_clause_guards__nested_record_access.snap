@@ -10,4 +10,5 @@ let
   C = d: { __gleamTag = "C"; inherit d; };
   
   a = a: if a.b.c.d then 1 else 0;
-in { inherit A B C a; }
+in
+{ inherit A B C a; }

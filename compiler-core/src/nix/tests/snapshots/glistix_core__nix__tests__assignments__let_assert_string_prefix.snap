@@ -20,5 +20,7 @@ let
               { value = x; })
         else null;
       id = builtins.seq _assert' (builtins.substring 5 (-1) x);
-    in builtins.seq _assert' id;
-in { inherit main; }
+    in
+    builtins.seq _assert' id;
+in
+{ inherit main; }

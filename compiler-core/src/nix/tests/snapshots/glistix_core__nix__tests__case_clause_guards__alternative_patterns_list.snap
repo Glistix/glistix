@@ -10,4 +10,5 @@ let
     if listHasLength xs 1 && xs.head == 1 then 0
     else if listHasLength xs 2 && xs.head == 1 && xs.tail.head == 2 then 0
     else 1;
-in { inherit main; }
+in
+{ inherit main; }

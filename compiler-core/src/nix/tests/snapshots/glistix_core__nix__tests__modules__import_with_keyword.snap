@@ -8,4 +8,5 @@ let
   false' = (builtins.import ./../rocket_ship.nix).true';
   
   main = { }: [ inherit' false' ];
-in { inherit main; }
+in
+{ inherit main; }

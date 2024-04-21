@@ -13,6 +13,8 @@ let
     if (toBitArray [ _pat' ]) == (toBitArray [ _pat' ]) then
       let
         z = _pat';
-      in null
+      in
+      null
     else null;
-in { inherit main; }
+in
+{ inherit main; }

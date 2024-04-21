@@ -22,4 +22,5 @@ let
     else if 5 == 10 then true
     else if in' > 5 then let with' = in'; in false
     else let rec' = in'; in false;
-in { inherit inherit' builtins' main; }
+in
+{ inherit inherit' builtins' main; }

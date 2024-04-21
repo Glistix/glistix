@@ -6,4 +6,5 @@ let
   inherit (builtins.import ./../gleam.nix) seqAll;
   
   math = x: y: { }: let _' = x + y; _'1 = x - y; in seqAll [ _' _'1 ] (2 * x);
-in { inherit math; }
+in
+{ inherit math; }

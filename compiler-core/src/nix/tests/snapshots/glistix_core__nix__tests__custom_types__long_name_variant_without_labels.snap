@@ -15,4 +15,5 @@ let
       };
   
   go = { }: TypeWithALongNameAndSeveralArguments;
-in { }
+in
+{ }

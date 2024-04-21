@@ -6,4 +6,5 @@ let
   rocket_ship' = builtins.import ./../rocket_ship.nix;
   
   variable = rocket_ship'.inherit';
-in { inherit variable; }
+in
+{ inherit variable; }

@@ -6,4 +6,5 @@ let
   pair = f: let x = f { }; in [ x x ];
   
   main = { }: pair ({ }: 123);
-in { inherit main; }
+in
+{ inherit main; }

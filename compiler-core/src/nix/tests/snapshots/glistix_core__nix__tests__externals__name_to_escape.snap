@@ -5,4 +5,5 @@ expression: "\n@external(nix, \"./the/module.nix\", \"one\")\npub fn inherit() -
 let
   inherit' = (builtins.import ./the/module.nix).one;
   builtins' = (builtins.import ./the/module.nix).one;
-in { inherit builtins' inherit'; }
+in
+{ inherit builtins' inherit'; }

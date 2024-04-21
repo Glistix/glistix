@@ -10,5 +10,8 @@ let
     { }:
     let
       names = toList [ "Tony Stark" "Bruce Wayne" ];
-    in if names == hero'.heroes then let n = names; in true else false;
-in { inherit main; }
+    in
+    if names == hero'.heroes then let n = names; in true
+    else false;
+in
+{ inherit main; }

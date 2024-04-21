@@ -6,4 +6,5 @@ let
   gleam' = builtins.import ./../gleam.nix;
   
   go = { }: gleam'.Error 1;
-in { inherit go; }
+in
+{ inherit go; }

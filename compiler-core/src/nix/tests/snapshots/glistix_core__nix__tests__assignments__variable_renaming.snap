@@ -29,5 +29,7 @@ let
       c = let a'3 = a'2; in [ a'3 b ];
       _'3 = foo a'2;
       x'1 = c;
-    in seqAll [ _' _'1 _assert' _'2 _'3 ] x'1;
-in { }
+    in
+    seqAll [ _' _'1 _assert' _'2 _'3 ] x'1;
+in
+{ }

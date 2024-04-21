@@ -8,4 +8,5 @@ let
   go =
     { }:
     builtins.throw (makeError "todo" "my/mod" 3 "go" "I should do this" { });
-in { }
+in
+{ }

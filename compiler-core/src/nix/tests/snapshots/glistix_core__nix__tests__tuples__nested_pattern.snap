@@ -9,6 +9,8 @@ let
       let
         a = (builtins.elemAt (builtins.elemAt x 1) 0);
         b = (builtins.elemAt (builtins.elemAt x 1) 1);
-      in a + b
+      in
+      a + b
     else 1;
-in { }
+in
+{ }

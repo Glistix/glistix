@@ -7,4 +7,5 @@ let
     xs:
     if (builtins.elemAt xs 0) then let x = (builtins.elemAt xs 0); in 1
     else 0;
-in { inherit main; }
+in
+{ inherit main; }

@@ -11,4 +11,5 @@ let
   get_name = person: person.name;
   
   get_age = person: person.age;
-in { inherit Teacher Student get_name get_age; }
+in
+{ inherit Teacher Student get_name get_age; }

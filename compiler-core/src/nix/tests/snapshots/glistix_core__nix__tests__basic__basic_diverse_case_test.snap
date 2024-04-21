@@ -48,5 +48,7 @@ let
         else if w == "c" then "is c"
         else "not a, b, c";
       p1 = if p == null then "is nil" else "not nil (impossible)";
-    in [ x1 y1 z1 w1 p1 ];
-in { inherit SA SB SC SD simple_test2; }
+    in
+    [ x1 y1 z1 w1 p1 ];
+in
+{ inherit SA SB SC SD simple_test2; }

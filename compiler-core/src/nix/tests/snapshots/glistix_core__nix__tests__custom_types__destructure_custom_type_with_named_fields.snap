@@ -25,5 +25,7 @@ let
               { value = cat; })
         else null;
       x'2 = builtins.seq _assert' cat.name;
-    in builtins.seq _assert' x'2;
-in { }
+    in
+    builtins.seq _assert' x'2;
+in
+{ }

@@ -47,7 +47,8 @@ let
         let
           _pipe = a'1;
           _pipe'1 = (_capture: foo _capture a'1 50) _pipe;
-        in (x: x) _pipe'1;
+        in
+        (x: x) _pipe'1;
       pipes2 = let _pipe = a'1; in (i: i) _pipe;
       _'3 = builtins.throw (makeError "panic" "my/mod" 45 "go" "amongus" { });
       _'4 = builtins.throw (makeError "todo" "my/mod" 46 "go" "amongus" { });
@@ -84,7 +85,8 @@ let
       mnull = null;
       sus'1 = "hey! I'm still sus :(";
       x'1 = tata;
-    in seqAll [ _' _'1 _'2 _'3 _'4 _'5 _'6 ] x'1;
+    in
+    seqAll [ _' _'1 _'2 _'3 _'4 _'5 _'6 ] x'1;
   
   mongus =
     a: b: c:
@@ -101,8 +103,10 @@ let
         _' = 5;
         _'1 = 6;
         _'2 = 10;
-      in seqAll [ _' _'1 _'2 ] (10 + 5))
+      in
+      seqAll [ _' _'1 _'2 ] (10 + 5))
     ];
   
   sumongus = 5;
-in { inherit AmogusA AmogusB AmogusC sus sumongus; }
+in
+{ inherit AmogusA AmogusB AmogusC sus sumongus; }

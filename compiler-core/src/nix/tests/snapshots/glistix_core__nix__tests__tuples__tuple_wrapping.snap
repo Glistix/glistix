@@ -27,7 +27,8 @@ let
           (toBitArray [ 1 2 ])
           "x${parseEscape "\\U0000202f"}"
         ];
-    in tup'1;
+    in
+    tup'1;
   
   tup =
     [
@@ -39,4 +40,5 @@ let
       (toBitArray [ 1 2 ])
       "x${parseEscape "\\U0000202f"}"
     ];
-in { }
+in
+{ }

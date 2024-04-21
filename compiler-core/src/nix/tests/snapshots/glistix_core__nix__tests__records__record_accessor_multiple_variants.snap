@@ -8,4 +8,5 @@ let
   Student = name: age: { __gleamTag = "Student"; inherit name age; };
   
   get_name = person: person.name;
-in { inherit Teacher Student get_name; }
+in
+{ inherit Teacher Student get_name; }

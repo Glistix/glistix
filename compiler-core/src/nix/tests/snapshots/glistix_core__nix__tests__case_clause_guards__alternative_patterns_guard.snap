@@ -11,6 +11,8 @@ let
     else if listHasLength xs 2 && (xs.tail.head == 1) then
       let
         x = xs.tail.head;
-      in x
+      in
+      x
     else 0;
-in { inherit main; }
+in
+{ inherit main; }

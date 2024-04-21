@@ -51,4 +51,5 @@ let
             "Assignment pattern did not match"
             { value = y; })
       else y);
-in { inherit True False Nil; }
+in
+{ inherit True False Nil; }

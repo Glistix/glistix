@@ -20,4 +20,5 @@ let
           "main"
           "This has not yet been implemented"
           { }));
-in { inherit main; }
+in
+{ inherit main; }
