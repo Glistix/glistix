@@ -25,6 +25,7 @@ fn new() {
     assert!(path.join(".git").exists());
     assert!(path.join("README.md").exists());
     assert!(path.join("gleam.toml").exists());
+    assert!(path.join("flake.nix").exists());
     assert!(path.join("src/my_project.gleam").exists());
     assert!(path.join("test/my_project_test.gleam").exists());
     assert!(path.join(".github/workflows/test.yml").exists());

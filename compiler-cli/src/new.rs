@@ -55,6 +55,7 @@ enum FileToCreate {
     TestModule,
     GleamToml,
     GithubCi,
+    NixFlake,
 }
 
 impl FileToCreate {
@@ -72,6 +73,7 @@ impl FileToCreate {
                 .join(Utf8PathBuf::from(format!("{project_name}_test.gleam"))),
             Self::GleamToml => creator.root.join(Utf8PathBuf::from("gleam.toml")),
             Self::GithubCi => creator.workflows.join(Utf8PathBuf::from("test.yml")),
+            Self::NixFlake => creator.root.join(Utf8PathBuf::from("flake.nix")),
         }
     }
 
@@ -206,6 +208,147 @@ jobs:
 "#,
             )),
             Self::GithubCi | Self::Gitignore => None,
+            Self::NixFlake => Some(format!(
+                r#"
+# Run your main function from Nix by importing this flake as follows:
+#
+# let
+#   yourProject = builtins.getFlake "URL";  # for example
+#   mainResult = (yourProject.lib.loadGlistixPackage {{}}).main {{}};
+# in doSomethingWith mainResult;
+#
+# See below to customize your flake.
+{{
+  description = "{project_name} - A Glistix project";
+
+  inputs = {{
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    systems.url = "github:nix-systems/default";
+
+    # Pick your Glistix version here.
+    glistix.url = "github:glistix/glistix/v0.1.0";
+
+    # Submodules
+    # Add any submodules which you use as dependencies here,
+    # and then add them to "submodules = [ ... ]" below.
+    stdlib = {{
+      url = "github:glistix/stdlib";
+      flake = false;
+    }};
+    gleeunit = {{
+      url = "github:glistix/gleeunit";
+      flake = false;
+    }};
+  }};
+
+  outputs =
+    inputs@{{ self, nixpkgs, flake-parts, systems, glistix, stdlib, gleeunit, ... }}:
+    let
+      # --- CUSTOMIZATION PARAMETERS ---
+
+      # Add any source files to keep when building your Glistix package here.
+      # This includes anything which might be necessary at build time.
+      sourceFiles = [
+        "gleam.toml"
+        "manifest.toml" # make sure to build locally at least once so Glistix generates this file
+        "src"
+        "test"
+        "external" # cloned package repositories
+        "output" # checked-in build output, if it exists
+        "priv" # assets and other relevant files
+        ".gitignore"
+        ".gitmodules"
+      ];
+
+      # Submodules have to be specified here, even if they are cloned locally.
+      # Add them as inputs to the flake, and then specify where to clone them to
+      # during build below.
+      submodules = [
+        {{
+          src = stdlib;
+          dest = "external/stdlib";
+        }}
+        {{
+          src = gleeunit;
+          dest = "external/gleeunit";
+        }}
+      ];
+
+      # Set this to 'true' if you created an 'output' folder where you're storing
+      # build outputs and you'd like to ensure Nix consumers will use it.
+      # It will be used even if this is 'false', but Glistix will fallback to
+      # building your package from scratch upon load if the output folder is
+      # missing. If you set this to 'true', it will error instead.
+      forceLoadFromOutput = false;
+
+      # --- IMPLEMENTATION ---
+
+      inherit (nixpkgs) lib;
+      sourceFileRegex =
+        builtins.concatStringsSep "|" (map lib.escapeRegex sourceFiles);
+      src = lib.sourceByRegex ./. [ "(${{sourceFileRegex}})(/.*)?" ];
+
+      # Prepare the call to 'loadGlistixPackage'. This is used to
+      # easily run your Gleam code compiled to Nix from within Nix.
+      #
+      # This will try to read compiled code at 'output/dev/nix',
+      # thus not invoking the Glistix compiler at all if possible,
+      # avoiding the need to compile, install and run it.
+      # If that path does not exist, however, uses Glistix to build your
+      # Gleam package from scratch instead, using the derivation
+      # created further below (exported by this flake under
+      # the 'packages' output).
+      # Specify 'forceLoadFromOutput = true;' above to opt into erroring
+      # if the 'output/dev/nix' folder isn't found instead of invoking
+      # the Glistix compiler.
+      #
+      # Pass 'system' to use the derivation for the given system.
+      # Other arguments are passed through to Glistix's 'loadGlistixPackage'.
+      # For example, 'lib.loadGlistixPackage {{ module = "ops/create"; }}'
+      # will load what's exported by your package's 'ops/create' module
+      # as an attribute set.
+      loadGlistixPackage =
+        args@{{ system ? builtins.currentSystem or null, ... }}:
+        let
+          derivation = if forceLoadFromOutput || system == null then
+            null
+          else
+            self.packages.${{system}}.default or null;
+
+          overrides = builtins.removeAttrs args [ "system" ];
+          loaderArgs = {{ inherit src derivation; }} // overrides;
+        in glistix.lib.loadGlistixPackage loaderArgs;
+
+    in flake-parts.lib.mkFlake {{ inherit inputs; }} {{
+      systems = import systems;
+
+      flake = {{ lib = {{ inherit loadGlistixPackage; }}; }};
+
+      perSystem = {{ self', pkgs, lib, system, ... }}:
+        let
+          inherit (glistix.builders.${{system}}) buildGlistixPackage;
+
+          # This derivation will build Glistix itself if needed
+          # (using Rust), and then use Glistix to build this particular
+          # package into Nix files.
+          # The derivation's "out" output will contain the resulting
+          # 'build' directory. You can use
+          #   "${{derivation}}/${{derivation.glistixMain}}"
+          # for a path to this package's main '.nix' file, which can
+          # be imported through Nix's `import`.
+          derivation = buildGlistixPackage {{ inherit src submodules; }};
+        in {{
+          packages.default = derivation;
+
+          # Run 'nix develop' to create a shell where 'glistix' is available.
+          devShells.default = pkgs.mkShell {{
+            nativeBuildInputs = [ glistix.packages.${{system}}.default ];
+          }};
+        }};
+    }};
+}}
+"#,
+            )),
         }
     }
 }
