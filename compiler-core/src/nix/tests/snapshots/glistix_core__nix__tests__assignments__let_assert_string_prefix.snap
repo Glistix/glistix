@@ -9,8 +9,7 @@ let
     x:
       let
         _assert' =
-          if !(strHasPrefix "Game " x)
-          then
+          if !(strHasPrefix "Game " x) then
             builtins.throw
               (makeError
                 "assignment_no_match"

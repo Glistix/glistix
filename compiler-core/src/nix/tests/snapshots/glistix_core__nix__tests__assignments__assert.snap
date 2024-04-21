@@ -7,8 +7,7 @@ let
   
   go =
     x:
-      if x != 1
-      then
+      if x != 1 then
         builtins.throw
           (makeError
             "assignment_no_match"

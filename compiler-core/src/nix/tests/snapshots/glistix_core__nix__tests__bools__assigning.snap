@@ -9,8 +9,7 @@ let
     x: y:
       let
         _assert' =
-          if !x
-          then
+          if !x then
             builtins.throw
               (makeError
                 "assignment_no_match"
@@ -22,8 +21,7 @@ let
           else null;
         _' = builtins.seq _assert' x;
         _assert''1 =
-          if x
-          then
+          if x then
             builtins.throw
               (makeError
                 "assignment_no_match"
@@ -37,8 +35,7 @@ let
       in
       seqAll
         [ _' _assert' _'1 _assert''1 ]
-        (if y != null
-        then
+        (if y != null then
           builtins.throw
             (makeError
               "assignment_no_match"

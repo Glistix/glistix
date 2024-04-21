@@ -15,19 +15,22 @@ let
   
   please_match =
     x:
-      if x.__gleamTag == "Simple"
-      then let s = x; in let _' = s; in builtins.seq _' [ (-100) (-100.0) ]
-      else if x.__gleamTag == "TupleLike"
-      then
+      if x.__gleamTag == "Simple" then
+        let
+          s = x;
+        in let _' = s; in builtins.seq _' [ (-100) (-100.0) ]
+      else if x.__gleamTag == "TupleLike" then
         let
           t = x;
           i = x._0;
           f = x._1;
         in let _' = t; in builtins.seq _' [ i f ]
-      else if x.__gleamTag == "RecordLike"
-      then let i = x.a; f = x."inherit"; in [ i f ]
-      else if x.__gleamTag == "Mixed"
-      then
+      else if x.__gleamTag == "RecordLike" then
+        let
+          i = x.a;
+          f = x."inherit";
+        in [ i f ]
+      else if x.__gleamTag == "Mixed" then
         let
           i1 = x.a;
           f3 = x.b;

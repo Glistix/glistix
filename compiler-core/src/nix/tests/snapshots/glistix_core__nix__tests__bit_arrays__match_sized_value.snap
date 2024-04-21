@@ -7,8 +7,7 @@ let
   
   go =
     x:
-      if (intFromBitSlice x 0 2) != 258 || byteSize x != 2
-      then
+      if (intFromBitSlice x 0 2) != 258 || byteSize x != 2 then
         builtins.throw
           (makeError
             "assignment_no_match"

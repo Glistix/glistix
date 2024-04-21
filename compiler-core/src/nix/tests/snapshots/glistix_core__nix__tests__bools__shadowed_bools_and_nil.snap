@@ -15,8 +15,7 @@ let
     x: y:
       let
         _assert' =
-          if x.__gleamTag != "True"
-          then
+          if x.__gleamTag != "True" then
             builtins.throw
               (makeError
                 "assignment_no_match"
@@ -28,8 +27,7 @@ let
           else null;
         _' = builtins.seq _assert' x;
         _assert''1 =
-          if x.__gleamTag != "False"
-          then
+          if x.__gleamTag != "False" then
             builtins.throw
               (makeError
                 "assignment_no_match"
@@ -43,8 +41,7 @@ let
       in
       seqAll
         [ _' _assert' _'1 _assert''1 ]
-        (if y.__gleamTag != "Nil"
-        then
+        (if y.__gleamTag != "Nil" then
           builtins.throw
             (makeError
               "assignment_no_match"

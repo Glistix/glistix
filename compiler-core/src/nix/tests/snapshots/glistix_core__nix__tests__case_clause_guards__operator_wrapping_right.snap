@@ -5,7 +5,9 @@ expression: "pub fn main(xs, y: Bool, z: Bool) {\n  case xs {\n    #(x) if x == 
 let
   main =
     xs: y: z:
-      if (builtins.elemAt xs 0) == (y == z)
-      then let x = (builtins.elemAt xs 0); in 1
+      if (builtins.elemAt xs 0) == (y == z) then
+        let
+          x = (builtins.elemAt xs 0);
+        in 1
       else 0;
 in { inherit main; }

@@ -11,8 +11,7 @@ let
         form_feed =
           "${parseEscape "\\f"} a${parseEscape "\\f"}b ${parseEscape "\\f"}";
       in
-      if strHasPrefix "${parseEscape "\\f"} " form_feed
-      then
+      if strHasPrefix "${parseEscape "\\f"} " form_feed then
         let
           rest = (builtins.substring 2 (-1) form_feed);
           ff = "${parseEscape "\\f"} ";

@@ -14,8 +14,7 @@ let
     x: y:
       let
         _assert' =
-          if !(listHasLength x 0)
-          then
+          if !(listHasLength x 0) then
             builtins.throw
               (makeError
                 "assignment_no_match"
@@ -27,8 +26,7 @@ let
           else null;
         _' = builtins.seq _assert' x;
         _assert''1 =
-          if !(listHasLength x 1)
-          then
+          if !(listHasLength x 1) then
             builtins.throw
               (makeError
                 "assignment_no_match"
@@ -40,8 +38,7 @@ let
           else null;
         a = builtins.seq _assert''1 x.head;
         _assert''2 =
-          if !(listHasLength x 2) || x.head != 1 || x.tail.head != 2
-          then
+          if !(listHasLength x 2) || x.head != 1 || x.tail.head != 2 then
             builtins.throw
               (makeError
                 "assignment_no_match"
@@ -53,8 +50,7 @@ let
           else null;
         _'1 = builtins.seq _assert''2 x;
         _assert''3 =
-          if !(listHasLength y 2) || (builtins.elemAt y.tail.head 0) != 3
-          then
+          if !(listHasLength y 2) || (builtins.elemAt y.tail.head 0) != 3 then
             builtins.throw
               (makeError
                 "assignment_no_match"
@@ -68,8 +64,7 @@ let
       in
       seqAll
         [ _' _assert' _assert''1 _'1 _assert''2 _assert''3 ]
-        (if !(listHasAtLeastLength y 1)
-        then
+        (if !(listHasAtLeastLength y 1) then
           builtins.throw
             (makeError
               "assignment_no_match"

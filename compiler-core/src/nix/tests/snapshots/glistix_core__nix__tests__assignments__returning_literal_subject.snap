@@ -10,8 +10,7 @@ let
       let
         _pat' = (x + 1);
       in
-      if _pat' != 1
-      then
+      if _pat' != 1 then
         builtins.throw
           (makeError
             "assignment_no_match"

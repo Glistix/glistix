@@ -26,8 +26,8 @@ let
           let
             _pat' = n < 0;
           in
-          if _pat'
-          then builtins.throw (makeError "panic" "my/mod" 34 "fact" "Don't." {})
+          if _pat' then
+            builtins.throw (makeError "panic" "my/mod" 34 "fact" "Don't." {})
           else null;
       in [ res (if n == 0 then 1 else n * (builtins.elemAt (fact (n - 1)) 1)) ];
 in { inherit fact; }

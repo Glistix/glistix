@@ -10,7 +10,6 @@ let
       let
         name = "Bruce Wayne";
       in
-      if name == hero'.batman.secret_identity.name
-      then let n = name; in true
+      if name == hero'.batman.secret_identity.name then let n = name; in true
       else false;
 in { inherit main; }

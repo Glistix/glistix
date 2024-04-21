@@ -5,7 +5,6 @@ expression: "pub fn main(xs) {\n  case xs {\n    #(x) if x -> 1\n    _ -> 0\n  }
 let
   main =
     xs:
-      if (builtins.elemAt xs 0)
-      then let x = (builtins.elemAt xs 0); in 1
+      if (builtins.elemAt xs 0) then let x = (builtins.elemAt xs 0); in 1
       else 0;
 in { inherit main; }

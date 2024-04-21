@@ -10,7 +10,6 @@ let
       let
         _pat' = toList [ ];
       in
-      if listHasLength _pat' 1 && (false || true)
-      then let a = _pat'.head; in a
+      if listHasLength _pat' 1 && (false || true) then let a = _pat'.head; in a
       else anything {};
 in {}

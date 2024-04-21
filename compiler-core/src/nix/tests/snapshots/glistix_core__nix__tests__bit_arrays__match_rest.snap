@@ -16,8 +16,7 @@ let
       let
         _pat' = (toBitArray [ 1 2 3 ]);
         _assert' =
-          if byteSize _pat' < 1
-          then
+          if byteSize _pat' < 1 then
             builtins.throw
               (makeError
                 "assignment_no_match"

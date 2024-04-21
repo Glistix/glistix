@@ -20,46 +20,32 @@ let
       in
       builtins.seq
         _'
-        (if x.__gleamTag == "SA"
-        then Ok 5
-        else if x.__gleamTag == "SB"
-        then Error 10
-        else if x.__gleamTag == "SC"
-        then Ok 10
+        (if x.__gleamTag == "SA" then Ok 5
+        else if x.__gleamTag == "SB" then Error 10
+        else if x.__gleamTag == "SC" then Ok 10
         else Ok 10);
   
   simple_test2 =
     x: y: z: w: p:
       let
         x1 =
-          if x.__gleamTag == "SC"
-          then "is SC"
-          else if x.__gleamTag == "SA"
-          then "is SA"
+          if x.__gleamTag == "SC" then "is SC"
+          else if x.__gleamTag == "SA" then "is SA"
           else "not SC or SA";
         y1 =
-          if y == 0
-          then "is 0"
-          else if y == -1
-          then "is -1"
-          else if y == 100
-          then "is 100"
+          if y == 0 then "is 0"
+          else if y == -1 then "is -1"
+          else if y == 100 then "is 100"
           else "unknown int";
         z1 =
-          if z == 0.0
-          then "is 0.0"
-          else if z == 53.53
-          then "is 53.53"
-          else if z == 1.0e2
-          then "is 1.0e2"
+          if z == 0.0 then "is 0.0"
+          else if z == 53.53 then "is 53.53"
+          else if z == 1.0e2 then "is 1.0e2"
           else "unknown float";
         w1 =
-          if w == "a"
-          then "is a"
-          else if w == "b"
-          then "is b"
-          else if w == "c"
-          then "is c"
+          if w == "a" then "is a"
+          else if w == "b" then "is b"
+          else if w == "c" then "is c"
           else "not a, b, c";
         p1 = if p == null then "is nil" else "not nil (impossible)";
       in [ x1 y1 z1 w1 p1 ];

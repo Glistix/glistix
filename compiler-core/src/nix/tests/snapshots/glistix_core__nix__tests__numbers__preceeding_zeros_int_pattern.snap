@@ -7,8 +7,7 @@ let
   
   main =
     x:
-      if x != 9179
-      then
+      if x != 9179 then
         builtins.throw
           (makeError
             "assignment_no_match"

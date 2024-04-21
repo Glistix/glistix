@@ -5,11 +5,8 @@ expression: "\nfn go(a) {\n  case a {\n    \"\" -> 0\n    \"one\" -> 1\n    \"tw
 let
   go =
     a:
-      if a == ""
-      then 0
-      else if a == "one"
-      then 1
-      else if a == "two"
-      then 2
+      if a == "" then 0
+      else if a == "one" then 1
+      else if a == "two" then 2
       else 3;
 in {}

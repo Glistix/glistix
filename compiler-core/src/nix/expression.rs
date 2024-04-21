@@ -519,8 +519,14 @@ impl<'module> Generator<'module> {
                     } else {
                         docvec!(break_("", " "), "else if")
                     })
-                    .append(docvec!(break_("", " "), condition).nest(INDENT).group())
-                    .append(docvec!(break_("", " "), "then"))
+                    .append(
+                        docvec!(
+                            docvec!(break_("", " "), condition).nest(INDENT),
+                            break_("", " "),
+                            "then"
+                        )
+                        .group(),
+                    )
                     .append(docvec!(break_("", " "), body).nest(INDENT).group())
                 };
             }
@@ -1146,9 +1152,12 @@ impl Generator<'_> {
         let checks = self.pattern_checks_doc(checks, false);
         docvec![
             "if",
-            docvec![break_("", " "), checks].nest(INDENT).group(),
-            break_("", " "),
-            "then",
+            docvec![
+                docvec![break_("", " "), checks].nest(INDENT),
+                break_("", " "),
+                "then",
+            ]
+            .group(),
             docvec![break_("", " "), self.assignment_no_match(location, subject)]
                 .nest(INDENT)
                 .group(),

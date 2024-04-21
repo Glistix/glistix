@@ -9,8 +9,7 @@ let
     x:
       let
         _assert' =
-          if byteSize x != 3
-          then
+          if byteSize x != 3 then
             builtins.throw
               (makeError
                 "assignment_no_match"

@@ -7,9 +7,10 @@ let
   
   main =
     xs:
-      if listHasLength xs 1 && (xs.head == 1)
-      then let x = xs.head; in x
-      else if listHasLength xs 2 && (xs.tail.head == 1)
-      then let x = xs.tail.head; in x
+      if listHasLength xs 1 && (xs.head == 1) then let x = xs.head; in x
+      else if listHasLength xs 2 && (xs.tail.head == 1) then
+        let
+          x = xs.tail.head;
+        in x
       else 0;
 in { inherit main; }
