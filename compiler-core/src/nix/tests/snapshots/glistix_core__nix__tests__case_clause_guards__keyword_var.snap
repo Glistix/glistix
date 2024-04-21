@@ -11,15 +11,15 @@ let
   
   main =
     { }:
-      let
-        then' = 5;
-        or' = 10;
-        in' = 7;
-      in
-      if or' == then' then true
-      else if (toList [ or' ]) == (toList [ 5 ]) then true
-      else if [ in' ] == [ 5 ] then let inherit'1 = in'; in false
-      else if 5 == 10 then true
-      else if in' > 5 then let with' = in'; in false
-      else let rec' = in'; in false;
+    let
+      then' = 5;
+      or' = 10;
+      in' = 7;
+    in
+    if or' == then' then true
+    else if (toList [ or' ]) == (toList [ 5 ]) then true
+    else if [ in' ] == [ 5 ] then let inherit'1 = in'; in false
+    else if 5 == 10 then true
+    else if in' > 5 then let with' = in'; in false
+    else let rec' = in'; in false;
 in { inherit inherit' builtins' main; }

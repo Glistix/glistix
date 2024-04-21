@@ -7,6 +7,6 @@ let
   
   go =
     { }:
-      builtins.throw
-        (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" { });
+    builtins.throw
+      (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" { });
 in { }

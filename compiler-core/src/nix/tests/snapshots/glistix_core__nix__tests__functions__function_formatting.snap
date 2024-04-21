@@ -6,5 +6,5 @@ let
   add =
     the_first_variable_that_should_be_added:
     the_second_variable_that_should_be_added:
-      the_first_variable_that_should_be_added + the_second_variable_that_should_be_added;
+    the_first_variable_that_should_be_added + the_second_variable_that_should_be_added;
 in { inherit add; }

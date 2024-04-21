@@ -7,7 +7,7 @@ let
   
   go =
     { }:
-      let
-        x = "I should " + "do this";
-      in builtins.throw (makeError "todo" "my/mod" 4 "go" x { });
+    let
+      x = "I should " + "do this";
+    in builtins.throw (makeError "todo" "my/mod" 4 "go" x { });
 in { }

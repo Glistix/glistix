@@ -7,18 +7,18 @@ let
   
   main =
     x:
-      let
-        _assert' =
-          if !(strHasPrefix "Game " x) then
-            builtins.throw
-              (makeError
-                "assignment_no_match"
-                "my/mod"
-                3
-                "main"
-                "Assignment pattern did not match"
-                { value = x; })
-          else null;
-        id = builtins.seq _assert' (builtins.substring 5 (-1) x);
-      in builtins.seq _assert' id;
+    let
+      _assert' =
+        if !(strHasPrefix "Game " x) then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              3
+              "main"
+              "Assignment pattern did not match"
+              { value = x; })
+        else null;
+      id = builtins.seq _assert' (builtins.substring 5 (-1) x);
+    in builtins.seq _assert' id;
 in { inherit main; }

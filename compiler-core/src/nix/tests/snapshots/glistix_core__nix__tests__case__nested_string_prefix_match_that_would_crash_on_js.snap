@@ -7,14 +7,14 @@ let
   
   main =
     { }:
-      let
-        _pat' = Ok (toList [ "b c" "d" ]);
-      in
-      if
-        _pat'.__gleamTag == "Ok" &&
-        listHasLength _pat'._0 2 &&
-        strHasPrefix "b " _pat'._0.head &&
-        _pat'._0.tail.head == "d"
-      then 1
-      else 1;
+    let
+      _pat' = Ok (toList [ "b c" "d" ]);
+    in
+    if
+      _pat'.__gleamTag == "Ok" &&
+      listHasLength _pat'._0 2 &&
+      strHasPrefix "b " _pat'._0.head &&
+      _pat'._0.tail.head == "d"
+    then 1
+    else 1;
 in { }

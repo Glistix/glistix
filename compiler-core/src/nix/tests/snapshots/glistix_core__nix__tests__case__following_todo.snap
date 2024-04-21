@@ -7,14 +7,14 @@ let
   
   go =
     x:
-      if x then
-        builtins.throw
-          (makeError
-            "todo"
-            "my/mod"
-            4
-            "go"
-            "This has not yet been implemented"
-            { })
-      else 1;
+    if x then
+      builtins.throw
+        (makeError
+          "todo"
+          "my/mod"
+          4
+          "go"
+          "This has not yet been implemented"
+          { })
+    else 1;
 in { }

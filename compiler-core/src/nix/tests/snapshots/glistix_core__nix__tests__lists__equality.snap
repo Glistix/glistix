@@ -7,7 +7,7 @@ let
   
   go =
     { }:
-      let
-        _' = (toList [ ]) == (toList [ 1 ]);
-      in builtins.seq _' ((toList [ ]) != (toList [ 1 ]));
+    let
+      _' = (toList [ ]) == (toList [ 1 ]);
+    in builtins.seq _' ((toList [ ]) != (toList [ 1 ]));
 in { }

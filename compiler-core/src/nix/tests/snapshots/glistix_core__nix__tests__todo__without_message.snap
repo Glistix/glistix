@@ -7,12 +7,6 @@ let
   
   go =
     { }:
-      builtins.throw
-        (makeError
-          "todo"
-          "my/mod"
-          3
-          "go"
-          "This has not yet been implemented"
-          { });
+    builtins.throw
+      (makeError "todo" "my/mod" 3 "go" "This has not yet been implemented" { });
 in { }

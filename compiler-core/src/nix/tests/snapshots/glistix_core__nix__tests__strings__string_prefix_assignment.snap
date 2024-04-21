@@ -7,10 +7,10 @@ let
   
   go =
     x:
-      if strHasPrefix "Hello, " x then
-        let
-          name = (builtins.substring 7 (-1) x);
-          greeting = "Hello, ";
-        in greeting
-      else "Unknown";
+    if strHasPrefix "Hello, " x then
+      let
+        name = (builtins.substring 7 (-1) x);
+        greeting = "Hello, ";
+      in greeting
+    else "Unknown";
 in { inherit go; }

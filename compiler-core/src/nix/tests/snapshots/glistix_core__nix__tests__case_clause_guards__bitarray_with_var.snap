@@ -7,12 +7,12 @@ let
   
   main =
     { }:
+    let
+      _pat' = 5;
+    in
+    if (toBitArray [ _pat' ]) == (toBitArray [ _pat' ]) then
       let
-        _pat' = 5;
-      in
-      if (toBitArray [ _pat' ]) == (toBitArray [ _pat' ]) then
-        let
-          z = _pat';
-        in null
-      else null;
+        z = _pat';
+      in null
+    else null;
 in { inherit main; }

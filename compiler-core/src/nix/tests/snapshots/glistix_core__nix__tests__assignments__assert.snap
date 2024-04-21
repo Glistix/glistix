@@ -7,14 +7,14 @@ let
   
   go =
     x:
-      if x != 1 then
-        builtins.throw
-          (makeError
-            "assignment_no_match"
-            "my/mod"
-            1
-            "go"
-            "Assignment pattern did not match"
-            { value = x; })
-      else x;
+    if x != 1 then
+      builtins.throw
+        (makeError
+          "assignment_no_match"
+          "my/mod"
+          1
+          "go"
+          "Assignment pattern did not match"
+          { value = x; })
+    else x;
 in { }

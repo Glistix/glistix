@@ -7,17 +7,17 @@ let
   
   main =
     { }:
-      let
-        thingy = f: f { };
-      in
-      thingy
-        ({ }:
-          builtins.throw
-            (makeError
-              "todo"
-              "my/mod"
-              4
-              "main"
-              "This has not yet been implemented"
-              { }));
+    let
+      thingy = f: f { };
+    in
+    thingy
+      ({ }:
+      builtins.throw
+        (makeError
+          "todo"
+          "my/mod"
+          4
+          "main"
+          "This has not yet been implemented"
+          { }));
 in { inherit main; }

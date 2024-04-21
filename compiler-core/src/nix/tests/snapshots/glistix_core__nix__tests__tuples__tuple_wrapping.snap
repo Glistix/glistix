@@ -15,19 +15,19 @@ let
   
   go =
     x:
-      let
-        tup'1 =
-          [
-            1
-            (f 5)
-            (-1435)
-            (parseNumber "0b00110")
-            (-14.342)
-            (toList [ 1 2 3 ])
-            (toBitArray [ 1 2 ])
-            "x${parseEscape "\\U0000202f"}"
-          ];
-      in tup'1;
+    let
+      tup'1 =
+        [
+          1
+          (f 5)
+          (-1435)
+          (parseNumber "0b00110")
+          (-14.342)
+          (toList [ 1 2 3 ])
+          (toBitArray [ 1 2 ])
+          "x${parseEscape "\\U0000202f"}"
+        ];
+    in tup'1;
   
   tup =
     [

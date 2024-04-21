@@ -5,10 +5,10 @@ expression: "\nfn go(x) {\n  case x {\n    #(2, #(a, b)) -> a + b\n    _ -> 1\n 
 let
   go =
     x:
-      if (builtins.elemAt x 0) == 2 then
-        let
-          a = (builtins.elemAt (builtins.elemAt x 1) 0);
-          b = (builtins.elemAt (builtins.elemAt x 1) 1);
-        in a + b
-      else 1;
+    if (builtins.elemAt x 0) == 2 then
+      let
+        a = (builtins.elemAt (builtins.elemAt x 1) 0);
+        b = (builtins.elemAt (builtins.elemAt x 1) 1);
+      in a + b
+    else 1;
 in { }

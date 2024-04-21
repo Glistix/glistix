@@ -7,10 +7,10 @@ let
   
   go =
     x:
-      if x.__gleamTag == "Box" && x.b.__gleamTag == "Box" then
-        let
-          a = x.b.a;
-          b = x.b.b;
-        in a + b
-      else 1;
+    if x.__gleamTag == "Box" && x.b.__gleamTag == "Box" then
+      let
+        a = x.b.a;
+        b = x.b.b;
+      in a + b
+    else 1;
 in { inherit Box; }

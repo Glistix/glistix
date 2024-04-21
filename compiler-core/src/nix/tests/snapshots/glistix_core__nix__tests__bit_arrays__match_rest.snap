@@ -14,19 +14,19 @@ let
   
   go =
     x:
-      let
-        _pat' = (toBitArray [ 1 2 3 ]);
-        _assert' =
-          if byteSize _pat' < 1 then
-            builtins.throw
-              (makeError
-                "assignment_no_match"
-                "my/mod"
-                3
-                "go"
-                "Assignment pattern did not match"
-                { value = _pat'; })
-          else null;
-        b = builtins.seq _assert' (bitSliceAfter _pat' 1);
-      in builtins.seq _assert' b;
+    let
+      _pat' = (toBitArray [ 1 2 3 ]);
+      _assert' =
+        if byteSize _pat' < 1 then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              3
+              "go"
+              "Assignment pattern did not match"
+              { value = _pat'; })
+        else null;
+      b = builtins.seq _assert' (bitSliceAfter _pat' 1);
+    in builtins.seq _assert' b;
 in { }

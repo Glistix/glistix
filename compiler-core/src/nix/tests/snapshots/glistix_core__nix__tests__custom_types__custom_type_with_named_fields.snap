@@ -11,10 +11,10 @@ let
   
   go =
     { }:
-      let
-        _' = Cat "Nubi" 1;
-        _'1 = Cat "Nubi" 2;
-      in seqAll [ _' _'1 ] (Cat "Nubi" 3);
+    let
+      _' = Cat "Nubi" 1;
+      _'1 = Cat "Nubi" 2;
+    in seqAll [ _' _'1 ] (Cat "Nubi" 3);
   
   access = cat: cat.cuteness;
   
@@ -22,18 +22,16 @@ let
   
   update =
     cat:
-      let
-        _' = cat // { name = "Sid"; };
-        _'1 =
-          cat // {
-            name = "Bartholemew Wonder Puss the Fourth !!!!!!!!!!!!!!!!";
-          };
-        _'2 = (new_cat { }) // { name = "Molly"; };
-        box = Box cat;
-      in
-      seqAll
-        [ _' _'1 _'2 ]
-        (box.occupant // { cuteness = (box.occupant.cuteness + 1); });
+    let
+      _' = cat // { name = "Sid"; };
+      _'1 =
+        cat // { name = "Bartholemew Wonder Puss the Fourth !!!!!!!!!!!!!!!!"; };
+      _'2 = (new_cat { }) // { name = "Molly"; };
+      box = Box cat;
+    in
+    seqAll
+      [ _' _'1 _'2 ]
+      (box.occupant // { cuteness = (box.occupant.cuteness + 1); });
   
   felix = Cat "Felix" 12;
   

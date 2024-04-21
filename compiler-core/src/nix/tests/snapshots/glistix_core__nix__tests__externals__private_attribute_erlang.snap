@@ -7,14 +7,8 @@ let
   
   one =
     x:
-      builtins.throw
-        (makeError
-          "todo"
-          "my/mod"
-          4
-          "one"
-          "This has not yet been implemented"
-          { });
+    builtins.throw
+      (makeError "todo" "my/mod" 4 "one" "This has not yet been implemented" { });
   
   main = { }: one 1;
 in { inherit main; }

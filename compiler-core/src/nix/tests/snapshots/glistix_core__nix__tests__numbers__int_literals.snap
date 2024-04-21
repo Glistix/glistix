@@ -7,13 +7,13 @@ let
   
   go =
     { }:
-      let
-        _' = 1;
-        _'1 = 2;
-        _'2 = -3;
-        _'3 = 4001;
-        _'4 = parseNumber "0b00001111";
-        _'5 = parseNumber "0o17";
-        _'6 = parseNumber "0xF";
-      in seqAll [ _' _'1 _'2 _'3 _'4 _'5 _'6 ] 1000;
+    let
+      _' = 1;
+      _'1 = 2;
+      _'2 = -3;
+      _'3 = 4001;
+      _'4 = parseNumber "0b00001111";
+      _'5 = parseNumber "0o17";
+      _'6 = parseNumber "0xF";
+    in seqAll [ _' _'1 _'2 _'3 _'4 _'5 _'6 ] 1000;
 in { }

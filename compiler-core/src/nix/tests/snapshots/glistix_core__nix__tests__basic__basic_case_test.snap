@@ -7,27 +7,27 @@ let
   
   condman =
     a: b:
-      let
-        p1 = let _pat' = a > b; in if _pat' then 5 else 6;
-        p2 = let _pat''1 = a > b; in if _pat''1 then 5 else 6;
-        p3 = let _pat''2 = a > b; in if !_pat''2 then 6 else 5;
-        p4 = let _pat''3 = a > b; in if !_pat''3 then 6 else 5;
-        v1 = true;
-        v2 = false;
-        vv1 = 10;
-        vv2 = if v2 then 50 else 10;
-        vv3 = let _pat''4 = true; in if _pat''4 then 50 else 10;
-      in [ p1 p2 p3 p4 vv1 vv2 vv3 ];
+    let
+      p1 = let _pat' = a > b; in if _pat' then 5 else 6;
+      p2 = let _pat''1 = a > b; in if _pat''1 then 5 else 6;
+      p3 = let _pat''2 = a > b; in if !_pat''2 then 6 else 5;
+      p4 = let _pat''3 = a > b; in if !_pat''3 then 6 else 5;
+      v1 = true;
+      v2 = false;
+      vv1 = 10;
+      vv2 = if v2 then 50 else 10;
+      vv3 = let _pat''4 = true; in if _pat''4 then 50 else 10;
+    in [ p1 p2 p3 p4 vv1 vv2 vv3 ];
   
   fact =
     n:
-      let
-        res =
-          let
-            _pat' = n < 0;
-          in
-          if _pat' then
-            builtins.throw (makeError "panic" "my/mod" 34 "fact" "Don't." { })
-          else null;
-      in [ res (if n == 0 then 1 else n * (builtins.elemAt (fact (n - 1)) 1)) ];
+    let
+      res =
+        let
+          _pat' = n < 0;
+        in
+        if _pat' then
+          builtins.throw (makeError "panic" "my/mod" 34 "fact" "Don't." { })
+        else null;
+    in [ res (if n == 0 then 1 else n * (builtins.elemAt (fact (n - 1)) 1)) ];
 in { inherit fact; }

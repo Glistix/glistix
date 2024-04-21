@@ -7,18 +7,18 @@ let
   
   go =
     x:
-      let
-        _assert' =
-          if (byteAt x 0) != 1 || byteSize x != 2 then
-            builtins.throw
-              (makeError
-                "assignment_no_match"
-                "my/mod"
-                3
-                "go"
-                "Assignment pattern did not match"
-                { value = x; })
-          else null;
-        y = builtins.seq _assert' (byteAt x 1);
-      in builtins.seq _assert' y;
+    let
+      _assert' =
+        if (byteAt x 0) != 1 || byteSize x != 2 then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              3
+              "go"
+              "Assignment pattern did not match"
+              { value = x; })
+        else null;
+      y = builtins.seq _assert' (byteAt x 1);
+    in builtins.seq _assert' y;
 in { }

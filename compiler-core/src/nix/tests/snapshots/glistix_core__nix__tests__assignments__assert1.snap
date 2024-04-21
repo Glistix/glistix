@@ -7,14 +7,14 @@ let
   
   go =
     x:
-      if (builtins.elemAt x 0) != 1 || (builtins.elemAt x 1) != 2 then
-        builtins.throw
-          (makeError
-            "assignment_no_match"
-            "my/mod"
-            1
-            "go"
-            "Assignment pattern did not match"
-            { value = x; })
-      else x;
+    if (builtins.elemAt x 0) != 1 || (builtins.elemAt x 1) != 2 then
+      builtins.throw
+        (makeError
+          "assignment_no_match"
+          "my/mod"
+          1
+          "go"
+          "Assignment pattern did not match"
+          { value = x; })
+    else x;
 in { }

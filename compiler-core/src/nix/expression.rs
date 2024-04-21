@@ -785,7 +785,7 @@ impl Generator<'_> {
             fun_args(arguments)
         };
 
-        Ok(arguments.append(docvec!(break_("", " "), result?).nest(INDENT).group()))
+        Ok(arguments.append(docvec!(break_("", " "), result?).group()))
     }
 
     fn todo<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {

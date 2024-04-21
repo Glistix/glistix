@@ -24,86 +24,85 @@ let
   
   go =
     x: foo: boolthing: bmong:
-      let
-        a = 1;
-        _' = foo;
-        a'1 = 2;
-        z = toList [ (y: y) (foo a'1 a'1 50) (x: x) ];
-        d = "aaa";
-        dd = 5.5e5;
-        intdiv = divideInt 5 5;
-        floatdiv = divideFloat 5.0 5.0;
-        remm = remainderInt 5 5;
-        g = 0.5;
-        b = a'1;
-        _'1 = foo a'1 a'1 50;
-        c = let a'2 = a'1; in toList [ a'2 ];
-        _'2 = foo;
-        www = a'1 == 5;
-        wwww = (a'1 + a'1) == (10 - (5 * 5));
-        first_list = toList [ (1 < 4) (3 >= 5) ];
-        list_thing = listPrepend www first_list;
-        pipes =
-          let
-            _pipe = a'1;
-            _pipe'1 = (_capture: foo _capture a'1 50) _pipe;
-          in (x: x) _pipe'1;
-        pipes2 = let _pipe = a'1; in (i: i) _pipe;
-        _'3 = builtins.throw (makeError "panic" "my/mod" 45 "go" "amongus" { });
-        _'4 = builtins.throw (makeError "todo" "my/mod" 46 "go" "amongus" { });
-        _'5 =
-          builtins.throw
-            (makeError "panic" "my/mod" 47 "go" "panic expression evaluated" { });
-        _'6 =
-          builtins.throw
-            (makeError
-              "todo"
-              "my/mod"
-              48
-              "go"
-              "This has not yet been implemented"
-              { });
-        y = (((-500) + 10) - (-a'1)) - (-5);
-        yy = toList [ (-a'1) (-5) (-y) ];
-        f = (-5.5) - 5.2e-5;
-        f'1 = 5.5 - 5.2e5;
-        ss = ("a" + "b") + "c d";
-        ff = toList [ (-5.2e-5) (-5.5) ];
-        z'1 = !boolthing;
-        tupdatup = [ 1 2 "a" (-5.5) [ 1 2 3 ] ];
-        tata =
-          ((builtins.elemAt tupdatup 1) + (builtins.elemAt tupdatup 0)) + 20;
-        mabool = true;
-        mnotbool = false;
-        amagus_a = AmogusA;
-        amagus_b = AmogusB 10 15;
-        amagus_c = AmogusC 10 5.5;
-        simplefunc = { }: 5;
-        gg = (simplefunc { }) + 10;
-        less_simple_func = x: { }: x;
-        gg'1 = ((less_simple_func 5) { }) + 10;
-        mnull = null;
-        sus'1 = "hey! I'm still sus :(";
-        x'1 = tata;
-      in seqAll [ _' _'1 _'2 _'3 _'4 _'5 _'6 ] x'1;
+    let
+      a = 1;
+      _' = foo;
+      a'1 = 2;
+      z = toList [ (y: y) (foo a'1 a'1 50) (x: x) ];
+      d = "aaa";
+      dd = 5.5e5;
+      intdiv = divideInt 5 5;
+      floatdiv = divideFloat 5.0 5.0;
+      remm = remainderInt 5 5;
+      g = 0.5;
+      b = a'1;
+      _'1 = foo a'1 a'1 50;
+      c = let a'2 = a'1; in toList [ a'2 ];
+      _'2 = foo;
+      www = a'1 == 5;
+      wwww = (a'1 + a'1) == (10 - (5 * 5));
+      first_list = toList [ (1 < 4) (3 >= 5) ];
+      list_thing = listPrepend www first_list;
+      pipes =
+        let
+          _pipe = a'1;
+          _pipe'1 = (_capture: foo _capture a'1 50) _pipe;
+        in (x: x) _pipe'1;
+      pipes2 = let _pipe = a'1; in (i: i) _pipe;
+      _'3 = builtins.throw (makeError "panic" "my/mod" 45 "go" "amongus" { });
+      _'4 = builtins.throw (makeError "todo" "my/mod" 46 "go" "amongus" { });
+      _'5 =
+        builtins.throw
+          (makeError "panic" "my/mod" 47 "go" "panic expression evaluated" { });
+      _'6 =
+        builtins.throw
+          (makeError
+            "todo"
+            "my/mod"
+            48
+            "go"
+            "This has not yet been implemented"
+            { });
+      y = (((-500) + 10) - (-a'1)) - (-5);
+      yy = toList [ (-a'1) (-5) (-y) ];
+      f = (-5.5) - 5.2e-5;
+      f'1 = 5.5 - 5.2e5;
+      ss = ("a" + "b") + "c d";
+      ff = toList [ (-5.2e-5) (-5.5) ];
+      z'1 = !boolthing;
+      tupdatup = [ 1 2 "a" (-5.5) [ 1 2 3 ] ];
+      tata = ((builtins.elemAt tupdatup 1) + (builtins.elemAt tupdatup 0)) + 20;
+      mabool = true;
+      mnotbool = false;
+      amagus_a = AmogusA;
+      amagus_b = AmogusB 10 15;
+      amagus_c = AmogusC 10 5.5;
+      simplefunc = { }: 5;
+      gg = (simplefunc { }) + 10;
+      less_simple_func = x: { }: x;
+      gg'1 = ((less_simple_func 5) { }) + 10;
+      mnull = null;
+      sus'1 = "hey! I'm still sus :(";
+      x'1 = tata;
+    in seqAll [ _' _'1 _'2 _'3 _'4 _'5 _'6 ] x'1;
   
   mongus =
     a: b: c:
-      let
-        x = { }: 5 + 5;
-        y = x { };
-      in
-      [
-        1
-        2
-        3
-        (x: x + 1)
-        (let
-          _' = 5;
-          _'1 = 6;
-          _'2 = 10;
-        in seqAll [ _' _'1 _'2 ] (10 + 5))
-      ];
+    let
+      x = { }: 5 + 5;
+      y = x { };
+    in
+    [
+      1
+      2
+      3
+      (x: x + 1)
+      (let
+        _' = 5;
+        _'1 = 6;
+        _'2 = 10;
+      in seqAll [ _' _'1 _'2 ] (10 + 5))
+    ];
   
   sumongus = 5;
 in { inherit AmogusA AmogusB AmogusC sus sumongus; }

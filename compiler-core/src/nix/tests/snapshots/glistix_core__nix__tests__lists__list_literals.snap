@@ -8,9 +8,9 @@ let
   
   go =
     x:
-      let
-        _' = toList [ ];
-        _'1 = toList [ 1 ];
-        _'2 = toList [ 1 2 ];
-      in seqAll [ _' _'1 _'2 ] (listPrepend 1 (listPrepend 2 x));
+    let
+      _' = toList [ ];
+      _'1 = toList [ 1 ];
+      _'2 = toList [ 1 2 ];
+    in seqAll [ _' _'1 _'2 ] (listPrepend 1 (listPrepend 2 x));
 in { }

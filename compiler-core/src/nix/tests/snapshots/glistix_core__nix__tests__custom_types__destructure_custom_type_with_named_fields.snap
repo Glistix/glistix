@@ -9,21 +9,21 @@ let
   
   go =
     cat:
-      let
-        x = cat.name;
-        y = cat.cuteness;
-        x'1 = cat.name;
-        _assert' =
-          if cat.__gleamTag != "Cat" || cat.cuteness != 4 then
-            builtins.throw
-              (makeError
-                "assignment_no_match"
-                "my/mod"
-                9
-                "go"
-                "Assignment pattern did not match"
-                { value = cat; })
-          else null;
-        x'2 = builtins.seq _assert' cat.name;
-      in builtins.seq _assert' x'2;
+    let
+      x = cat.name;
+      y = cat.cuteness;
+      x'1 = cat.name;
+      _assert' =
+        if cat.__gleamTag != "Cat" || cat.cuteness != 4 then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              9
+              "go"
+              "Assignment pattern did not match"
+              { value = cat; })
+        else null;
+      x'2 = builtins.seq _assert' cat.name;
+    in builtins.seq _assert' x'2;
 in { }

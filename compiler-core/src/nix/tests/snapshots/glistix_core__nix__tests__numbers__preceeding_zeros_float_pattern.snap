@@ -7,14 +7,14 @@ let
   
   main =
     x:
-      if x != 9179.1 then
-        builtins.throw
-          (makeError
-            "assignment_no_match"
-            "my/mod"
-            3
-            "main"
-            "Assignment pattern did not match"
-            { value = x; })
-      else x;
+    if x != 9179.1 then
+      builtins.throw
+        (makeError
+          "assignment_no_match"
+          "my/mod"
+          3
+          "main"
+          "Assignment pattern did not match"
+          { value = x; })
+    else x;
 in { }

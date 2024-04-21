@@ -7,6 +7,6 @@ let
   
   count =
     xs: n:
-      if listHasLength xs 0 then n
-      else let xs'1 = xs.tail; in count xs'1 (n + 1);
+    if listHasLength xs 0 then n
+    else let xs'1 = xs.tail; in count xs'1 (n + 1);
 in { inherit count; }

@@ -7,15 +7,15 @@ let
   
   main =
     { }:
-      let
-        _pat' = Ok (toList [ "a" "b c" "d" ]);
-      in
-      if
-        _pat'.__gleamTag == "Ok" &&
-        listHasLength _pat'._0 3 &&
-        _pat'._0.head == "a" &&
-        strHasPrefix "b " _pat'._0.tail.head &&
-        _pat'._0.tail.tail.head == "d"
-      then 1
-      else 1;
+    let
+      _pat' = Ok (toList [ "a" "b c" "d" ]);
+    in
+    if
+      _pat'.__gleamTag == "Ok" &&
+      listHasLength _pat'._0 3 &&
+      _pat'._0.head == "a" &&
+      strHasPrefix "b " _pat'._0.tail.head &&
+      _pat'._0.tail.tail.head == "d"
+    then 1
+    else 1;
 in { }

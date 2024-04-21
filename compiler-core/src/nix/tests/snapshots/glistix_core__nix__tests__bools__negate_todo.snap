@@ -7,12 +7,12 @@ let
   
   negate =
     x:
-      !(builtins.throw
-        (makeError
-          "todo"
-          "my/mod"
-          2
-          "negate"
-          "This has not yet been implemented"
-          { }));
+    !(builtins.throw
+      (makeError
+        "todo"
+        "my/mod"
+        2
+        "negate"
+        "This has not yet been implemented"
+        { }));
 in { inherit negate; }
