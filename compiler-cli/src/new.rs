@@ -173,15 +173,19 @@ target = "nix"
 # Run 'git submodule add --name stdlib -- https://github.com/glistix/stdlib external/stdlib'
 # to clone Glistix's stdlib patch to the local path specified below.
 gleam_stdlib = {{ path = "./external/stdlib" }}
-# Uncomment (i.e. remove '#' from) the line below when publishing your package to Hex, as Hex
-# packages cannot have dependencies on local packages.
-# gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
 
 [dev-dependencies]
 # Run 'git submodule add --name gleeunit -- https://github.com/glistix/gleeunit external/gleeunit'
 # to clone Glistix's gleeunit patch to the local path specified below.
 gleeunit = {{ path = "./external/gleeunit" }}
-# Uncomment the line below if needed.
+
+# The section below is to allow publishing to Hex despite the local overrides.
+# This declares to Hex that your package depends on the unpatched versions of
+# dependencies, and should only be used for this purpose. Please do not abuse
+# this feature, as it is mostly a workaround while we don't get proper
+# patching of packages.
+[glistix.hex-patch]
+gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
 # gleeunit = "{GLEEUNIT_REQUIREMENT}"
 "#,
             )),
