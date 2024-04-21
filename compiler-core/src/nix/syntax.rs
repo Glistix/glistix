@@ -184,7 +184,7 @@ where
     I: IntoIterator<Item = Document<'a>>,
 {
     // Add spaces after all but the last argument.
-    join(args.into_iter().map(|arg| arg.append(":")), " ".to_doc())
+    join(args.into_iter().map(|arg| arg.append(":")), break_("", " ")).group()
 }
 
 /// Generates a function call in Nix:
