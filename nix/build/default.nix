@@ -134,10 +134,13 @@ stdenv.mkDerivation (self': args // {
   '';
 
   # The build directory is our output
+  # TODO: Properly fix symlinks to priv
+  # Right now, we just copy all symlinks (-L), and therefore whole
+  # priv directories, to the build output. Maybe there's a better way.
   installPhase = ''
     runHook preInstall
 
-    cp build -rT "$out"
+    cp build --reflink=auto -rLT "$out"
 
     runHook postInstall
   '';
