@@ -337,6 +337,7 @@ fn metadata_config<'a>(
     generated_files: &[(Utf8PathBuf, String)],
 ) -> Result<String> {
     let repo_url = http::Uri::try_from(config.repository.url().unwrap_or_default()).ok();
+    prevent_patching_hex_with_hex(config)?;
     let requirements: Result<Vec<ReleaseRequirement<'a>>> = config
         .dependencies
         .iter()
@@ -376,6 +377,22 @@ fn metadata_config<'a>(
     .as_erlang();
     tracing::info!(contents = ?metadata, "Generated Hex metadata.config");
     Ok(metadata)
+}
+
+fn prevent_patching_hex_with_hex(config: &PackageConfig) -> Result<()> {
+    for (name, patch) in &config.glistix.hex_patch {
+        if let (Requirement::Hex { .. }, Some(Requirement::Hex { .. })) =
+            (patch, config.dependencies.get(name))
+        {
+            return Err(Error::ProvidedDependencyConflict {
+                package: name.to_string(),
+                source_1: "a Hex dependency".to_string(),
+                source_2: "a Hex patch (you may only patch non-Hex dependencies)".to_string(),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 fn contents_tarball(
@@ -674,6 +691,21 @@ fn prevent_publish_local_dependency() {
         metadata_config(&config, &[], &[]),
         Err(Error::PublishNonHexDependencies {
             package: "provided".into()
+        })
+    );
+}
+
+#[test]
+fn prevent_publish_hex_patched_with_hex() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [("trophy".into(), Requirement::hex(">= 0.0.0"))].into();
+    config.glistix.hex_patch = [("trophy".into(), Requirement::hex("~> 0.34 or ~> 1.0"))].into();
+    assert_eq!(
+        metadata_config(&config, &[], &[]),
+        Err(Error::ProvidedDependencyConflict {
+            package: "trophy".to_string(),
+            source_1: "a Hex dependency".to_string(),
+            source_2: "a Hex patch (you may only patch non-Hex dependencies)".to_string(),
         })
     );
 }
