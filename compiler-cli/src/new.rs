@@ -361,7 +361,7 @@ jobs:
 }}
 "#,
             )),
-            Self::NixDefault => Some(format!(
+            Self::NixDefault => Some(
                 r#"
 # This will let Nix users import from your repository without flakes.
 # Exposes the flake's outputs.
@@ -370,21 +370,21 @@ jobs:
 # Usage:
 #
 # let
-#   yourProject = import (builtins.fetchurl {{ url = "your url"; sha256 = ""; }});  # for example
-#   mainResult = (yourProject.lib.loadGlistixPackage {{}}).main {{}};
+#   yourProject = import (builtins.fetchurl { url = "your url"; sha256 = ""; });  # for example
+#   mainResult = (yourProject.lib.loadGlistixPackage {}).main {};
 # in doSomethingWith mainResult;
 (import (
   let
     lock = builtins.fromJSON (builtins.readFile ./flake.lock);
-  in fetchTarball {{
-    url = "https://github.com/edolstra/flake-compat/archive/${{lock.nodes.flake-compat.locked.rev}}.tar.gz";
-    sha256 = lock.nodes.flake-compat.locked.narHash; }}
-) {{
+  in fetchTarball {
+    url = "https://github.com/edolstra/flake-compat/archive/${lock.nodes.flake-compat.locked.rev}.tar.gz";
+    sha256 = lock.nodes.flake-compat.locked.narHash; }
+) {
   src = ./.;
-}}).defaultNix
-"#
-            )),
-            Self::NixShell => Some(format!(
+}).defaultNix
+"#.into()
+            ),
+            Self::NixShell => Some(
                 r#"
 # This exposes the dev shell declared in the flake.
 # Running `nix-shell` will thus be equivalent to `nix develop`.
@@ -395,14 +395,14 @@ jobs:
 (import (
   let
     lock = builtins.fromJSON (builtins.readFile ./flake.lock);
-  in fetchTarball {{
-    url = "https://github.com/edolstra/flake-compat/archive/${{lock.nodes.flake-compat.locked.rev}}.tar.gz";
-    sha256 = lock.nodes.flake-compat.locked.narHash; }}
-) {{
+  in fetchTarball {
+    url = "https://github.com/edolstra/flake-compat/archive/${lock.nodes.flake-compat.locked.rev}.tar.gz";
+    sha256 = lock.nodes.flake-compat.locked.narHash; }
+) {
   src = ./.;
-}}).shellNix
-"#
-            )),
+}).shellNix
+"#.into()
+            ),
         }
     }
 }
