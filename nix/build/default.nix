@@ -110,7 +110,7 @@ stdenv.mkDerivation (self': args // {
   # for submodules.sh
   inherit (convertedSubmodules) submodules;
 
-  buildInputs = [ glistix ];
+  nativeBuildInputs = [ glistix ];
 
   # Symlink dependencies to a directory which Gleam has access to
   configurePhase = ''
