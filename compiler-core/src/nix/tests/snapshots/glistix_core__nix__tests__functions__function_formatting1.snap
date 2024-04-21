@@ -8,5 +8,6 @@ let
 in
 {
   inherit
-    this_function_really_does_have_a_ludicrously_unfeasibly_long_name_for_a_function;
+    this_function_really_does_have_a_ludicrously_unfeasibly_long_name_for_a_function
+    ;
 }

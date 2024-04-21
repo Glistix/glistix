@@ -9,7 +9,8 @@ let
     toBitArray
     byteSize
     byteAt
-    bitSliceAfter;
+    bitSliceAfter
+    ;
   
   go =
     x:

@@ -9,7 +9,8 @@ let
     byteSize
     byteAt
     binaryFromBitSlice
-    seqAll;
+    seqAll
+    ;
   
   go =
     x:

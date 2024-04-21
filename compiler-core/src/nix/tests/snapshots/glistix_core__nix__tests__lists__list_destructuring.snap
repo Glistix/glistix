@@ -8,7 +8,8 @@ let
     listHasAtLeastLength
     listHasLength
     makeError
-    seqAll;
+    seqAll
+    ;
   
   go =
     x: y:

@@ -20,5 +20,6 @@ in
     int_identity_alias
     use_int_identity_alias
     compound
-    use_compound;
+    use_compound
+    ;
 }

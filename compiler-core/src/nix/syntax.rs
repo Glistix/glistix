@@ -206,10 +206,19 @@ pub fn fn_call<'a>(
 /// inherit x y z;
 /// ```
 pub fn inherit<'a>(items: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
-    let spaced_items = items.into_iter().map(|name| docvec!(break_("", " "), name));
+    let mut spaced_items = items
+        .into_iter()
+        .map(|name| docvec!(break_("", " "), name))
+        .peekable();
 
-    // Note: an 'inherit' without items is valid Nix syntax.
-    docvec!["inherit", concat(spaced_items).nest(INDENT).group(), ";"]
+    if spaced_items.peek().is_none() {
+        // Note: an 'inherit' without items is valid Nix syntax.
+        return "inherit;".to_doc();
+    }
+
+    docvec!["inherit", concat(spaced_items), break_("", ""), ";"]
+        .nest(INDENT)
+        .group()
 }
 
 /// Generates an attribute set with the given attribute/value pairs.

@@ -242,12 +242,14 @@ wubble =
   builtins.import ./multiple/times;
 inherit
   (builtins.import ./multiple/times)
-  one;
+  one
+  ;
 inherit
   (builtins.import ./other)
   one
   three
-  four;
+  four
+  ;
 onee = (builtins.import ./other).one;
 twoo = (builtins.import ./other).two;
 inherit (builtins.import ./zzz) one two;"#

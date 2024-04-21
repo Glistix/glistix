@@ -10,7 +10,8 @@ let
     remainderInt
     divideFloat
     divideInt
-    seqAll;
+    seqAll
+    ;
   listPrepend = (builtins.import ./../gleam.nix).prepend;
   
   AmogusA = { __gleamTag = "AmogusA"; };
