@@ -25,7 +25,6 @@ fn new() {
     assert!(path.join(".git").exists());
     assert!(path.join("README.md").exists());
     assert!(path.join("gleam.toml").exists());
-    assert!(path.join("flake.nix").exists());
     assert!(path.join("src/my_project.gleam").exists());
     assert!(path.join("test/my_project_test.gleam").exists());
     assert!(path.join(".github/workflows/test.yml").exists());
@@ -33,6 +32,10 @@ fn new() {
     // Don't add external/{stdlib,gleeunit} to testing as they depend on
     // the network
     assert!(path.join("external").exists());
+
+    assert!(path.join("flake.nix").exists());
+    assert!(path.join("default.nix").exists());
+    assert!(path.join("shell.nix").exists());
 
     let toml = crate::fs::read(path.join("gleam.toml")).unwrap();
     assert!(toml.contains("name = \"my_project\""));

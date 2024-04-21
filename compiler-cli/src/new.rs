@@ -56,6 +56,8 @@ enum FileToCreate {
     GleamToml,
     GithubCi,
     NixFlake,
+    NixDefault,
+    NixShell,
 }
 
 impl FileToCreate {
@@ -74,6 +76,8 @@ impl FileToCreate {
             Self::GleamToml => creator.root.join(Utf8PathBuf::from("gleam.toml")),
             Self::GithubCi => creator.workflows.join(Utf8PathBuf::from("test.yml")),
             Self::NixFlake => creator.root.join(Utf8PathBuf::from("flake.nix")),
+            Self::NixDefault => creator.root.join(Utf8PathBuf::from("default.nix")),
+            Self::NixShell => creator.root.join(Utf8PathBuf::from("shell.nix")),
         }
     }
 
@@ -210,6 +214,7 @@ jobs:
             Self::GithubCi | Self::Gitignore => None,
             Self::NixFlake => Some(format!(
                 r#"
+# Make sure to run "nix flake update" at least once to generate your flake.lock.
 # Run your main function from Nix by importing this flake as follows:
 #
 # let
@@ -224,6 +229,12 @@ jobs:
   inputs = {{
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default";
+
+    # Used for default.nix and shell.nix.
+    flake-compat = {{
+      url = "github:edolstra/flake-compat";
+      flake = false;
+    }};
 
     # Pick your Glistix version here.
     glistix.url = "github:glistix/glistix/v0.1.0";
@@ -348,6 +359,48 @@ jobs:
     }};
 }}
 "#,
+            )),
+            Self::NixDefault => Some(format!(
+                r#"
+# This will let Nix users import from your repository without flakes.
+# Exposes the flake's outputs.
+# Source: https://wiki.nixos.org/wiki/Flakes#Using_flakes_with_stable_Nix
+#
+# Usage:
+#
+# let
+#   yourProject = import (builtins.fetchurl {{ url = "your url"; sha256 = ""; }});  # for example
+#   mainResult = (yourProject.lib.loadGlistixPackage {{}}).main {{}};
+# in doSomethingWith mainResult;
+(import (
+  let
+    lock = builtins.fromJSON (builtins.readFile ./flake.lock);
+  in fetchTarball {{
+    url = "https://github.com/edolstra/flake-compat/archive/${{lock.nodes.flake-compat.locked.rev}}.tar.gz";
+    sha256 = lock.nodes.flake-compat.locked.narHash; }}
+) {{
+  src = ./.;
+}}).defaultNix
+"#
+            )),
+            Self::NixShell => Some(format!(
+                r#"
+# This exposes the dev shell declared in the flake.
+# Running `nix-shell` will thus be equivalent to `nix develop`.
+# Source: https://wiki.nixos.org/wiki/Flakes#Using_flakes_with_stable_Nix
+#
+# Usage: Run `nix-shell`, and the `glistix` command will be available
+# for you to use.
+(import (
+  let
+    lock = builtins.fromJSON (builtins.readFile ./flake.lock);
+  in fetchTarball {{
+    url = "https://github.com/edolstra/flake-compat/archive/${{lock.nodes.flake-compat.locked.rev}}.tar.gz";
+    sha256 = lock.nodes.flake-compat.locked.narHash; }}
+) {{
+  src = ./.;
+}}).shellNix
+"#
             )),
         }
     }
