@@ -122,6 +122,7 @@ gleam shell # Run an Erlang shell
 *.ez
 /build
 erl_crash.dump
+_gleam_artefacts
 "
                 .into(),
             ),
