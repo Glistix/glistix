@@ -340,6 +340,13 @@ fn metadata_config<'a>(
     let requirements: Result<Vec<ReleaseRequirement<'a>>> = config
         .dependencies
         .iter()
+        .map(
+            |(name, requirement)| match config.glistix.hex_patch.get(name) {
+                // Workaround while we don't have full dependency patching
+                Some(patched_hex_dependency) => (name, patched_hex_dependency),
+                None => (name, requirement),
+            },
+        )
         .map(|(name, requirement)| match requirement {
             Requirement::Hex { version } => Ok(ReleaseRequirement {
                 name,
@@ -669,6 +676,23 @@ fn prevent_publish_local_dependency() {
             package: "provided".into()
         })
     );
+}
+
+#[test]
+fn patch_published_local_dependency() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [("provided".into(), Requirement::path("./path/to/package"))].into();
+    config.glistix.hex_patch = [("provided".into(), Requirement::hex("~> 0.34 or ~> 1.0"))].into();
+    let meta = metadata_config(&config, &[], &[]).unwrap();
+    assert!(meta.contains(
+        r#"{<<"requirements">>, [
+  {<<"provided">>, [
+    {<<"app">>, <<"provided">>},
+    {<<"optional">>, false},
+    {<<"requirement">>, <<"~> 0.34 or ~> 1.0">>}
+  ]}
+]}."#
+    ))
 }
 
 #[test]
