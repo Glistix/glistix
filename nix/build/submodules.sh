@@ -4,8 +4,8 @@
 IFS=$'\n'
 for submodule in $submodules;
 do
-  subsrc="$(echo $submodule | cut -d':' -f1)"
-  subdest="$(echo $submodule | cut -d':' -f2)"
-  mkdir -p "$(dirname $subdest)"
-  ln -s "$subsrc" -T "$subdest"
+  subsrc="$(echo "$submodule" | cut -d':' -f1)"
+  subdest="$(echo "$submodule" | cut -d':' -f2)"
+  mkdir -p "$(dirname "$subdest")"
+  ln -s "$subsrc" -T "$subdest" || echo "Warning: Failed to link submodule to '$subdest'" >&2
 done
