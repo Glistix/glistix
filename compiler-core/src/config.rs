@@ -722,6 +722,14 @@ pub struct DenoConfig {
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Default, Clone)]
 pub struct GlistixConfig {
+    /// Config for the initial beta.
+    /// Can change in the future.
+    #[serde(default)]
+    pub preview: GlistixPreviewConfig,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Eq, Default, Clone)]
+pub struct GlistixPreviewConfig {
     /// Replaces a package with another hex package,
     /// but only while publishing. Workaround while
     /// proper patches aren't implemented upstream.

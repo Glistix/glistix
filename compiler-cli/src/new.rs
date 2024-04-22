@@ -184,7 +184,7 @@ gleeunit = {{ path = "./external/gleeunit" }}
 # dependencies, and should only be used for this purpose. Please do not abuse
 # this feature, as it is mostly a workaround while we don't get proper
 # patching of packages.
-[glistix.hex-patch]
+[glistix.preview.hex-patch]
 gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
 # gleeunit = "{GLEEUNIT_REQUIREMENT}"
 "#,
