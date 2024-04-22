@@ -11,7 +11,7 @@
 
 rustPlatform.buildRustPackage {
   pname = "glistix";
-  version = "1.0.0";
+  version = "0.1.0";
 
   src = lib.sourceByRegex ./.. [
     ''(bin|test(|-community-packages|-package-compiler)|compiler-(cli|core|wasm))(/.*)?''
@@ -23,7 +23,7 @@ rustPlatform.buildRustPackage {
   buildInputs = [ openssl ] ++
     lib.optionals stdenv.isDarwin [ Security SystemConfiguration ];
 
-  cargoHash = "sha256-37btXrbVa50gacnHnWXDzGEPb4lpT7jHezxU0fHwKQI=";
+  cargoHash = "sha256-RxHkBOIMtXrr4Up7oY8K3jszdWiy9BF1nyv1fE/be48=";
 
   meta = with lib; {
     description = "A fork of the Gleam compiler with a Nix backend";
