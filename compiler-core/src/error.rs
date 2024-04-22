@@ -3081,7 +3081,7 @@ The error from the version resolver library was:
                 let text = format!(
                     "The package `{package}` is provided as both `{source_1}` and `{source_2}`. \
 If your root project has a dependency on `{package}`, you can temporarily work around this by \
-adding `local_overrides = [\"{package}\"]` under `[glistix.preview]` to its `gleam.toml` \
+adding `local-overrides = [\"{package}\"]` under `[glistix.preview]` to its `gleam.toml` \
 to ensure the root project's dependency overrides that of transitive dependencies.",
                 );
 
