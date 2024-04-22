@@ -252,8 +252,7 @@ jobs:
             )),
             Self::GithubCi | Self::Gitignore => None,
             Self::NixFlake => Some(format!(
-                r#"
-# Make sure to run "nix flake update" at least once to generate your flake.lock.
+                r#"# Make sure to run "nix flake update" at least once to generate your flake.lock.
 # Run your main function from Nix by importing this flake as follows:
 #
 # let
@@ -436,8 +435,7 @@ jobs:
 "#,
             )),
             Self::NixDefault => Some(
-                r#"
-# This will let Nix users import from your repository without flakes.
+                r#"# This will let Nix users import from your repository without flakes.
 # Exposes the flake's outputs.
 # Source: https://wiki.nixos.org/wiki/Flakes#Using_flakes_with_stable_Nix
 #
@@ -459,8 +457,7 @@ jobs:
 "#.into()
             ),
             Self::NixShell => Some(
-                r#"
-# This exposes the dev shell declared in the flake.
+                r#"# This exposes the dev shell declared in the flake.
 # Running `nix-shell` will thus be equivalent to `nix develop`.
 # Source: https://wiki.nixos.org/wiki/Flakes#Using_flakes_with_stable_Nix
 #
