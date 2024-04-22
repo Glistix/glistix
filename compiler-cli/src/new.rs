@@ -171,7 +171,9 @@ target = "nix"
 
 [dependencies]
 # Run 'git submodule add --name stdlib -- https://github.com/glistix/stdlib external/stdlib'
-# to clone Glistix's stdlib patch to the local path specified below.
+# to clone Glistix's stdlib patch to the local path specified below. This is needed so stdlib
+# will work on the Nix target. Hex dependents will use the stdlib version specified below,
+# in [glistix.preview.hex-patch], instead.
 gleam_stdlib = {{ path = "./external/stdlib" }}
 
 [dev-dependencies]
@@ -179,14 +181,25 @@ gleam_stdlib = {{ path = "./external/stdlib" }}
 # to clone Glistix's gleeunit patch to the local path specified below.
 gleeunit = {{ path = "./external/gleeunit" }}
 
-# The section below is to allow publishing to Hex despite the local overrides.
-# This declares to Hex that your package depends on the unpatched versions of
-# dependencies, and should only be used for this purpose. Please do not abuse
-# this feature, as it is mostly a workaround while we don't get proper
-# patching of packages.
+# The [glistix.preview] namespace contains useful settings which will be needed
+# during Glistix beta. In the future, it's likely these won't be necessary
+# anymore.
+[glistix.preview]
+# If you're patching a package using a local dependency/Git submodule and you
+# get a local dependency conflict error, add it to the list below.
+local-overrides = ["gleam_stdlib"]
+
+# The section below allows publishing your package to Hex despite having
+# local dependencies, by declaring that you depend on another Hex package
+# instead.
+# This is needed to be able to patch stdlib etc. locally during development
+# and at the same time publish to Hex without the patch.
+# The section below should only be used for this purpose. Please do not abuse
+# this feature, as it is mostly a temporary workaround while Gleam doesn't have
+# a proper dependency patching system.
 [glistix.preview.hex-patch]
 gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
-# gleeunit = "{GLEEUNIT_REQUIREMENT}"
+# gleeunit = "{GLEEUNIT_REQUIREMENT}" # not needed as it is only a dev dependency!
 "#,
             )),
 
