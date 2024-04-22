@@ -303,6 +303,14 @@ jobs:
         }}
       ];
 
+      # If you cache your build output, this will specify the path
+      # 'loadGlistixPackage' will check to find compiled Nix files in by default.
+      # You usually don't have to change this, unless you cache your output in a
+      # folder other than ./output, or if your output is fetched through a derivation
+      # (e.g. `builtins.fetchGit`).
+      # Don't forget to add the path to "sourceFiles" above if it's in the repo!
+      outputPath = src + "/output";
+
       # Set this to 'true' if you created an 'output' folder where you're storing
       # build outputs and you'd like to ensure Nix consumers will use it.
       # It will be used even if this is 'false', but Glistix will fallback to
@@ -313,9 +321,23 @@ jobs:
       # --- IMPLEMENTATION ---
 
       inherit (nixpkgs) lib;
-      sourceFileRegex =
-        builtins.concatStringsSep "|" (map lib.escapeRegex sourceFiles);
+      glistixLib = glistix.lib;
+      sourceFileRegex = builtins.concatStringsSep "|" (map lib.escapeRegex sourceFiles);
+
+      # Filter source files to only include the given files and folders.
       src = lib.sourceByRegex ./. [ "(${{sourceFileRegex}})(/.*)?" ];
+
+      # Prepare call to 'buildGlistixPackage', allowing for overrides.
+      buildGlistixPackage =
+        args@{{ system, ... }}:
+        let
+          inherit (glistix.builders.${{system}}) buildGlistixPackage;
+          overrides = builtins.removeAttrs args [ "system" ];
+          builderArgs = {{
+            inherit src submodules;
+          }} // overrides;
+        in
+        buildGlistixPackage builderArgs;
 
       # Prepare the call to 'loadGlistixPackage'. This is used to
       # easily run your Gleam code compiled to Nix from within Nix.
@@ -327,26 +349,42 @@ jobs:
       # Gleam package from scratch instead, using the derivation
       # created further below (exported by this flake under
       # the 'packages' output).
+      #
       # Specify 'forceLoadFromOutput = true;' above to opt into erroring
       # if the 'output/dev/nix' folder isn't found instead of invoking
       # the Glistix compiler.
       #
-      # Pass 'system' to use the derivation for the given system.
+      # Pass 'system' to use the derivation for that system for compilation.
+      # Pass 'glistix' to override the glistix derivation used for compilation.
       # Other arguments are passed through to Glistix's 'loadGlistixPackage'.
       # For example, 'lib.loadGlistixPackage {{ module = "ops/create"; }}'
       # will load what's exported by your package's 'ops/create' module
       # as an attribute set.
       loadGlistixPackage =
-        args@{{ system ? builtins.currentSystem or null, ... }}:
+        args@{{
+          system ? builtins.currentSystem or null,
+          glistix ? null,
+          ...
+        }}:
         let
-          derivation = if forceLoadFromOutput || system == null then
-            null
-          else
-            self.packages.${{system}}.default or null;
+          derivation =
+            if forceLoadFromOutput || system == null then
+              null
+            else if glistix != null then
+              buildGlistixPackage {{ inherit system glistix; }}
+            else
+              self.packages.${{system}}.default or null;
 
-          overrides = builtins.removeAttrs args [ "system" ];
-          loaderArgs = {{ inherit src derivation; }} // overrides;
-        in glistix.lib.loadGlistixPackage loaderArgs;
+          overrides = builtins.removeAttrs args [
+            "system"
+            "glistix"
+          ];
+          loaderArgs = {{
+            inherit src derivation;
+            output = outputPath;
+          }} // overrides;
+        in
+        glistixLib.loadGlistixPackage loaderArgs;
 
     in flake-parts.lib.mkFlake {{ inherit inputs; }} {{
       systems = import systems;
@@ -355,8 +393,6 @@ jobs:
 
       perSystem = {{ self', pkgs, lib, system, ... }}:
         let
-          inherit (glistix.builders.${{system}}) buildGlistixPackage;
-
           # This derivation will build Glistix itself if needed
           # (using Rust), and then use Glistix to build this particular
           # package into Nix files.
@@ -365,9 +401,9 @@ jobs:
           #   "${{derivation}}/${{derivation.glistixMain}}"
           # for a path to this package's main '.nix' file, which can
           # be imported through Nix's `import`.
-          derivation = buildGlistixPackage {{ inherit src submodules; }};
+          package = buildGlistixPackage {{ inherit system; }};
         in {{
-          packages.default = derivation;
+          packages.default = package;
 
           # Run 'nix develop' to create a shell where 'glistix' is available.
           devShells.default = pkgs.mkShell {{
