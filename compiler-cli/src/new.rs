@@ -37,6 +37,7 @@ pub struct Creator {
     root: Utf8PathBuf,
     src: Utf8PathBuf,
     test: Utf8PathBuf,
+    #[allow(dead_code)]
     github: Utf8PathBuf,
     workflows: Utf8PathBuf,
     external: Utf8PathBuf,
@@ -84,7 +85,7 @@ impl FileToCreate {
     pub fn contents(&self, creator: &Creator) -> Option<String> {
         let project_name = &creator.project_name;
         let skip_git = creator.options.skip_git;
-        let skip_github = creator.options.skip_github;
+        let skip_github = true; // creator.options.skip_github;
         let gleam_version = creator.gleam_version;
 
         match self {
@@ -527,8 +528,9 @@ impl Creator {
         crate::fs::mkdir(&self.external)?;
 
         if !self.options.skip_git && !self.options.skip_github {
-            crate::fs::mkdir(&self.github)?;
-            crate::fs::mkdir(&self.workflows)?;
+            // Currently disabled
+            // crate::fs::mkdir(&self.github)?;
+            // crate::fs::mkdir(&self.workflows)?;
         }
 
         if self.options.skip_git {
