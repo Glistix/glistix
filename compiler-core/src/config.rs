@@ -735,6 +735,13 @@ pub struct GlistixPreviewConfig {
     /// proper patches aren't implemented upstream.
     #[serde(default, rename = "hex-patch")]
     pub hex_patch: Dependencies,
+
+    /// List of dependencies which are bound to local paths
+    /// and should override other local dependencies to the
+    /// same package. Useful when you patch a library
+    /// (e.g. stdlib) which is also patched by a local dependency.
+    #[serde(default, rename = "local-overrides")]
+    pub local_overrides: Vec<EcoString>,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]

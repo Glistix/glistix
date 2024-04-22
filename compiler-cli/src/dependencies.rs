@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::{
     collections::{HashMap, HashSet},
     time::Instant,
@@ -700,6 +701,7 @@ fn resolve_versions<Telem: Telemetry>(
                 &path,
                 project_paths.root(),
                 project_paths,
+                config,
                 &mut provided_packages,
                 &mut vec![],
             )?,
@@ -745,9 +747,36 @@ fn provide_local_package(
     package_path: &Utf8Path,
     parent_path: &Utf8Path,
     project_paths: &ProjectPaths,
+    root_config: &PackageConfig,
     provided: &mut HashMap<EcoString, ProvidedPackage>,
     parents: &mut Vec<EcoString>,
 ) -> Result<hexpm::version::Range> {
+    // Apply root [glistix] patch, but only if the root also has this as a dependency
+    // We have to redefine the variables instead of mutating them to avoid lifetime problems.
+    let (package_path, parent_path) = if root_config
+        .glistix
+        .preview
+        .local_overrides
+        .contains(&package_name)
+    {
+        if let Some(root_override) = root_config.dependencies.get(&package_name) {
+            match root_override {
+                Requirement::Hex { version } => return Ok(version.clone()),
+                Requirement::Git { git } => {
+                    return provide_git_package(package_name, git, project_paths, provided)
+                }
+                Requirement::Path { path } => {
+                    // Pretend we're on the root to apply patch
+                    // Ensure package will be fetched from correct source
+                    (path.deref(), project_paths.root())
+                }
+            }
+        } else {
+            (package_path, parent_path)
+        }
+    } else {
+        (package_path, parent_path)
+    };
     let package_path = if package_path.is_absolute() {
         package_path.to_path_buf()
     } else {
@@ -761,6 +790,7 @@ fn provide_local_package(
         package_path,
         package_source,
         project_paths,
+        root_config,
         provided,
         parents,
     )
@@ -786,6 +816,7 @@ fn provide_package(
     package_path: Utf8PathBuf,
     package_source: ProvidedPackageSource,
     project_paths: &ProjectPaths,
+    root_config: &PackageConfig,
     provided: &mut HashMap<EcoString, ProvidedPackage>,
     parents: &mut Vec<EcoString>,
 ) -> Result<hexpm::version::Range> {
@@ -841,6 +872,7 @@ fn provide_package(
                     &path,
                     &package_path,
                     project_paths,
+                    root_config,
                     provided,
                     parents,
                 )?
@@ -875,6 +907,7 @@ fn provide_wrong_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -899,6 +932,7 @@ fn provide_existing_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -909,6 +943,7 @@ fn provide_existing_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -924,6 +959,7 @@ fn provide_conflicting_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -936,9 +972,96 @@ fn provide_conflicting_package() {
             path: Utf8Path::new("./test/other").to_path_buf(),
         },
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
+    if let Err(Error::ProvidedDependencyConflict { package, .. }) = result {
+        assert_eq!(package, "hello_world");
+    } else {
+        panic!("Expected ProvidedDependencyConflict error")
+    }
+}
+
+#[test]
+fn glistix_provide_conflicting_package_patched_by_root() {
+    let mut provided = HashMap::new();
+
+    let patched_package = EcoString::from("hello_world");
+    let mut root_config = PackageConfig::default();
+    let _ = root_config.dependencies.insert(
+        patched_package.clone(),
+        Requirement::Path {
+            path: Utf8PathBuf::from("./test/hello_world"),
+        },
+    );
+    root_config
+        .glistix
+        .preview
+        .local_overrides
+        .push(patched_package.clone());
+
+    let project_paths = crate::project_paths_at_current_directory_without_toml();
+    let result = provide_local_package(
+        patched_package.clone(),
+        Utf8Path::new("./test/hello_world"),
+        Utf8Path::new("./"),
+        &project_paths,
+        &root_config,
+        &mut provided,
+        &mut vec!["root".into(), "subpackage".into()],
+    );
+    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
+
+    let result = provide_local_package(
+        patched_package,
+        // Using an abs path to avoid a call to fs::canonicalise
+        // since the path doesn't exist
+        Utf8Path::new("/test/other"),
+        Utf8Path::new("/"),
+        &project_paths,
+        &root_config,
+        &mut provided,
+        &mut vec!["root".into(), "subpackage".into()],
+    );
+    // OK: There was a conflict, but root had a dependency with an override.
+    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
+}
+
+#[test]
+fn glistix_provide_conflicting_package_patched_by_root_but_not_root_dependency() {
+    let mut provided = HashMap::new();
+
+    let patched_package = EcoString::from("hello_world");
+    let mut root_config = PackageConfig::default();
+    root_config
+        .glistix
+        .preview
+        .local_overrides
+        .push(patched_package.clone());
+
+    let project_paths = crate::project_paths_at_current_directory_without_toml();
+    let result = provide_local_package(
+        patched_package.clone(),
+        Utf8Path::new("./test/hello_world"),
+        Utf8Path::new("./"),
+        &project_paths,
+        &root_config,
+        &mut provided,
+        &mut vec!["root".into(), "subpackage".into()],
+    );
+    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
+
+    let result = provide_local_package(
+        patched_package,
+        Utf8Path::new("/test/other"),
+        Utf8Path::new("/"),
+        &project_paths,
+        &root_config,
+        &mut provided,
+        &mut vec!["root".into(), "subpackage".into()],
+    );
+    // There was an override, but no matching root dependency, so it doesn't count.
     if let Err(Error::ProvidedDependencyConflict { package, .. }) = result {
         assert_eq!(package, "hello_world");
     } else {
@@ -955,6 +1078,7 @@ fn provided_is_absolute() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -976,6 +1100,7 @@ fn provided_recursive() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "hello_world".into(), "subpackage".into()],
     );
