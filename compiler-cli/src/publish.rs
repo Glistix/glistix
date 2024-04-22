@@ -384,11 +384,7 @@ fn prevent_patching_hex_with_hex(config: &PackageConfig) -> Result<()> {
         if let (Requirement::Hex { .. }, Some(Requirement::Hex { .. })) =
             (patch, config.dependencies.get(name))
         {
-            return Err(Error::ProvidedDependencyConflict {
-                package: name.to_string(),
-                source_1: "a Hex dependency".to_string(),
-                source_2: "a Hex patch (you may only patch non-Hex dependencies)".to_string(),
-            });
+            return Err(Error::CannotPatchHexWithHex { name: name.clone() });
         }
     }
 
@@ -696,23 +692,21 @@ fn prevent_publish_local_dependency() {
 }
 
 #[test]
-fn prevent_publish_hex_patched_with_hex() {
+fn glistix_prevent_publish_hex_patched_with_hex() {
     let mut config = PackageConfig::default();
     config.dependencies = [("trophy".into(), Requirement::hex(">= 0.0.0"))].into();
     config.glistix.preview.hex_patch =
         [("trophy".into(), Requirement::hex("~> 0.34 or ~> 1.0"))].into();
     assert_eq!(
         metadata_config(&config, &[], &[]),
-        Err(Error::ProvidedDependencyConflict {
-            package: "trophy".to_string(),
-            source_1: "a Hex dependency".to_string(),
-            source_2: "a Hex patch (you may only patch non-Hex dependencies)".to_string(),
+        Err(Error::CannotPatchHexWithHex {
+            name: "trophy".into(),
         })
     );
 }
 
 #[test]
-fn patch_published_local_dependency() {
+fn glistix_patch_published_local_dependency() {
     let mut config = PackageConfig::default();
     config.dependencies = [("provided".into(), Requirement::path("./path/to/package"))].into();
     config.glistix.preview.hex_patch =

@@ -261,6 +261,9 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     #[error("The --nix-prelude flag must be given when compiling to Nix")]
     NixPreludeRequired,
 
+    #[error("Cannot patch Hex dependency {name} through [glistix.preview.hex-patch]")]
+    CannotPatchHexWithHex { name: EcoString },
+
     #[error("The modules {unfinished:?} contain todo expressions and so cannot be published")]
     CannotPublishTodo { unfinished: Vec<EcoString> },
 
@@ -3245,6 +3248,18 @@ but you are using v{gleam_version}.",
             Error::NixPreludeRequired => Diagnostic {
                 title: "Nix prelude required".into(),
                 text: "The --nix-prelude flag must be given when compiling to Nix.".into(),
+                level: Level::Error,
+                location: None,
+                hint: None,
+            },
+
+            Error::CannotPatchHexWithHex { name } => Diagnostic {
+                title: "Cannot patch a Hex dependency through [glistix.preview.hex-patch]".into(),
+                text: format!(
+                    "Your project cannot depend on a Hex version of `{name}` and at the same time \
+patch it with another Hex version through [glistix.preview.hex-patch]. You can only use \
+[glistix.preview.hex-patch] to replace local dependencies with Hex packages when publishing."
+                ),
                 level: Level::Error,
                 location: None,
                 hint: None,
