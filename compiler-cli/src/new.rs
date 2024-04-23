@@ -22,7 +22,6 @@ const REBAR3_VERSION: &str = "3";
 const ELIXIR_VERSION: &str = "1.15.4";
 
 const GLISTIX_STDLIB_URL: &str = "https://github.com/glistix/stdlib";
-const GLISTIX_GLEEUNIT_URL: &str = "https://github.com/glistix/gleeunit";
 
 #[derive(
     Debug, Serialize, Deserialize, Display, EnumString, VariantNames, ValueEnum, Clone, Copy,
@@ -42,7 +41,6 @@ pub struct Creator {
     workflows: Utf8PathBuf,
     external: Utf8PathBuf,
     external_stdlib: Utf8PathBuf,
-    external_gleeunit: Utf8PathBuf,
     gleam_version: &'static str,
     options: NewOptions,
     project_name: String,
@@ -198,9 +196,7 @@ target = "nix"
 gleam_stdlib = {{ path = "./external/stdlib" }}
 
 [dev-dependencies]
-# Run 'git submodule add --name gleeunit -- https://github.com/glistix/gleeunit external/gleeunit'
-# to clone Glistix's gleeunit patch to the local path specified below.
-gleeunit = {{ path = "./external/gleeunit" }}
+glistix_gleeunit = "{GLEEUNIT_REQUIREMENT}"
 
 # The [glistix.preview] namespace contains useful settings which will be needed
 # during Glistix beta. In the future, it's likely these won't be necessary
@@ -220,7 +216,6 @@ local-overrides = ["gleam_stdlib"]
 # a proper dependency patching system.
 [glistix.preview.hex-patch]
 gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
-# gleeunit = "{GLEEUNIT_REQUIREMENT}" # not needed as it is only a dev dependency!
 "#,
             )),
 
@@ -284,14 +279,10 @@ jobs:
       url = "github:glistix/stdlib";
       flake = false;
     }};
-    gleeunit = {{
-      url = "github:glistix/gleeunit";
-      flake = false;
-    }};
   }};
 
   outputs =
-    inputs@{{ self, nixpkgs, flake-parts, systems, glistix, stdlib, gleeunit, ... }}:
+    inputs@{{ self, nixpkgs, flake-parts, systems, glistix, stdlib, ... }}:
     let
       # --- CUSTOMIZATION PARAMETERS ---
 
@@ -316,10 +307,6 @@ jobs:
         {{
           src = stdlib;
           dest = "external/stdlib";
-        }}
-        {{
-          src = gleeunit;
-          dest = "external/gleeunit";
         }}
       ];
 
@@ -495,10 +482,9 @@ impl Creator {
         let test = root.join("test");
         let github = root.join(".github");
         let workflows = github.join("workflows");
-        // External folder: we will clone stdlib and gleeunit there if possible.
+        // External folder: we will clone stdlib there if possible.
         let external = root.join("external");
         let external_stdlib = external.join("stdlib");
-        let external_gleeunit = external.join("gleeunit");
         let me = Self {
             root: root.clone(),
             src,
@@ -507,7 +493,6 @@ impl Creator {
             workflows,
             external,
             external_stdlib,
-            external_gleeunit,
             gleam_version,
             options,
             project_name,
@@ -533,10 +518,10 @@ impl Creator {
         if self.options.skip_git {
             eprintln!(
                 "WARNING: Skipping Git procedures. You will have to manually clone the \
-Glistix patches for 'stdlib' and 'gleeunit'. You can do so with the command \
-'git clone -- https://github.com/glistix/NAME external/NAME', where NAME is one of \
-stdlib or gleeunit. You can also use 'git submodule add --name NAME' instead of 'git clone' \
-if you plan on creating a git repository at your new project's directory."
+Glistix patch for 'stdlib'. If you create a Git repository at the new project's directory, \
+you can do so with the command \
+'git submodule add --name stdlib -- https://github.com/glistix/stdlib external/stdlib'. \
+Otherwise, you can use 'git clone' instead of 'git submodule add --name stdlib'."
             )
         } else {
             crate::fs::git_init(&self.root)?;
@@ -545,12 +530,6 @@ if you plan on creating a git repository at your new project's directory."
                 GLISTIX_STDLIB_URL,
                 &self.root,
                 &self.external_stdlib,
-            )?;
-            crate::fs::git_submodule_add(
-                "gleeunit",
-                GLISTIX_GLEEUNIT_URL,
-                &self.root,
-                &self.external_gleeunit,
             )?;
         }
 
