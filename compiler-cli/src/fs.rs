@@ -389,7 +389,7 @@ pub fn native_files(dir: &Utf8Path) -> Result<impl Iterator<Item = Utf8PathBuf> 
         .map(|e| e.into_path())
         .filter(|path| {
             let extension = path.extension().unwrap_or_default();
-            matches!(extension, "erl" | "hrl" | "ex" | "js" | "mjs" | "ts")
+            matches!(extension, "erl" | "hrl" | "ex" | "js" | "mjs" | "ts" | "nix")
         }))
 }
 
