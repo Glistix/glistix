@@ -153,7 +153,6 @@ let
     value:
       {
         __gleamTag = "UtfCodepoint";
-        __gleamBuiltIn = "UtfCodepoint";
         inherit value;
       };
 
