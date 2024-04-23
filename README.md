@@ -1,5 +1,5 @@
 <h1><p align="center">✨ <i> Glistix</i> ❄️</p></h1>
-<h3><p align="center">The power of Nix meets the simplicity and safety of Gleam</p></h3>
+<h3><p align="center">The power of Nix meets the simplicity and type-safety of Gleam</p></h3>
 
 <p align="center">
   <a href="https://github.com/glistix/glistix/releases"><img src="https://img.shields.io/github/release/glistix/glistix" alt="GitHub release"></a>
