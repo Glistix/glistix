@@ -1,7 +1,14 @@
 <h1><p align="center">✨ <i> Glistix</i> ❄️</p></h1>
 <h3><p align="center">The power of Nix meets the simplicity and safety of Gleam</p></h3>
 
-<h3><p align="center"><i><a href="https://glistix.github.io/book">Read the official Glistix book here!</a></i></p></h3>
+<p align="center">
+  <a href="https://github.com/glistix/glistix/releases"><img src="https://img.shields.io/github/release/glistix/glistix" alt="GitHub release"></a>
+  <a><img src="https://github.com/glistix/glistix/workflows/ci/badge.svg?branch=main"></a>
+</p>
+
+<h3><p align="center"><i><a href="https://glistix.github.io/book">Read the Glistix book here!</a></i></p></h3>
+
+**Mirrors:** [**GitHub**](https://github.com/glistix/glistix) | [**Codeberg**](https://codeberg.org/glistix/glistix)
 
 <!-- A spacer -->
 <div>&nbsp;</div>
@@ -26,13 +33,29 @@ If you also want to support the Glistix project directly, feel free to [support 
 
 ## Installation
 
-There are a few ways you can install Glistix.
+Glistix officially supports **Linux, MacOS and Windows.** (Note, however, that Nix doesn't support Windows yet, so you won't be able to test your projects, but `glistix build` should work at least.)
 
-1. **Through Nix:** you can use `nix run github:glistix/glistix/v0.1.0 -- --help` to quickly install and use the latest stable Glistix compiler. (You can also add this repository as an input to your flake, or otherwise fetch this repository in your configuration, in order to persist the install.) Note that this will compile from source.
+You can install Glistix in one of the following ways.
 
-2. **Through Cargo:** If you have a Rust toolchain installed, you can use `cargo install --git https://github.com/glistix/glistix --tag v0.1.0 --locked` to compile and install the latest stable Glistix compiler.
+1. **From GitHub Releases (non-NixOS):** If you're not using NixOS, you can install Glistix by downloading the latest precompiled binary for your platform at [https://github.com/glistix/glistix/releases](https://github.com/glistix/glistix/releases).
 
-Glistix is not currently available through Nixpkgs (at the time of writing).
+2. **With Nix flakes (NixOS):** Invoke the command below in the command line to download, compile and run a specific release of Glistix - here the latest at the time of writing (v0.1.0).
+
+    ```sh
+    nix run 'github:Glistix/glistix/v0.1.0' -- --help
+    ```
+
+    To install permanently, you can either add `github:Glistix/glistix/v0.1.0` as an input to your system/Home Manager configuration, or use `nix profile`:
+
+    ```sh
+    nix profile install 'github:Glistix/glistix/v0.1.0'
+    ```
+
+3. **With Cargo:** You can use Cargo to compile and install Glistix's latest release (v0.1.0 at the time of writing):
+
+    ```sh
+    cargo install --git https://github.com/glistix/glistix --tag v0.1.0 --locked
+    ```
 
 ## Table of Contents
 
@@ -54,6 +77,8 @@ Glistix is not currently available through Nixpkgs (at the time of writing).
 ## Motivation
 
 Glistix aims to tackle **several problems that arise when working with slightly more complex Nix code.** Whereas basic Nix is fairly straightforward to use (including declaring attribute sets, perhaps adding a few conditionals), it is evident that leaving that happy path and writing more involved code **can take considerable time and/or effort** due to the **lack of type-safety in Nix,** which leads to **limitations in Nix LSPs** and often **hard to understand errors** which could have been avoided with static type-checking - that is, checking the correctness of your Nix code before you even try to evaluate it.
+
+Personally, I (author of Glistix) have faced this kind of problem while **writing my own NixOS and Home Manager modules** - oftentimes the logic can get a bit involved, in which case it'd be nice to have static type-checking and other kinds of validation, not only for better autocomplete and LSP experience in general, but also to avoid unnecessarily long debugging sessions induced by what could be reduced to a simple type mismatch.
 
 While there have been **several attempts to add some form of static type-checking** to Nix, very few have had great amounts of success so far. It always seemed like Nix needed some quite large (and thus unfeasible) changes to make it possible.
 
@@ -213,6 +238,8 @@ git add output
 The default `flake.nix` and `default.nix` files in Glistix projects will **automatically recognize** the newly-created `output` directory as the cached output folder, and `lib.loadGlistixPackage { }` **will use the contents of `output` instead of building your project on import**, which will be much faster for downstream Nix users (with the downside that `output` needs to be **manually updated** independently of your source Gleam code).
 - If you want to use a directory other than `output`, or even e.g. GitHub Releases, make sure to change the relevant setting in the `flake.nix` file to point to a different directory (which can also be a derivation exporting the files).
 
+For more information, check the [relevant chapter in the Glistix book.](https://glistix.github.io/book/recipes/import-from-nix.html)
+
 ### Ports of several core Gleam packages to the Nix target
 
 The Glistix project officially maintains a few ports of core Gleam packages to work with Glistix and its Nix target. This includes the standard library (at [`glistix/stdlib`](https://github.com/glistix/stdlib)), the `gleeunit` test runner (at [`glistix/gleeunit`](https://github.com/glistix/gleeunit)), `json` (at [`glistix/json`](https://github.com/glistix/json)) and `birl` for datetime manipulation (at [`glistix/birl`](https://github.com/glistix/birl)), with more to come eventually.
@@ -230,6 +257,8 @@ The Glistix project officially maintains a few ports of core Gleam packages to w
 6. Use `glistix test` to run tests in the `test/` directory using the [`glistix_gleeunit` test runner](https://github.com/glistix/gleeunit).
 
 Great job! You now have a basic project up and running. You can **import its modules from Nix** by importing `default.nix` elsewhere (or adding your project's repository as an input to another `flake.nix` elsewhere) and using `lib.loadGlistixPackage { }` (or `{ module = "module/name"; }` to pick a module). You can also cache the build folder in your repository by copying it to `output`, as [described in the previous sections](#build-caching).
+
+[Check out the Glistix book](https://glistix.github.io/book/getting-started/basic-usage.html) for more information!
 
 ### Using Glistix within editors / with Gleam LSP
 
@@ -263,7 +292,7 @@ Glistix **does not implement tail-call optimization** as this is not yet impleme
 
 Nix is lazy by default, which means that values aren't evaluated until they are used. This means that side effects are often suppressed when the values that trigger them aren't used. However, Glistix will **always evaluate discarded expressions.** That is, any expressions which appear in the body of your function but are not bound to any variables **are evaluated before the function's return value** through Nix's `builtins.seq` function, which is useful when side-effects are needed. **The same applies to `let assert` statements** (the assertions always run).
 
-For more info on the two topics above, see the ["Limitations" page of the Glistix book.](https://glistix.github.io/book/about/limitations.html)
+For more details on the topics above, see the ["Limitations" page of the Glistix book.](https://glistix.github.io/book/about/limitations.html)
 
 ## Contributing
 
