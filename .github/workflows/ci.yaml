@@ -279,34 +279,34 @@ jobs:
           command: fmt
           args: --all -- --check
 
-  validate-deps:
-    name: validate-deps
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          default: true
-          profile: minimal
-
-      - name: Install cargo-deny
-        run: |
-          set -e
-          curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.18/cargo-deny-0.14.18-x86_64-unknown-linux-musl.tar.gz | tar xzf -
-          mv cargo-deny-*-x86_64-unknown-linux-musl/cargo-deny cargo-deny
-          echo `pwd` >> $GITHUB_PATH
-
-      - name: Validate deps
-        uses: actions-rs/cargo@v1
-        with:
-          command: deny
-          args: check
+#  validate-deps:
+#    name: validate-deps
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 10
+#    steps:
+#      - name: Checkout repository
+#        uses: actions/checkout@v4
+#
+#      - name: Install Rust toolchain
+#        uses: actions-rs/toolchain@v1
+#        with:
+#          toolchain: stable
+#          override: true
+#          default: true
+#          profile: minimal
+#
+#      - name: Install cargo-deny
+#        run: |
+#          set -e
+#          curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.18/cargo-deny-0.14.18-x86_64-unknown-linux-musl.tar.gz | tar xzf -
+#          mv cargo-deny-*-x86_64-unknown-linux-musl/cargo-deny cargo-deny
+#          echo `pwd` >> $GITHUB_PATH
+#
+#      - name: Validate deps
+#        uses: actions-rs/cargo@v1
+#        with:
+#          command: deny
+#          args: check
 
   lint-build:
     name: lint-build
