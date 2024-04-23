@@ -43,31 +43,38 @@ jobs:
             target: x86_64-unknown-linux-gnu
             use-cross: false
             run-integration-tests: true
+            supports-nix: true
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             use-cross: true
             run-integration-tests: true
+            supports-nix: true
           # - os: ubuntu-latest
           #   target: aarch64-unknown-linux-gnu
           #   use-cross: true
           #   run-integration-tests: false # Cannot run aarch64 binaries on x86_64
+          #   supports-nix: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             use-cross: true
             run-integration-tests: false # Cannot run aarch64 binaries on x86_64
+            supports-nix: true
           - os: macos-12  # intel
             target: x86_64-apple-darwin
             use-cross: false
             run-integration-tests: true
+            supports-nix: true
           - os: macos-14  # aarch64
             toolchain: stable
             target: aarch64-apple-darwin
             use-cross: false
             run-integration-tests: true
+            supports-nix: true
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             use-cross: false
             run-integration-tests: true
+            supports-nix: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -102,6 +109,10 @@ jobs:
           brew install erlang rebar3 elixir
           mix local.hex --force
         if: ${{ runner.os == 'macOS' }} # setup-beam does not support macOS
+
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v27
+        if: ${{ matrix.supports-nix }}
 
       - name: Handle Rust dependencies caching
         uses: Swatinem/rust-cache@v2
@@ -193,12 +204,12 @@ jobs:
         working-directory: ./test/project_path_deps/project_a
         if: ${{ matrix.run-integration-tests }}
 
-      - name: Test project generation
+      - name: Test project generation (Erlang)
         run: |
           glistix new lib_project
           cd lib_project
-          glistix run
-          glistix test
+          glistix run --target erlang
+          glistix test --target erlang
           glistix docs build
 
           # Assert that module metadata has been written
@@ -216,6 +227,7 @@ jobs:
           ls build/dev/docs/lib_project/js/highlightjs-elixir.min.js
           ls build/dev/docs/lib_project/js/highlightjs-javascript.min.js
           ls build/dev/docs/lib_project/js/highlightjs-typescript.min.js
+          ls build/dev/docs/lib_project/js/highlightjs-nix.min.js
           ls build/dev/docs/lib_project/js/lunr.min.js
           ls build/dev/docs/lib_project/js/index.js
           ls build/dev/docs/lib_project/fonts/karla-v23-bold-latin-ext.woff2
@@ -228,7 +240,49 @@ jobs:
           ls build/dev/docs/lib_project/fonts/ubuntu-mono-v15-regular-greek.woff2
           ls build/dev/docs/lib_project/fonts/ubuntu-mono-v15-regular-latin-ext.woff2
           ls build/dev/docs/lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
+
+          cd ../
         if: ${{ matrix.run-integration-tests }}
+
+      - name: Test project generation (Nix)
+        run: |
+          glistix new nix_lib_project
+          cd nix_lib_project
+          glistix run
+          glistix test
+          glistix run --target nix
+          glistix test --target nix
+          glistix docs build
+
+          # Assert that module metadata has been written
+          ls build/dev/nix/nix_lib_project/_gleam_artefacts/nix_lib_project.cache
+
+          # Assert that HTML docs and their assets have been written
+          ls build/dev/docs/nix_lib_project/index.html
+          ls build/dev/docs/nix_lib_project/lib_project.html
+          ls build/dev/docs/nix_lib_project/css/atom-one-light.min.css
+          ls build/dev/docs/nix_lib_project/css/atom-one-dark.min.css
+          ls build/dev/docs/nix_lib_project/css/index.css
+          ls build/dev/docs/nix_lib_project/js/highlight.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-gleam.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-erlang.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-elixir.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-javascript.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-typescript.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-nix.min.js
+          ls build/dev/docs/nix_lib_project/js/lunr.min.js
+          ls build/dev/docs/nix_lib_project/js/index.js
+          ls build/dev/docs/nix_lib_project/fonts/karla-v23-bold-latin-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/karla-v23-bold-latin.woff2
+          ls build/dev/docs/nix_lib_project/fonts/karla-v23-regular-latin-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/karla-v23-regular-latin.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-cyrillic-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-cyrillic.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-greek-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-greek.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
+        if: ${{ matrix.run-integration-tests && matrix.supports-nix }}
 
   test-wasm:
     runs-on: ubuntu-latest
