@@ -375,7 +375,7 @@ jobs:
         uses: cachix/install-nix-action@v25
         if: ${{ matrix.target == 'aarch64-apple-darwin' }}
 
-      - uses: DeterminateSystems/magic-nix-cache-action@00fe42c282fa25c5d0d3654c8b4567629d586a32
+      - uses: DeterminateSystems/magic-nix-cache-action@v4
 
       - name: Check Flake
         run: nix flake check
