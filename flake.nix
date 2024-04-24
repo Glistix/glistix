@@ -46,8 +46,8 @@
             packages = with pkgs; [ rustc cargo ];
 
             buildInputs = (lib.optionals pkgs.stdenv.isDarwin [
-              pkgs.Security
-              pkgs.SystemConfiguration
+              pkgs.darwin.apple_sdk.frameworks.Security
+              pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
             ]) ++ [
               pkgs.openssl
             ];
