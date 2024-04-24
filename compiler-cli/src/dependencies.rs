@@ -1015,10 +1015,8 @@ fn glistix_provide_conflicting_package_patched_by_root() {
 
     let result = provide_local_package(
         patched_package,
-        // Using an abs path to avoid a call to fs::canonicalise
-        // since the path doesn't exist
-        Utf8Path::new("/test/other"),
-        Utf8Path::new("/"),
+        Utf8Path::new("./test/"),
+        Utf8Path::new("./"),
         &project_paths,
         &root_config,
         &mut provided,
@@ -1054,8 +1052,8 @@ fn glistix_provide_conflicting_package_patched_by_root_but_not_root_dependency()
 
     let result = provide_local_package(
         patched_package,
-        Utf8Path::new("/test/other"),
-        Utf8Path::new("/"),
+        Utf8Path::new("./test/"),
+        Utf8Path::new("./"),
         &project_paths,
         &root_config,
         &mut provided,
@@ -1065,7 +1063,7 @@ fn glistix_provide_conflicting_package_patched_by_root_but_not_root_dependency()
     if let Err(Error::ProvidedDependencyConflict { package, .. }) = result {
         assert_eq!(package, "hello_world");
     } else {
-        panic!("Expected ProvidedDependencyConflict error")
+        panic!("Expected ProvidedDependencyConflict error, got {result:?}")
     }
 }
 
