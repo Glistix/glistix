@@ -205,7 +205,11 @@ jobs:
         if: ${{ matrix.run-integration-tests }}
 
       - name: Test project generation (Erlang)
+        env:
+          TEMP_PROJECT_DIR: ${{ runner.temp }}
         run: |
+          # Create project in temp dir to avoid Git interference
+          cd "${TEMP_PROJECT_DIR}"
           glistix new lib_project
           cd lib_project
           glistix run --target erlang
@@ -240,14 +244,13 @@ jobs:
           ls build/dev/docs/lib_project/fonts/ubuntu-mono-v15-regular-greek.woff2
           ls build/dev/docs/lib_project/fonts/ubuntu-mono-v15-regular-latin-ext.woff2
           ls build/dev/docs/lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
-
-          cd ../
         if: ${{ matrix.run-integration-tests }}
 
       - name: Test project generation (Nix)
         env:
           TEMP_PROJECT_DIR: ${{ runner.temp }}
         run: |
+          # Create project in temp dir to avoid Git interference
           cd "${TEMP_PROJECT_DIR}"
           glistix new nix_lib_project
           cd nix_lib_project
