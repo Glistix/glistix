@@ -4,9 +4,9 @@
 , openssl
 , git
 , pkg-config
-, darwin ? { }
-, Security ? darwin.Security
-, SystemConfiguration ? darwin.SystemConfiguration
+, darwin
+, Security ? darwin.apple_sdk.frameworks.Security
+, SystemConfiguration ? darwin.apple_sdk.frameworks.SystemConfiguration
 }:
 
 rustPlatform.buildRustPackage {
