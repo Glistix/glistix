@@ -381,10 +381,10 @@ jobs:
         run: nix flake check
 
       - name: Build Flake
-        run: nix build
+        run: nix build -L .
 
       - name: Run Flake
-        run: nix run -- --help
+        run: nix run -L . -- --help
 
   test-wasm:
     runs-on: ubuntu-latest
