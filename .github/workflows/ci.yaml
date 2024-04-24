@@ -148,6 +148,7 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         env:
           GLEAM_LOG: trace
+          RUST_BACKTRACE: 1
 
       - name: test/project_erlang (non-windows)
         run: |
