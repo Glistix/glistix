@@ -253,15 +253,22 @@ jobs:
       - name: Test project generation (Nix)
         env:
           TEMP_PROJECT_DIR: ${{ runner.temp }}
+          CAN_RUN_NIX: ${{ matrix.supports-nix }}
         run: |
           # Create project in temp dir to avoid Git interference
           cd "${TEMP_PROJECT_DIR}"
           glistix new nix_lib_project
           cd nix_lib_project
-          glistix run
-          glistix test
-          glistix run --target nix
-          glistix test --target nix
+          if [ "$CAN_RUN_NIX" = "true" ]; then
+            glistix run
+            glistix test
+            glistix run --target nix
+            glistix test --target nix
+          else
+            # Should at least build on Windows
+            glistix build
+            glistix build --target nix
+          fi
           glistix docs build
 
           # Assert that module metadata has been written
@@ -292,7 +299,7 @@ jobs:
           ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-greek.woff2
           ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin-ext.woff2
           ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
-        if: ${{ matrix.run-integration-tests && matrix.supports-nix }}
+        if: ${{ matrix.run-integration-tests }}
 
   test-wasm:
     runs-on: ubuntu-latest
