@@ -9,14 +9,30 @@
 , SystemConfiguration ? darwin.apple_sdk.frameworks.SystemConfiguration
 }:
 
+let
+  sourcePaths = [
+    "test"
+    "test-package-compiler"
+    "test-community-packages"
+    "compiler-cli"
+    "compiler-core"
+    "compiler-wasm"
+    "Cargo.toml"
+    "Cargo.lock"
+  ];
+
+  filterPaths = path: type:
+    builtins.any (accepted: lib.path.hasPrefix (./../. + "/${accepted}") (/. + path)) sourcePaths;
+in
+
 rustPlatform.buildRustPackage {
   pname = "glistix";
   version = "0.1.0";
 
-  src = lib.sourceByRegex ./.. [
-    ''(bin|test(|-community-packages|-package-compiler)|compiler-(cli|core|wasm))(/.*)?''
-    ''Cargo\.(toml|lock)''
-  ];
+  src = lib.cleanSourceWith {
+    filter = filterPaths;
+    src = ./..;
+  };
 
   nativeBuildInputs = [ git pkg-config ];
 
