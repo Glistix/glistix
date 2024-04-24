@@ -336,6 +336,56 @@ jobs:
           ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
         if: ${{ matrix.run-integration-tests && !matrix.supports-nix }}
 
+  test-flake:
+    name: test-flake
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          # https://github.com/gleam-lang/gleam/issues/2221
+          # - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+          - x86_64-apple-darwin
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          # - os: ubuntu-latest
+          #   target: aarch64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+          - os: macos-12  # intel
+            target: x86_64-apple-darwin
+          - os: macos-14  # aarch64
+            target: aarch64-apple-darwin
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix (not ARM MacOS)
+        uses: nixbuild/nix-quick-install-action@v27
+        if: ${{ matrix.target != 'aarch64-apple-darwin' }}
+
+      - name: Install Nix (ARM MacOS)
+        uses: cachix/install-nix-action@v25
+        if: ${{ matrix.target == 'aarch64-apple-darwin' }}
+
+      - uses: DeterminateSystems/magic-nix-cache-action@00fe42c282fa25c5d0d3654c8b4567629d586a32
+
+      - name: Check Flake
+        run: nix flake check
+
+      - name: Build Flake
+        run: nix build
+
+      - name: Run Flake
+        run: nix run -- --help
+
   test-wasm:
     runs-on: ubuntu-latest
     timeout-minutes: 30
