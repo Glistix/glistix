@@ -110,9 +110,13 @@ jobs:
           mix local.hex --force
         if: ${{ runner.os == 'macOS' }} # setup-beam does not support macOS
 
-      - name: Install Nix
+      - name: Install Nix (not ARM MacOS)
         uses: nixbuild/nix-quick-install-action@v27
-        if: ${{ matrix.supports-nix }}
+        if: ${{ matrix.supports-nix && matrix.target != 'aarch64-apple-darwin' }}
+
+      - name: Install Nix (ARM MacOS)
+        uses: cachix/install-nix-action@v25
+        if: ${{ matrix.supports-nix && matrix.target == 'aarch64-apple-darwin' }}
 
       - name: Handle Rust dependencies caching
         uses: Swatinem/rust-cache@v2
