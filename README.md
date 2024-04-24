@@ -3,7 +3,7 @@
 
 <p align="center">
   <a href="https://github.com/glistix/glistix/releases"><img src="https://img.shields.io/github/release/glistix/glistix" alt="GitHub release"></a>
-  <a><img src="https://github.com/glistix/glistix/workflows/ci/badge.svg?branch=main"></a>
+  <a><img src="https://github.com/Glistix/glistix/actions/workflows/ci.yaml/badge.svg?branch=main"></a>
 </p>
 
 <h3><p align="center"><i><a href="https://glistix.github.io/book">Read the Glistix book here!</a></i></p></h3>
