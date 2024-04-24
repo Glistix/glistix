@@ -508,7 +508,7 @@ impl Creator {
         crate::fs::mkdir(&self.root)?;
         crate::fs::mkdir(&self.src)?;
         crate::fs::mkdir(&self.test)?;
-        crate::fs::mkdir(&self.external).unwrap();
+        crate::fs::mkdir(&self.external)?;
 
         if !self.options.skip_git && !self.options.skip_github {
             // Currently disabled
@@ -525,13 +525,13 @@ you can do so with the command \
 Otherwise, you can use 'git clone' instead of 'git submodule add --name stdlib'."
             )
         } else {
-            crate::fs::git_init(&self.root).unwrap();
+            crate::fs::git_init(&self.root)?;
             crate::fs::git_submodule_add(
                 "stdlib",
                 GLISTIX_STDLIB_URL,
                 &self.root,
                 &self.external_stdlib,
-            ).unwrap();
+            )?;
         }
 
         match self.options.template {
@@ -539,7 +539,7 @@ Otherwise, you can use 'git clone' instead of 'git submodule add --name stdlib'.
                 for file in FileToCreate::iter() {
                     let path = file.location(self);
                     if let Some(contents) = file.contents(self) {
-                        write(path, &contents).unwrap();
+                        write(path, &contents)?;
                     }
                 }
             }
