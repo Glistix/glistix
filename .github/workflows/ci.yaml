@@ -245,7 +245,10 @@ jobs:
         if: ${{ matrix.run-integration-tests }}
 
       - name: Test project generation (Nix)
+        env:
+          TEMP_PROJECT_DIR: ${{ runner.temp }}
         run: |
+          cd "${TEMP_PROJECT_DIR}"
           glistix new nix_lib_project
           cd nix_lib_project
           glistix run
