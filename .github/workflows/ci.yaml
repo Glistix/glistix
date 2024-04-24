@@ -250,7 +250,7 @@ jobs:
           ls build/dev/docs/lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
         if: ${{ matrix.run-integration-tests }}
 
-      - name: Test project generation (Nix)
+      - name: Test project generation (Nix - not Windows)
         env:
           TEMP_PROJECT_DIR: ${{ runner.temp }}
         run: |
@@ -293,6 +293,48 @@ jobs:
           ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin-ext.woff2
           ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
         if: ${{ matrix.run-integration-tests && matrix.supports-nix }}
+
+      - name: Test project generation (Nix - Windows)
+        env:
+          TEMP_PROJECT_DIR: ${{ runner.temp }}
+        run: |
+          # Create project in temp dir to avoid Git interference
+          cd "${TEMP_PROJECT_DIR}"
+          glistix new nix_lib_project
+          cd nix_lib_project
+          glistix build
+          glistix build --target nix
+          glistix docs build
+
+          # Assert that module metadata has been written
+          ls build/dev/nix/nix_lib_project/_gleam_artefacts/nix_lib_project.cache
+
+          # Assert that HTML docs and their assets have been written
+          ls build/dev/docs/nix_lib_project/index.html
+          ls build/dev/docs/nix_lib_project/nix_lib_project.html
+          ls build/dev/docs/nix_lib_project/css/atom-one-light.min.css
+          ls build/dev/docs/nix_lib_project/css/atom-one-dark.min.css
+          ls build/dev/docs/nix_lib_project/css/index.css
+          ls build/dev/docs/nix_lib_project/js/highlight.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-gleam.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-erlang.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-elixir.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-javascript.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-typescript.min.js
+          ls build/dev/docs/nix_lib_project/js/highlightjs-nix.min.js
+          ls build/dev/docs/nix_lib_project/js/lunr.min.js
+          ls build/dev/docs/nix_lib_project/js/index.js
+          ls build/dev/docs/nix_lib_project/fonts/karla-v23-bold-latin-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/karla-v23-bold-latin.woff2
+          ls build/dev/docs/nix_lib_project/fonts/karla-v23-regular-latin-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/karla-v23-regular-latin.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-cyrillic-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-cyrillic.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-greek-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-greek.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin-ext.woff2
+          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
+        if: ${{ matrix.run-integration-tests && !matrix.supports-nix }}
 
   test-wasm:
     runs-on: ubuntu-latest
