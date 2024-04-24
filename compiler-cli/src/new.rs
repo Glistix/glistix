@@ -484,7 +484,8 @@ impl Creator {
         let workflows = github.join("workflows");
         // External folder: we will clone stdlib there if possible.
         let external = root.join("external");
-        let external_stdlib = external.join("stdlib");
+        // Use a relative path as that is what is recorded to '.gitmodules'.
+        let external_stdlib = Utf8PathBuf::from("external/stdlib");
         let me = Self {
             root: root.clone(),
             src,
