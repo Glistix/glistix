@@ -685,7 +685,7 @@ pub fn git_submodule_add(
 ) -> Result<(), Error> {
     tracing::trace!(submodule=?name, repo=?url, path=?path, "cloning package as submodule");
 
-    if is_inside_git_work_tree(path)? {
+    if is_inside_git_work_tree(&root.join(path))? {
         tracing::trace!(path=?path, "package_already_cloned");
         return Ok(());
     }
