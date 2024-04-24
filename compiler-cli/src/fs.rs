@@ -689,7 +689,7 @@ pub fn git_submodule_add(
     if submodule_path.try_exists().map_err(|e| Error::FileIo {
         kind: FileKind::Directory,
         action: FileIoAction::ReadMetadata,
-        path: submodule_path,
+        path: submodule_path.clone(),
         err: Some(e.to_string()),
     })? {
         tracing::trace!(path=?path, "package_already_cloned");
@@ -709,11 +709,12 @@ pub fn git_submodule_add(
 
     match ProjectIO::new().exec("git", &args, &[], Some(root), Stdio::Inherit) {
         Ok(status) => {
-            if status != 0 && !is_inside_git_work_tree(path)? {
+            if status != 0 {
+                tracing::trace!(path=?submodule_path, "submodule_add_failed");
                 submodule_add_failed_error(
                     name,
                     url,
-                    path,
+                    &submodule_path,
                     format!("'git submodule' exited with status code {status}. Check if you have network access.")
                 );
             }
@@ -722,7 +723,8 @@ pub fn git_submodule_add(
         Err(err) => match err {
             Error::ShellProgramNotFound { .. } => Ok(()),
             _ => {
-                submodule_add_failed_error(name, url, path, err.pretty_string());
+                tracing::trace!(path=?submodule_path, "submodule_add_failed");
+                submodule_add_failed_error(name, url, &submodule_path, err.pretty_string());
                 Ok(())
             }
         },
