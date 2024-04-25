@@ -386,6 +386,30 @@ jobs:
       - name: Run Flake
         run: nix run -L . -- --help
 
+      - name: Test generated project's flake
+        run: |
+          # Generate project
+          mkdir .test-proj-flake
+          cd .test-proj-flake
+          nix run -L .. -- new newpkg
+          cd newpkg
+
+          # Build to generate manifest.toml
+          nix run -L ../.. -- build
+          git add .
+
+          # Check flake
+          nix flake check --override-input glistix "$(realpath ../..)"
+
+          # Test build
+          nix build -L --override-input glistix "$(realpath ../..)" .
+
+          # Ensure build artifacts at 'result'
+          ls -ltah result
+
+          # Finish
+          cd ../..
+
   test-wasm:
     runs-on: ubuntu-latest
     timeout-minutes: 30
