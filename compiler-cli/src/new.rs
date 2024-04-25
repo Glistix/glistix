@@ -329,10 +329,13 @@ jobs:
 
       inherit (nixpkgs) lib;
       glistixLib = glistix.lib;
-      sourceFileRegex = builtins.concatStringsSep "|" (map lib.escapeRegex sourceFiles);
 
       # Filter source files to only include the given files and folders.
-      src = lib.sourceByRegex ./. [ "(${{sourceFileRegex}})(/.*)?" ];
+      src = lib.cleanSourceWith {{
+        filter = path: type:
+          builtins.any (accepted: lib.path.hasPrefix (./. + "/${{accepted}}") (/. + path)) sourceFiles;
+        src = ./.;
+      }};
 
       # Prepare call to 'buildGlistixPackage', allowing for overrides.
       buildGlistixPackage =
