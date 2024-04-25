@@ -399,10 +399,10 @@ jobs:
           git add .
 
           # Check flake
-          nix flake check --override-input glistix "$(realpath ../..)"
+          nix flake check --override-input glistix ../..
 
           # Test build
-          nix build -L --override-input glistix "$(realpath ../..)" .
+          nix build -L --override-input glistix ../.. .
 
           # Ensure build artifacts at 'result'
           ls -ltah result
