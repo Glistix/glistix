@@ -33,6 +33,10 @@ Please consider [supporting the team behind Gleam on GitHub](https://github.com/
 
 If you also want to support the Glistix project directly, feel free to [support me on GitHub](https://github.com/sponsors/PgBiel) as well!
 
+## We need help!
+
+If you like the project and know some Nix, **consider contributing!** At the time of writing, we have a few important issues open at [`glistix/stdlib`](https://github.com/glistix/stdlib) which could use some help. Additionally, feel free to explore issues at the Glistix compiler's repository (make sure to read the ["Contributing"](#contributing) section below).
+
 ## Installation
 
 Glistix officially supports **Linux, MacOS and Windows.** (Note, however, that Nix doesn't support Windows yet, so you won't be able to test your projects, but `glistix build` should work at least.)
