@@ -405,7 +405,7 @@ jobs:
           nix build -L --override-input glistix ../.. .
 
           # Ensure build artifacts at 'result'
-          ls -ltah result
+          ls -ltah result/dev/nix
 
           # Finish
           cd ../..
