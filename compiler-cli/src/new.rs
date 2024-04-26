@@ -17,8 +17,11 @@ use crate::{fs::get_current_directory, NewOptions};
 
 const GLEAM_STDLIB_REQUIREMENT: &str = ">= 0.34.0 and < 2.0.0";
 const GLEEUNIT_REQUIREMENT: &str = ">= 1.0.0 and < 2.0.0";
+#[allow(dead_code)]
 const ERLANG_OTP_VERSION: &str = "26.0.2";
+#[allow(dead_code)]
 const REBAR3_VERSION: &str = "3";
+#[allow(dead_code)]
 const ELIXIR_VERSION: &str = "1.15.4";
 
 const GLISTIX_STDLIB_URL: &str = "https://github.com/glistix/stdlib";
@@ -41,6 +44,7 @@ pub struct Creator {
     workflows: Utf8PathBuf,
     external: Utf8PathBuf,
     external_stdlib: Utf8PathBuf,
+    #[allow(dead_code)]
     gleam_version: &'static str,
     options: NewOptions,
     project_name: String,
@@ -84,7 +88,6 @@ impl FileToCreate {
         let project_name = &creator.project_name;
         let skip_git = creator.options.skip_git;
         let skip_github = true; // creator.options.skip_github;
-        let gleam_version = creator.gleam_version;
 
         match self {
             Self::Readme => Some(format!(
@@ -219,7 +222,7 @@ gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
 "#,
             )),
 
-            Self::GithubCi if !skip_git && !skip_github => Some(format!(
+            Self::GithubCi if !skip_git && !skip_github => Some(
                 r#"name: test
 
 on:
@@ -234,17 +237,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: erlef/setup-beam@v1
         with:
-          otp-version: "{ERLANG_OTP_VERSION}"
-          gleam-version: "{gleam_version}"
-          rebar3-version: "{REBAR3_VERSION}"
-          # elixir-version: "{ELIXIR_VERSION}"
-      - run: gleam deps download
-      - run: gleam test
-      - run: gleam format --check src test
-"#,
-            )),
+          submodules: 'recursive'
+      - uses: cachix/install-nix-action@v26
+      - uses: DeterminateSystems/magic-nix-cache-action@v4
+      - name: Ensure flake.lock was committed
+        run: ls flake.lock
+      - run: nix flake check -L
+      - run: nix build -L
+      - run: glistix deps download
+        shell: nix develop --command bash -e {0}
+      - run: glistix test
+        shell: nix develop --command bash -e {0}
+      - run: glistix format --check src test
+        shell: nix develop --command bash -e {0}
+"#.into(),
+            ),
             Self::GithubCi | Self::Gitignore => None,
             Self::NixFlake => Some(format!(
                 r#"# Make sure to run "nix flake update" at least once to generate your flake.lock.
