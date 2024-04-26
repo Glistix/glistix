@@ -43,7 +43,7 @@ Glistix officially supports **Linux, MacOS and Windows.** (Note, however, that N
 
 You can install Glistix in one of the following ways.
 
-1. **From GitHub Releases (non-NixOS):** If you're not using NixOS, you can install Glistix by downloading the latest precompiled binary for your platform at [https://github.com/glistix/glistix/releases](https://github.com/glistix/glistix/releases).
+1. **From GitHub Releases (non-NixOS):** If you're using Linux (not NixOS), MacOS or Windows, you can install Glistix by downloading the latest precompiled binary for your platform at [https://github.com/glistix/glistix/releases](https://github.com/glistix/glistix/releases).
 
 2. **With Nix flakes (NixOS):** Invoke the command below in the command line to download, compile and run a specific release of Glistix - here the latest at the time of writing (v0.1.0).
 
@@ -82,17 +82,17 @@ You can install Glistix in one of the following ways.
 
 ## Motivation
 
-Glistix aims to **improve the development experience of working with more complex Nix code.** Whereas Nix can be fairly straightforward to use at its core (the language itself is tiny in terms of syntax), it can be observed in reality that writing more involved Nix code **can take considerable time and/or effort to get right** due to the **lack of type-safety in Nix,** which leads to **limitations in Nix LSPs** and often **hard to understand errors** which could have been avoided with static type-checking - that is, checking the correctness of your Nix code before you even try to evaluate it.
+Glistix was initially conceived in an attempt to **improve the development experience of working with more complex Nix code.** Whereas Nix can be fairly straightforward to use at its core (the language itself is tiny in terms of syntax), it can be observed in reality that **writing more involved Nix code can take considerable time and/or effort to get right** due to the **lack of type-safety in Nix,** which leads to **limitations in Nix LSPs** and often **hard to understand errors** which could have been avoided with static type-checking - that is, checking the correctness of your Nix code before you even try to evaluate it.
 
-Personally, I (author of Glistix) have faced this kind of problem while **writing my own NixOS and Home Manager modules** - oftentimes the logic can get a bit involved and become particularly hard to debug and/or expand on without some form of static type-checking (and thus proper autocomplete and so on).
+Personally, I (author of Glistix) have faced this kind of problem while writing my own **NixOS and Home Manager modules** - oftentimes the configuration logic can get more involved and become particularly hard to debug and/or expand on without some form of static type-checking (and thus proper autocomplete and so on), which leads to a worse development experience.
 
-While there have been **several attempts to add some form of static type-checking** to Nix, very few have had great amounts of success so far. It always seemed like Nix needed some quite large (and thus unfeasible) changes to make it possible.
+While there have been several attempts to add some form of static type-checking to Nix, very few have had great amounts of success so far. It always seemed like Nix needed some quite large (and thus unfeasible) changes to make it possible.
 
 **That's where Gleam comes in**. Gleam is a **functional and statically-typed language** with **friendly syntax** and **great tooling** (including the compiler and its **helpful errors,** great support for **unit testing**, good **LSP support** across editors, and so on). What's more, **Gleam was designed for transpilation to other dynamically-typed languages** (namely Erlang and JavaScript). So, **it was the perfect match:** we could leverage the Gleam compiler and its tooling to **write more complicated logic with Gleam,** transpile that to Nix, and **attempt to keep complexity of actual Nix source code at a minimum** - the Nix code would then **focus on calling the transpiled Gleam code as much as possible**.
 
 Thus **Glistix was born:** it adds a **Nix backend to the Gleam compiler**, alongside **auxiliary features and tooling to make Gleam easier to use within the Nix ecosystem.** The main goal is precisely to **integrate Gleam and Nix together as much as possible,** so that you may **write Gleam code and use it within Nix**, and **vice-versa** (Gleam code can invoke Nix functions through FFI).
 
-Importantly, this is very much **inspired by [PureNix's approach](https://github.com/purenix-org/purenix)**. That project, which allows compiling PureScript to Nix, was one of the options considered before settling on Glistix's design, and has similar goals regarding type-checking and tooling. The **main difference** in our approach is **the usage of Gleam,** whose **simplicity in syntax, concepts and usage makes it stand out** among other languages. Nevertheless, make sure to check out PureNix as well if you're interested in learning more about alternatives - it is an awesome project as well!
+Importantly, this is very much **inspired by [PureNix's approach](https://github.com/purenix-org/purenix)**. That project, which allows compiling PureScript to Nix, was one of the options considered before settling on Glistix's design, and has similar goals regarding type-checking and tooling. The main difference in our approach is **the usage of Gleam,** whose **simplicity in syntax, concepts and usage makes it stand out among other languages** (in our opinion). Nevertheless, make sure to check out PureNix as well if you're interested in learning more about alternatives - it is an awesome project as well!
 
 **We hope you will enjoy using Glistix for your Nix and NixOS projects!**
 
@@ -270,7 +270,7 @@ Great job! You now have a basic project up and running. You can **import its mod
 
 To properly use Glistix with editors and LSPs, you will need to configure them to **use the `glistix` program instead of `gleam`** for LSP functionality. Otherwise, they won't recognize Glistix-only syntax, specifically `@target(nix)` and `@external(nix, ..., ...)`, in your code.
 
-The VSCode Extension for Gleam does not have this option at the moment, so **you will have to alias `glistix` as `gleam` in your system while using VSCode** (or other editors in a similar situation). Note that `glistix` **also supports Gleam's Erlang and JavaScript targets,** maintained at the upstream compiler (we currently aim to be compatible with existing non-Nix projects as much as possible - **please open an issue if something breaks**).
+The VSCode Extension for Gleam does not have this option at the moment, so **you will have to alias `glistix` as `gleam` in your system while using VSCode** (or other editors in a similar situation). Note that `glistix` **also supports Gleam's Erlang and JavaScript targets,** maintained at the upstream compiler (we currently aim to be compatible with existing non-Nix projects as much as possible - **please open an issue if something breaks**). Therefore, in principle, other Gleam projects should also work despite the alias.
 
 #### Using `direnv`
 
@@ -304,7 +304,7 @@ For more details on the topics above, see the ["Limitations" page of the Glistix
 
 Please **discuss first** (open an issue) before opening a large PR. Additionally, make sure to [check out the book](https://glistix.github.io/book/) for useful information on how the compiler works.
 
-Please note that we generally try to follow an **upstream-first policy**. This means that **any feature ideas which are not related to Nix** should generally **be brought to the [the upstream Gleam repository](https://github.com/gleam-lang/gleam) first**; if accepted there, the feature should be implemented (/contributed) upstream. Otherwise, we can consider implementing it on Glistix if it would significantly improve the experience of using Glistix, especially regarding usage with Nix, but not before proper discussions. The idea is to not only keep up with the Gleam ecosystem at large, but also to **ensure most improvements also benefit users of the upstream Gleam compiler.**
+Please note that we generally try to follow an **upstream-first policy**. This means that **any feature ideas which are not related to Nix should generally be brought to the [the upstream Gleam repository](https://github.com/gleam-lang/gleam) first**; if accepted there, the feature should be implemented (/contributed) upstream. Otherwise, we can consider implementing it on Glistix if it would significantly improve the experience of using Glistix, especially regarding usage with Nix, but not before proper discussions. The idea is to not only keep up with the Gleam ecosystem at large, but also to **ensure most improvements to the Glistix compiler also benefit users of the upstream Gleam compiler.**
 
 ## License
 
