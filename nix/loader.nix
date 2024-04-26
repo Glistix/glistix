@@ -59,6 +59,8 @@ in
 }:
 
 let
+  fixNullString = string: if string == null then "(null)" else builtins.toString string;
+
   effectiveNixRoot =
     if nixRoot != null
     then nixRoot
@@ -85,6 +87,31 @@ assert fileToLoad == null -> builtins.match "[a-zA-Z0-9_\\-\\/]+" module != null
 
 # Either have your package's build output be somewhere in specific,
 # or build it from scratch.
-assert derivation == null -> hasOutput;
+assert (derivation == null -> hasOutput) || builtins.throw ''
+  Couldn't load the Glistix package named '${fixNullString package}',
+  as its build output wasn't cached, and there was no suitable derivation to build it with.
+  (Searched for build cache at: '${fixNullString output}')
+
+  This can happen if you try to call a package's `lib.loadGlistixPackage { }` within a flake, where
+  pure evaluation is the default, without specifying a `system` attribute (so that the correct derivation
+  can be used for build when the build output isn't cached). This can also happen when the package forces
+  the usage of build output cache (usually at a folder named 'output'), but the cache folder wasn't found.
+
+  Make sure to provide either a path to the build cache (as the 'output' attribute to 'loadGlistixPackage'),
+  a derivation to build the package with (as the 'derivation' attribute, usually using 'buildGlistixPackage'),
+  or, if using a package's 'loadGlistixPackage' implementation, the 'system' attribute so it can correctly pick
+  the derivation to use to build the package (if the build output isn't cached). For example, you can try to specify
+  `thePackage.lib.loadGlistixPackage { system = "x86_64-linux"; }`.
+
+  Read the Glistix docs for more information.
+'';
+
+assert builtins.pathExists importPath || builtins.throw ''
+  Couldn't import module '${fixNullString module}' of Glistix package '${fixNullString package}',
+  as the path it was supposed to be at, '${importPath}', wasn't found.
+  Ensure a valid module was specified, as well as ensure that the build output cache is available
+  and up-to-date, if it is used, or (otherwise) if the derivation being used to build the package
+  is correct.
+'';
 
 import importPath
