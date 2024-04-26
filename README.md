@@ -225,6 +225,10 @@ let
 in { inherit mainOutput otherFunction; }  # The sky is the limit!
 ```
 
+> [!WARNING]
+>
+> When in pure evaluation mode (e.g. in Flakes without `--impure`), you will have to specify the system in `package.lib.loadGlistixPackage { system = "system name"; }` (e.g. `"x86_64-linux"`), as the package would have to be built using a Glistix derivation (which depends on the system), **unless that package caches build output** as explained in the section below (in which case the system isn't necessary at all, as the Nix files are ready to be imported, so no build occurs).
+
 #### Build caching
 
 You can optionally **cache the built Nix files in your repository** (or somewhere else) so Nix users **don't depend on the Glistix compiler to import your Glistix project** (if they don't have Glistix installed already, **the compiler will be compiled from scratch, which can take several minutes**). To do so, you can create an `output` folder in your repository and, **after each (relevant) build** with `glistix build --target nix`, run:
@@ -263,10 +267,6 @@ The Glistix project officially maintains a few ports of core Gleam packages to w
 6. Use `glistix test` to run tests in the `test/` directory using the [`glistix_gleeunit` test runner](https://github.com/glistix/gleeunit).
 
 Great job! You now have a basic project up and running. You can **import its modules from Nix** by importing `default.nix` elsewhere (or adding your project's repository as an input to another `flake.nix` elsewhere) and using `lib.loadGlistixPackage { }` (or `{ module = "module/name"; }` to pick a module). You can also cache the build folder in your repository by copying it to `output`, as [described in the previous sections](#build-caching).
-
-> [!WARNING]
->
-> When in pure evaluation mode (e.g. in Flakes without `--impure`), you will have to specify the system in `package.lib.loadGlistixPackage { system = "system name"; }` (e.g. `"x86_64-linux"`), as the package would have to be built using a Glistix derivation (which depends on the system), **unless the package you're using caches build output** (in which case the system isn't necessary at all, as the Nix files are ready to be imported, so no build occurs).
 
 [Check out the Glistix book](https://glistix.github.io/book/getting-started/basic-usage.html) for more information!
 
