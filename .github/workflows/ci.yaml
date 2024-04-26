@@ -412,7 +412,7 @@ jobs:
         working-directory: ./.test-flake/newpkg
 
       - name: Test 'loadGlistixPackage' on generated project
-        run: "nix eval -L --override-input glistix ../.. .#lib --apply '(lib: (lib.loadGlistixPackage { }).main { })'"
+        run: "nix eval -L --override-input glistix ../.. .#lib --apply '(lib: (lib.loadGlistixPackage { }).main { })' --impure"
         working-directory: ./.test-flake/newpkg
 
   test-wasm:
