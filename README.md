@@ -248,7 +248,7 @@ git add output
 The default `flake.nix` and `default.nix` files in Glistix projects will **automatically recognize** the newly-created `output` directory as the cached output folder, and `lib.loadGlistixPackage { }` **will use the contents of `output` instead of building your project on import**, which will be much faster for downstream Nix users (with the downside that `output` needs to be **manually updated** independently of your source Gleam code).
 - If you want to use a directory other than `output`, or even e.g. GitHub Releases, make sure to change the relevant setting in the `flake.nix` file to point to a different directory (which can also be a derivation exporting the files).
 
-For more information, check the [relevant chapter in the Glistix book.](https://glistix.github.io/book/recipes/import-from-nix.html)
+For more information, check the [relevant chapter in the Glistix book.](https://glistix.github.io/book/recipes/import-in-nix.html)
 
 ### Ports of several core Gleam packages to the Nix target
 
