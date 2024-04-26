@@ -13,8 +13,6 @@
 <!-- A spacer -->
 <div>&nbsp;</div>
 
-## NOTE: We are releasing very soon, check back later!
-
 Glistix is a **fork of [the Gleam compiler](https://github.com/gleam-lang/gleam)** which adds a **[Nix](https://nixos.org/) backend**, so that you can **compile Gleam code into Nix** and **use it in your configurations!**
 
 This allows you to leverage Gleam's **type-safety** and **simplicity** to write reasonable and more correct code. You will also be able to use **Gleam's tooling** in your favor, such as unit tests and easy package management.
