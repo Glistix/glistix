@@ -272,13 +272,15 @@ Great job! You now have a basic project up and running. You can **import its mod
 
 ### Using Glistix within editors / with Gleam LSP
 
-To properly use Glistix with editors and LSPs, you will need to configure them to **use the `glistix` program instead of `gleam`** for LSP functionality. Otherwise, they won't recognize Glistix-only syntax, specifically `@target(nix)` and `@external(nix, ..., ...)`, in your code.
+To properly develop a Glistix project using editors which support Gleam, you will need to configure them to **use the `glistix` program instead of `gleam`** for LSP functionality. Otherwise, they won't recognize Glistix-only syntax, specifically `@target(nix)` and `@external(nix, ..., ...)`, in your code.
 
-The VSCode Extension for Gleam does not have this option at the moment, so **you will have to alias `glistix` as `gleam` in your system while using VSCode** (or other editors in a similar situation). Note that `glistix` **also supports Gleam's Erlang and JavaScript targets,** maintained at the upstream compiler (we currently aim to be compatible with existing non-Nix projects as much as possible - **please open an issue if something breaks**). Therefore, in principle, other Gleam projects should also work despite the alias.
+The VSCode Extension for Gleam does not have this option at the moment, so **you will have to alias `glistix` as `gleam` in your system while using VSCode** (or other editors in a similar situation).
+
+Note that `glistix` **also supports Gleam's Erlang and JavaScript targets,** inherited from the upstream compiler (and kept up-to-date alongside the compiler itself). Therefore, in principle, **other Gleam projects should also work with Glistix** despite the alias, as we currently aim to remain compatible with non-Nix projects as much as possible, so **please open an issue if something breaks** in an existing Gleam project.
 
 #### Using `direnv`
 
-If you'd like, **you can also apply this alias in a per-project (or per-folder) basis through `direnv`.** You can do this by linking the `glistix` executable to a folder, naming the link as `gleam` (e.g. through `ln -s $(which glistix) -T /chosen/folder/gleam`), and then adding an `.envrc` file to your project with contents such as
+If you'd like, **you can also apply this alias in a per-project (or per-folder) basis through [`direnv`](https://github.com/direnv/direnv).** You can do this by linking the `glistix` executable to a folder, naming the link as `gleam` (e.g. through `ln -s $(which glistix) -T /chosen/folder/gleam`), and then adding an `.envrc` file to your project with contents such as
 
 ```sh
 export PATH="/chosen/folder:$PATH"
