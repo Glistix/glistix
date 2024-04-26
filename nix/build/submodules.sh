@@ -6,6 +6,11 @@ for submodule in $submodules;
 do
   subsrc="$(echo "$submodule" | cut -d':' -f1)"
   subdest="$(echo "$submodule" | cut -d':' -f2)"
+
+  # Remove empty directory in case there was a submodule there
+  # so the link doesn't fail
+  rmdir "$subdest" >/dev/null 2>/dev/null || true
+
   mkdir -p "$(dirname "$subdest")"
   ln -s "$subsrc" -T "$subdest" || echo "Warning: Failed to link submodule to '$subdest'" >&2
 done
