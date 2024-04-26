@@ -45,9 +45,12 @@ jobs:
 
       - name: Build version and tags
         id: versions
+        env:
+          GH_REF: ${{ github.ref }}
+          GH_REPO: ${{ github.repository }}
         run: |
           # Strip git ref prefix from version
-          V_VERSION=$(echo "${{ github.ref }}" | sed -e 's|.*/\(.*\)|\1|')
+          V_VERSION=$(echo "$GH_REF" | sed -e 's|.*/\(.*\)|\1|')
 
           # Strip `v` prefix from version
           BARE_VERSION=$(echo "$V_VERSION" | sed -e 's|^v/\(.*\)|\1|')
@@ -56,7 +59,7 @@ jobs:
           PLATFORM_VERSION=$BARE_VERSION-${{ matrix.base-image }}
 
           # Build container tag
-          TAG=$REGISTRY/${{ github.repository }}:$PLATFORM_VERSION
+          TAG=$REGISTRY/$GH_REPO:$PLATFORM_VERSION
 
           echo "v_version=$V_VERSION" >> $GITHUB_OUTPUT
           echo "bare_version=$BARE_VERSION" >> $GITHUB_OUTPUT
@@ -64,9 +67,11 @@ jobs:
           echo "container_tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Download Glistix archive from GitHub release
+        env:
+          GH_REPO: ${{ github.repository }}
         run: |
           VERSION=${{ steps.versions.outputs.v_version }}
-          URL=https://github.com/${{ github.repository }}/releases/download/$VERSION/glistix-$VERSION-x86_64-unknown-linux-musl.tar.gz
+          URL=https://github.com/$GH_REPO/releases/download/$VERSION/glistix-$VERSION-x86_64-unknown-linux-musl.tar.gz
           echo Downloading $URL
           curl -Lo glistix.tar.gz $URL
 
