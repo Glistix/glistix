@@ -386,29 +386,34 @@ jobs:
       - name: Run Flake
         run: nix run -L . -- --help
 
-      - name: Test generated project's flake
+      - name: Generate test project
         run: |
-          # Generate project
-          mkdir .test-proj-flake
-          cd .test-proj-flake
+          mkdir .test-flake
+          cd .test-flake
           nix run -L .. -- new newpkg
-          cd newpkg
 
+      - name: Build generated project without flake
+        run: |
           # Build to generate manifest.toml
           nix run -L ../.. -- build
           git add .
+        working-directory: ./.test-flake/newpkg
 
-          # Check flake
-          nix flake check --override-input glistix ../..
+      - name: Check generated project's flake
+        run: nix flake check --override-input glistix ../..
+        working-directory: ./.test-flake/newpkg
 
-          # Test build
+      - name: Build generated project's flake
+        run: |
           nix build -L --override-input glistix ../.. .
 
           # Ensure build artifacts at 'result'
           ls -ltah result/dev/nix
+        working-directory: ./.test-flake/newpkg
 
-          # Finish
-          cd ../..
+      - name: Test 'loadGlistixPackage' on generated project
+        run: "nix eval -L --override-input glistix ../.. .#lib --apply '(lib: (lib.loadGlistixPackage { }).main { })'"
+        working-directory: ./.test-flake/newpkg
 
   test-wasm:
     runs-on: ubuntu-latest
