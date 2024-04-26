@@ -12,6 +12,10 @@ jobs:
   build-release:
     name: build-release
     runs-on: ${{ matrix.os }}
+
+    permissions:
+      contents: write
+
     strategy:
       matrix:
         target:
