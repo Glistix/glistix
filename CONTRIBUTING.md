@@ -1,3 +1,7 @@
+# Contributing to Glistix
+
+See README. Leaving Gleam's own `CONTRIBUTING.md` below for reference.
+
 # Contributing to Gleam
 
 Thanks for contributing to Gleam!
@@ -59,7 +63,7 @@ you can use for running any Gleam version or quickly obtaining a development env
 ```shell
 cargo test
 
-# Or if you have watchexec installed you can run them automatically 
+# Or if you have watchexec installed you can run them automatically
 # when files change
 make test-watch
 ```
