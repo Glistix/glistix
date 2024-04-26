@@ -39,7 +39,7 @@ rustPlatform.buildRustPackage {
   buildInputs = [ openssl ] ++
     lib.optionals stdenv.isDarwin [ Security SystemConfiguration ];
 
-  cargoHash = "sha256-RxHkBOIMtXrr4Up7oY8K3jszdWiy9BF1nyv1fE/be48=";
+  cargoHash = "sha256-hJ+sQrQ3br/1OYhuTv53W2lKEQf5A1Ix9WWvER8UPio=";
 
   meta = with lib; {
     description = "A fork of the Gleam compiler with a Nix backend";
