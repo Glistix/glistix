@@ -3526,6 +3526,8 @@ pub fn make_call(
     end: u32,
 ) -> Result<UntypedExpr, ParseError> {
     let mut num_holes = 0;
+    let mut hole_location = None;
+
     let args = args
         .into_iter()
         .map(|a| match a {
@@ -3536,6 +3538,7 @@ pub fn make_call(
                 label,
             } => {
                 num_holes += 1;
+                hole_location = Some(location);
 
                 if name != "_" {
                     return parse_error(
@@ -3574,7 +3577,7 @@ pub fn make_call(
             end_of_head_byte_index: call.location().end,
             is_capture: true,
             arguments: vec![Arg {
-                location: SrcSpan { start: 0, end: 0 },
+                location: hole_location.expect("At least a capture hole"),
                 annotation: None,
                 names: ArgNames::Named {
                     name: CAPTURE_VARIABLE.into(),
