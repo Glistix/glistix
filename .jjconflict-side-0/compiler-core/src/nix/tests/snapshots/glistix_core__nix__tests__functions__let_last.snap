@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "pub fn main() {\n  let x = 1\n}\n"
+---
+let main = { }: 1; in { inherit main; }

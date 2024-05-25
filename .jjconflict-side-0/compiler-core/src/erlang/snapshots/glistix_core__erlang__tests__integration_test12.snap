@@ -1,0 +1,17 @@
+---
+source: compiler-core/src/erlang/tests.rs
+assertion_line: 247
+expression: "type Point { Point(x: Int, y: Int) } fn x(y) { let Point(a, b) = y a }"
+---
+-module(my@mod).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function, nowarn_nomatch]).
+
+-export_type([point/0]).
+
+-type point() :: {point, integer(), integer()}.
+
+-spec x(point()) -> integer().
+x(Y) ->
+    {point, A, B} = Y,
+    A.
+

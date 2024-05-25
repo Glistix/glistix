@@ -1,0 +1,30 @@
+---
+source: compiler-core/src/javascript/tests/panic.rs
+expression: "\nfn go(f) {\n  let boop = panic\n  f(panic)\n}\n"
+---
+import { makeError } from "../gleam.mjs";
+
+function go(f) {
+  let boop = (() => {
+    throw makeError(
+      "panic",
+      "my/mod",
+      3,
+      "go",
+      "panic expression evaluated",
+      {}
+    )
+  })();
+  return f(
+    (() => {
+      throw makeError(
+        "panic",
+        "my/mod",
+        4,
+        "go",
+        "panic expression evaluated",
+        {}
+      )
+    })(),
+  );
+}

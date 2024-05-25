@@ -1,0 +1,14 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "\npub fn loop(indentation) {\n  case indentation > 0 {\n    True -> loop(indentation - 1)\n    False -> Nil\n  }\n}\n"
+---
+let
+  loop =
+    indentation:
+    let
+      _pat' = indentation > 0;
+    in
+    if _pat' then loop (indentation - 1)
+    else null;
+in
+{ inherit loop; }

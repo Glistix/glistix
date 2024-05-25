@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/nix/tests/panic.rs
+expression: "\nfn go() {\n  panic\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  go =
+    { }:
+    builtins.throw
+      (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" { });
+in
+{ }

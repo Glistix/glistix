@@ -1,0 +1,18 @@
+[package]
+name = "test-package-compiler"
+version = "0.1.0"
+authors = ["PgBiel"]
+edition = "2021"
+license-file = "LICENCE"
+
+[dependencies]
+glistix-core = { path = "../compiler-core" }
+toml.workspace = true
+im.workspace = true
+itertools.workspace = true
+walkdir.workspace = true
+regex.workspace = true
+camino.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

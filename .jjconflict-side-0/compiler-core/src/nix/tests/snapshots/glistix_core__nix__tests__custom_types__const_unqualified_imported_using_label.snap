@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "import other.{Two}\npub const main = Two(field: 1)\n"
+---
+let
+  other' = builtins.import ./../other.nix;
+  inherit (builtins.import ./../other.nix) Two;
+  
+  main = Two 1;
+in
+{ inherit main; }

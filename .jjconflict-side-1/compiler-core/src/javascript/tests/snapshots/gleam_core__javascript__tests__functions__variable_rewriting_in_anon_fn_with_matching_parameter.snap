@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/javascript/tests/functions.rs
+expression: "pub fn bad() {\n  fn(state) {\n    let state = state\n    state\n  }\n}\n"
+---
+export function bad() {
+  return (state) => {
+    let state$1 = state;
+    return state$1;
+  };
+}

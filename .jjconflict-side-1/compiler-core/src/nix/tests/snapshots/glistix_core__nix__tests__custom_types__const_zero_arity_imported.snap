@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "import other\nconst x = other.Two\n"
+---
+let other' = builtins.import ./../other.nix; x = other'.Two; in { }

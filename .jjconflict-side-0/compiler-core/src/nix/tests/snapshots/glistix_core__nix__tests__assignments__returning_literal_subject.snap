@@ -1,0 +1,24 @@
+---
+source: compiler-core/src/nix/tests/assignments.rs
+expression: "fn go(x) { let assert 1 = x + 1 }"
+---
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  go =
+    x:
+    let
+      _pat' = (x + 1);
+    in
+    if _pat' != 1 then
+      builtins.throw
+        (makeError
+          "assignment_no_match"
+          "my/mod"
+          1
+          "go"
+          "Assignment pattern did not match"
+          { value = _pat'; })
+    else _pat';
+in
+{ }

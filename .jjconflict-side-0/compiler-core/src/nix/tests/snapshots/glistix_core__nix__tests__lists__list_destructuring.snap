@@ -1,0 +1,79 @@
+---
+source: compiler-core/src/nix/tests/lists.rs
+expression: "\nfn go(x, y) {\n  let assert [] = x\n  let assert [a] = x\n  let assert [1, 2] = x\n  let assert [_, #(3, b)] = y\n  let assert [head, ..tail] = y\n}\n"
+---
+let
+  inherit
+    (builtins.import ./../gleam.nix)
+    listHasAtLeastLength
+    listHasLength
+    makeError
+    seqAll
+    ;
+  
+  go =
+    x: y:
+    let
+      _assert' =
+        if !(listHasLength x 0) then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              3
+              "go"
+              "Assignment pattern did not match"
+              { value = x; })
+        else null;
+      _' = builtins.seq _assert' x;
+      _assert''1 =
+        if !(listHasLength x 1) then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              4
+              "go"
+              "Assignment pattern did not match"
+              { value = x; })
+        else null;
+      a = builtins.seq _assert''1 x.head;
+      _assert''2 =
+        if !(listHasLength x 2) || x.head != 1 || x.tail.head != 2 then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              5
+              "go"
+              "Assignment pattern did not match"
+              { value = x; })
+        else null;
+      _'1 = builtins.seq _assert''2 x;
+      _assert''3 =
+        if !(listHasLength y 2) || (builtins.elemAt y.tail.head 0) != 3 then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              6
+              "go"
+              "Assignment pattern did not match"
+              { value = y; })
+        else null;
+      b = builtins.seq _assert''3 (builtins.elemAt y.tail.head 1);
+    in
+    seqAll
+      [ _' _assert' _assert''1 _'1 _assert''2 _assert''3 ]
+      (if !(listHasAtLeastLength y 1) then
+        builtins.throw
+          (makeError
+            "assignment_no_match"
+            "my/mod"
+            7
+            "go"
+            "Assignment pattern did not match"
+            { value = y; })
+      else y);
+in
+{ }

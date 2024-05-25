@@ -1,0 +1,12 @@
+---
+source: compiler-core/src/erlang/tests/external_fn.rs
+expression: "\n@external(erlang, \"Elixir.String\", \"main\")\npub fn do() -> Int\n"
+---
+-module(my@mod).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function, nowarn_nomatch]).
+
+-export([do/0]).
+
+-spec do() -> integer().
+do() ->
+    'Elixir.String':main().

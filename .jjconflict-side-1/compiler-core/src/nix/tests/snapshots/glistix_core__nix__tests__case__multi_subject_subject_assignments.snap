@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\nfn go() {\n  case True, False {\n    True, True -> 1\n    _, _ -> 0\n  }\n}\n"
+---
+let
+  go =
+    { }: let _pat' = true; _pat''1 = false; in if _pat' && _pat''1 then 1 else 0;
+in
+{ }

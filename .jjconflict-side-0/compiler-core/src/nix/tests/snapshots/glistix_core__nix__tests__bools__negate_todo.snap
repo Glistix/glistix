@@ -1,0 +1,19 @@
+---
+source: compiler-core/src/nix/tests/bools.rs
+expression: "pub fn negate(x) {\n  !todo\n}"
+---
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  negate =
+    x:
+    !(builtins.throw
+      (makeError
+        "todo"
+        "my/mod"
+        2
+        "negate"
+        "This has not yet been implemented"
+        { }));
+in
+{ inherit negate; }

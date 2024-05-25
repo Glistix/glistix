@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/modules.rs
+expression: "\nimport rocket_ship\npub fn go() { rocket_ship.x }\n"
+---
+let
+  rocket_ship' = builtins.import ./../rocket_ship.nix;
+  
+  go = { }: rocket_ship'.x;
+in
+{ inherit go; }

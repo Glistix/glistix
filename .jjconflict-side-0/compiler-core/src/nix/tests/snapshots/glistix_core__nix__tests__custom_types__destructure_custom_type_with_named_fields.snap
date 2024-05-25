@@ -1,0 +1,31 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "\ntype Cat {\n  Cat(name: String, cuteness: Int)\n}\n\nfn go(cat) {\n  let Cat(x, y) = cat\n  let Cat(name: x, ..) = cat\n  let assert Cat(cuteness: 4, name: x) = cat\n  x\n}\n\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  Cat = name: cuteness: { __gleamTag = "Cat"; inherit name cuteness; };
+  
+  go =
+    cat:
+    let
+      x = cat.name;
+      y = cat.cuteness;
+      x'1 = cat.name;
+      _assert' =
+        if cat.__gleamTag != "Cat" || cat.cuteness != 4 then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              9
+              "go"
+              "Assignment pattern did not match"
+              { value = cat; })
+        else null;
+      x'2 = builtins.seq _assert' cat.name;
+    in
+    builtins.seq _assert' x'2;
+in
+{ }

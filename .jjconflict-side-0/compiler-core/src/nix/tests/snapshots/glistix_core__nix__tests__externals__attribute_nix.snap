@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"./one.nix\", \"oneNix\")\npub fn one(x: Int) -> Int {\n  todo\n}\n\npub fn main() {\n  one(1)\n}\n"
+---
+let
+  one = (builtins.import ./one.nix).oneNix;
+  
+  main = { }: one 1;
+in
+{ inherit one main; }

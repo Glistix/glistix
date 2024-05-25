@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"./the/module.nix\", \"dup\")\npub fn one() -> Nil\n\n@external(nix, \"./the/module.nix\", \"dup\")\npub fn two() -> Nil\n"
+---
+let
+  one = (builtins.import ./the/module.nix).dup;
+  two = (builtins.import ./the/module.nix).dup;
+in
+{ inherit one two; }

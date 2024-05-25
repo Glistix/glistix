@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "pub fn main() {\n  fn(n) { n + 1 }(10)\n}\n"
+---
+let main = { }: (n: n + 1) 10; in { inherit main; }

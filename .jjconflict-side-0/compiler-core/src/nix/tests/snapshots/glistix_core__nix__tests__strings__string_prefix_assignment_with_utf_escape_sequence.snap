@@ -1,0 +1,36 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\npub fn go(x) {\n  case x {\n    \"\\u{0032} \" as greeting <> name -> greeting\n    \"\\u{0007ff} \" as greeting <> name -> greeting\n    \"\\u{00ffff} \" as greeting <> name -> greeting\n    \"\\u{10ffff} \" as greeting <> name -> greeting\n    _ -> \"Unknown\"\n  }\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) strHasPrefix parseEscape;
+  
+  go =
+    x:
+    if strHasPrefix "${parseEscape "\\U00000032"} " x then
+      let
+        name = (builtins.substring 2 (-1) x);
+        greeting = "${parseEscape "\\U00000032"} ";
+      in
+      greeting
+    else if strHasPrefix "${parseEscape "\\U000007ff"} " x then
+      let
+        name = (builtins.substring 3 (-1) x);
+        greeting = "${parseEscape "\\U000007ff"} ";
+      in
+      greeting
+    else if strHasPrefix "${parseEscape "\\U0000ffff"} " x then
+      let
+        name = (builtins.substring 4 (-1) x);
+        greeting = "${parseEscape "\\U0000ffff"} ";
+      in
+      greeting
+    else if strHasPrefix "${parseEscape "\\U0010ffff"} " x then
+      let
+        name = (builtins.substring 5 (-1) x);
+        greeting = "${parseEscape "\\U0010ffff"} ";
+      in
+      greeting
+    else "Unknown";
+in
+{ inherit go; }

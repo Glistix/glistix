@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/javascript/tests/blocks.rs
+expression: "\nfn main(f, a, b) {\n  {\n    a\n    |> f\n  } <> {\n    b\n    |> f\n  }\n}\n"
+---
+function main(f, a, b) {
+  return (() => {
+    let _pipe = a;
+    return f(_pipe);
+  })() + (() => {
+    let _pipe = b;
+    return f(_pipe);
+  })();
+}

@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\npub fn should_be_generated(x: Int) -> Int {\n  x\n}\n\n@external(erlang, \"one\", \"one\")\npub fn should_not_be_generated(x: Int) -> Int\n"
+---
+let should_be_generated = x: x; in { inherit should_be_generated; }

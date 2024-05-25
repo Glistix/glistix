@@ -1,0 +1,15 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "pub fn main(xs, y: Bool, z: Bool) {\n  case xs {\n    #(x) if { x == y } == z -> 1\n    _ -> 0\n  }\n}\n"
+---
+let
+  main =
+    xs: y: z:
+    if ((builtins.elemAt xs 0) == y) == z then
+      let
+        x = (builtins.elemAt xs 0);
+      in
+      1
+    else 0;
+in
+{ inherit main; }

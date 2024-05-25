@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\nfn go(x) {\n  let y = case x() {\n    True -> 1\n    _ -> 0\n  }\n  y\n}\n"
+---
+let go = x: let y = let _pat' = x { }; in if _pat' then 1 else 0; in y; in { }

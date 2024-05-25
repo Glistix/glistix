@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/modules.rs
+expression: "\nimport rocket_ship.{ x as y }\nconst z = y\n"
+---
+let
+  rocket_ship' = builtins.import ./../rocket_ship.nix;
+  y = (builtins.import ./../rocket_ship.nix).x;
+  
+  z = y;
+in
+{ }

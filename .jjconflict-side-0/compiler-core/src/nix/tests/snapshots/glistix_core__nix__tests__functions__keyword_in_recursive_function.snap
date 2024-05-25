@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "pub fn main(with: Int) -> Nil {\n  main(with - 1)\n}\n"
+---
+let main = with': main (with' - 1); in { inherit main; }

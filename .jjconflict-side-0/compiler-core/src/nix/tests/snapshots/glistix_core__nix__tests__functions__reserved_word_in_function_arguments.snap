@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "pub fn main(arguments, eval) {\n  #(arguments, eval)\n}\n"
+---
+let main = arguments: eval: [ arguments eval ]; in { inherit main; }

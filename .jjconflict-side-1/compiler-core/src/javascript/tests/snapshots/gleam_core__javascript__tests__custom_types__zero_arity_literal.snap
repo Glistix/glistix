@@ -1,0 +1,14 @@
+---
+source: compiler-core/src/javascript/tests/custom_types.rs
+expression: "\ntype Mine {\n    This\n    ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant\n}\n\nfn go() {\n    This\n    ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant\n}\n"
+---
+import { CustomType as $CustomType } from "../gleam.mjs";
+
+class This extends $CustomType {}
+
+class ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant extends $CustomType {}
+
+function go() {
+  new This();
+  return new ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant();
+}

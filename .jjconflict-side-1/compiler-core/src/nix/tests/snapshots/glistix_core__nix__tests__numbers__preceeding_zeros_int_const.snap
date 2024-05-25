@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/numbers.rs
+expression: "\nconst x = 09_179\n"
+---
+let x = 9179; in { }

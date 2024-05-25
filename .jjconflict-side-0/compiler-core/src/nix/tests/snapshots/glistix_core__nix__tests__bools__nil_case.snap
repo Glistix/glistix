@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/bools.rs
+expression: "\nfn go(a) {\n  case a {\n    Nil -> 0\n  }\n}\n"
+---
+let go = a: 0; in { }

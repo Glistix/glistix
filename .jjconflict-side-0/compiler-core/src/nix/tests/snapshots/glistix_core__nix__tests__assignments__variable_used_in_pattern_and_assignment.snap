@@ -1,0 +1,8 @@
+---
+source: compiler-core/src/nix/tests/assignments.rs
+expression: "pub fn main(x) {\n  let #(x) = #(x)\n  x\n}\n"
+---
+let
+  main = x: let _pat' = [ x ]; x'1 = (builtins.elemAt _pat' 0); in x'1;
+in
+{ inherit main; }

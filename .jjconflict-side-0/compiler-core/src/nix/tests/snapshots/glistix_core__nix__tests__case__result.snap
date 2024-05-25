@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\nfn go(x) {\n  case x {\n    Ok(_) -> 1\n    Error(_) -> 0\n  }\n}\n"
+---
+let go = x: if x.__gleamTag == "Ok" then 1 else 0; in { }

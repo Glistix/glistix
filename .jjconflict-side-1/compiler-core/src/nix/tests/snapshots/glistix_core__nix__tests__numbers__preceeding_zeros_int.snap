@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/numbers.rs
+expression: "\nfn main() {\n  09_179\n}\n"
+---
+let main = { }: 9179; in { }

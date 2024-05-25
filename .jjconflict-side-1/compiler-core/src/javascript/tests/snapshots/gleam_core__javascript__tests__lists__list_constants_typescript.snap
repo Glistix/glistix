@@ -1,0 +1,9 @@
+---
+source: compiler-core/src/javascript/tests/lists.rs
+expression: "\npub const a = []\npub const b = [1, 2, 3]\n"
+---
+import type * as _ from "../gleam.d.mts";
+
+export const a: _.List<any>;
+
+export const b: _.List<number>;

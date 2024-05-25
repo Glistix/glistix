@@ -1,0 +1,34 @@
+---
+source: compiler-core/src/nix/tests/bit_arrays.rs
+expression: "\nfn go(x) {\n  let assert <<_, b:bytes>> = <<1,2,3>>\n  b\n}\n"
+---
+let
+  inherit
+    (builtins.import ./../gleam.nix)
+    makeError
+    toBitArray
+    byteSize
+    byteAt
+    bitSliceAfter
+    ;
+  
+  go =
+    x:
+    let
+      _pat' = (toBitArray [ 1 2 3 ]);
+      _assert' =
+        if byteSize _pat' < 1 then
+          builtins.throw
+            (makeError
+              "assignment_no_match"
+              "my/mod"
+              3
+              "go"
+              "Assignment pattern did not match"
+              { value = _pat'; })
+        else null;
+      b = builtins.seq _assert' (bitSliceAfter _pat' 1);
+    in
+    builtins.seq _assert' b;
+in
+{ }

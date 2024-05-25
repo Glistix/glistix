@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/modules.rs
+expression: "import one/two/three\npub fn go() { three.go() }\n"
+---
+let
+  three' = builtins.import ./../one/two/three.nix;
+  
+  go = { }: three'.go { };
+in
+{ inherit go; }

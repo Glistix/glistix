@@ -1,0 +1,7 @@
+---
+source: compiler-core/src/javascript/tests/externals.rs
+expression: "\n@external(javascript, \"one\", \"one\")\npub fn one(x: Int) -> Int\n"
+---
+import { one } from "one";
+
+export { one };

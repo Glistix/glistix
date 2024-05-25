@@ -1,0 +1,14 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "\npub fn twice(f: fn(t) -> t, x: t) -> t {\n  f(f(x))\n}\npub fn add_one(x: Int) -> Int {\n  x + 1\n}\npub fn add_two(x: Int) -> Int {\n  twice(add_one, x)\n}\n\npub fn take_two(x: Int) -> Int {\n  twice(fn(y) {y - 1}, x)\n}\n"
+---
+let
+  twice = f: x: f (f x);
+  
+  add_one = x: x + 1;
+  
+  add_two = x: twice add_one x;
+  
+  take_two = x: twice (y: y - 1) x;
+in
+{ inherit twice add_one add_two take_two; }

@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "import other\n\npub fn main() {\n  other.One\n}\n"
+---
+let
+  other' = builtins.import ./../other.nix;
+  
+  main = { }: other'.One;
+in
+{ inherit main; }

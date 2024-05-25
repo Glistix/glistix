@@ -1,0 +1,23 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "\ntype Mine {\n    This\n    ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant\n}\n\nfn go() {\n    This\n    ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant\n}\n"
+---
+let
+  This = { __gleamTag = "This"; };
+  
+  ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant =
+    {
+      __gleamTag =
+        "ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant";
+    };
+  
+  go =
+    { }:
+    let
+      _' = This;
+    in
+    builtins.seq
+      _'
+      ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant;
+in
+{ }

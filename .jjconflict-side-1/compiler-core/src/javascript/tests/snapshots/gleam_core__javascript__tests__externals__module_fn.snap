@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/javascript/tests/externals.rs
+expression: "\n@external(javascript, \"utils\", \"inspect\")\nfn show(x: anything) -> Nil"
+---
+import { inspect as show } from "utils";

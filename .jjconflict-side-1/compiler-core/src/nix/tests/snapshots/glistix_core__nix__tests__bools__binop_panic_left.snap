@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/nix/tests/bools.rs
+expression: "pub fn negate(x) {\n    panic && x\n}"
+---
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  negate =
+    x:
+    (builtins.throw
+      (makeError "panic" "my/mod" 2 "negate" "panic expression evaluated" { })) && x;
+in
+{ inherit negate; }

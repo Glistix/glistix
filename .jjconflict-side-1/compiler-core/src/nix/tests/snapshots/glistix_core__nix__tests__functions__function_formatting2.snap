@@ -1,0 +1,28 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "\npub fn add(x, y) {\nx + y\n}\n\npub fn long() {\n  add(1, add(1, add(1, add(1, add(1, add(1, add(1, add(1, add(1, add(1, add(1, add(1, add(1, add(1, add(1, 1)))))))))))))))\n}"
+---
+let
+  add = x: y: x + y;
+  
+  long =
+    { }:
+    add
+      1
+      (add
+        1
+        (add
+          1
+          (add
+            1
+            (add
+              1
+              (add
+                1
+                (add
+                  1
+                  (add
+                    1
+                    (add 1 (add 1 (add 1 (add 1 (add 1 (add 1 (add 1 1))))))))))))));
+in
+{ inherit add long; }

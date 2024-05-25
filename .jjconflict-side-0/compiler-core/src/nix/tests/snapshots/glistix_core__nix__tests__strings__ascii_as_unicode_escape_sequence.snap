@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\npub fn y() -> String {\n  \"\\u{79}\"\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) parseEscape;
+  
+  y = { }: "${parseEscape "\\U00000079"}";
+in
+{ inherit y; }

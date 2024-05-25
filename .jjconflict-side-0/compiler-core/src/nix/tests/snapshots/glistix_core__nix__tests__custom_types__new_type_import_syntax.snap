@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "\nimport a.{type A, A}\n\npub fn main() {\n  A\n}\n"
+---
+let
+  a' = builtins.import ./../../package/a.nix;
+  inherit (builtins.import ./../../package/a.nix) A;
+  
+  main = { }: A;
+in
+{ inherit main; }

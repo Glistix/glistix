@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"./module\", \"string\")\nfn name() -> String\n\npub fn main() {\n  let name = name()\n  name\n}\n"
+---
+let
+  name = (builtins.import ./module).string;
+  
+  main = { }: let name'1 = name { }; in name'1;
+in
+{ inherit main; }

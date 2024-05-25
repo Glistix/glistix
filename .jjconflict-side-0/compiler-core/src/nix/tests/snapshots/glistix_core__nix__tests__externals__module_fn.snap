@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"./utils\", \"inspect\")\nfn show(x: anything) -> Nil"
+---
+let show = (builtins.import ./utils).inspect; in { }

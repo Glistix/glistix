@@ -1,0 +1,21 @@
+---
+source: compiler-core/src/javascript/tests/strings.rs
+assertion_line: 16
+expression: "\nfn go(x) {\n  let \"Hello\" = x\n}\n"
+---
+import { makeError } from "../gleam.mjs";
+
+function go(x) {
+  if (x !== "Hello") {
+    throw makeError(
+      "assignment_no_match",
+      "my/mod",
+      3,
+      "go",
+      "Assignment pattern did not match",
+      { value: x }
+    )
+  }
+  return x;
+}
+

@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/javascript/tests/externals.rs
+expression: "\n@external(javascript, \"module\", \"string\")\nfn name() -> String\n\npub fn main() {\n  let name = name()\n  name\n}\n"
+---
+import { string as name } from "module";
+
+export function main() {
+  let name$1 = name();
+  return name$1;
+}

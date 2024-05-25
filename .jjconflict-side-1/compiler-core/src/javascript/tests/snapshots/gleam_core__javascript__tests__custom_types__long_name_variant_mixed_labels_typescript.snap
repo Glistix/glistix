@@ -1,0 +1,25 @@
+---
+source: compiler-core/src/javascript/tests/custom_types.rs
+expression: "\npub type TypeWithALongNameAndSeveralArguments{\n  TypeWithALongNameAndSeveralArguments(String, String, String, a: String, b: String)\n}\n\npub const local = TypeWithALongNameAndSeveralArguments(\"one\", \"two\", \"three\", \"four\", \"five\")\n"
+---
+import type * as _ from "../gleam.d.mts";
+
+export class TypeWithALongNameAndSeveralArguments extends _.CustomType {
+  constructor(
+    argument$0: string,
+    argument$1: string,
+    argument$2: string,
+    a: string,
+    b: string
+  );
+  
+  0: string;
+  1: string;
+  2: string;
+  a: string;
+  b: string;
+}
+
+export type TypeWithALongNameAndSeveralArguments$ = TypeWithALongNameAndSeveralArguments;
+
+export const local: TypeWithALongNameAndSeveralArguments$;

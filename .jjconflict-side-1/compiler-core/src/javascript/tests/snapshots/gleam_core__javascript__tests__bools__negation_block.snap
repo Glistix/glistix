@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/javascript/tests/bools.rs
+expression: "pub fn negate(x) {\n  !{\n    123\n    x\n  }\n}"
+---
+export function negate(x) {
+  return !(() => {
+    123;
+    return x;
+  })();
+}

@@ -1,0 +1,110 @@
+name: release
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  build-release:
+    name: build-release
+    runs-on: ${{ matrix.os }}
+
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-pc-windows-msvc
+        toolchain: [stable]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            use-cross: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use-cross: true
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            use-cross: false
+          - os: macos-11
+            target: aarch64-apple-darwin
+            use-cross: false
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            use-cross: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          target: ${{ matrix.target }}
+
+      - name: Handle Rust dependencies caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: v1-${{ matrix.target }}
+
+      - name: Build release binary
+        uses: clechasseur/rs-cargo@v2
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }}
+          use-cross: ${{ matrix.use-cross }}
+
+      - name: Build archive
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ARCHIVE="glistix-$VERSION-${{ matrix.target }}.zip"
+            cp "target/${{ matrix.target }}/release/glistix.exe" "glistix.exe"
+            7z a "$ARCHIVE" "glistix.exe"
+            rm glistix.exe
+          else
+            ARCHIVE="glistix-$VERSION-${{ matrix.target }}.tar.gz"
+            cp "target/${{ matrix.target }}/release/glistix" "glistix"
+            tar -czvf "$ARCHIVE" "glistix"
+            rm glistix
+          fi
+
+          openssl dgst -r -sha256 -out "$ARCHIVE".sha256 "$ARCHIVE"
+          openssl dgst -r -sha512 -out "$ARCHIVE".sha512 "$ARCHIVE"
+          echo "ASSET=$ARCHIVE" >> $GITHUB_ENV
+
+      - name: Ensure binary successfully boots
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            x86_64-pc-windows-msvc)
+              7z x "$ASSET"
+              ./glistix.exe --version ;;
+            aarch64*)
+              echo "We cannot test an ARM binary on a AMD64 runner" ;;
+            *)
+              tar -xvzf "$ASSET"
+              ./glistix --version ;;
+          esac
+
+      - name: Upload release archive
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+            ${{ env.ASSET }}.sha512

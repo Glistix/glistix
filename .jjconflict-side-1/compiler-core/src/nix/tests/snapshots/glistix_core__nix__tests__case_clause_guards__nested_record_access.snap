@@ -1,0 +1,14 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "\npub type A {\n  A(b: B)\n}\n\npub type B {\n  B(c: C)\n}\n\npub type C {\n  C(d: Bool)\n}\n\npub fn a(a: A) {\n  case a {\n    _ if a.b.c.d -> 1\n    _ -> 0\n  }\n}\n"
+---
+let
+  A = b: { __gleamTag = "A"; inherit b; };
+  
+  B = c: { __gleamTag = "B"; inherit c; };
+  
+  C = d: { __gleamTag = "C"; inherit d; };
+  
+  a = a: if a.b.c.d then 1 else 0;
+in
+{ inherit A B C a; }

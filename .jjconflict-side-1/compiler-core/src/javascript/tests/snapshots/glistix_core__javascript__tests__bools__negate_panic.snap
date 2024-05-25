@@ -1,0 +1,18 @@
+---
+source: compiler-core/src/javascript/tests/bools.rs
+expression: "pub fn negate(x) {\n  !panic\n}"
+---
+import { makeError } from "../gleam.mjs";
+
+export function negate(x) {
+  return !(() => {
+    throw makeError(
+      "panic",
+      "my/mod",
+      2,
+      "negate",
+      "panic expression evaluated",
+      {}
+    )
+  })();
+}

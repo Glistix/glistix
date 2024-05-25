@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\nfn go(x, y) {\n  case x {\n    0 -> y\n    _ -> y\n  }()\n}\n"
+---
+let go = x: y: (if x == 0 then y else y) { }; in { }

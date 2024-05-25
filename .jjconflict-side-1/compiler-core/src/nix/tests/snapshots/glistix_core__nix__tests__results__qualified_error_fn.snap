@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/results.rs
+expression: "import gleam\npub fn main() { gleam.Error }"
+---
+let
+  gleam' = builtins.import ./../gleam.nix;
+  
+  main = { }: gleam'.Error;
+in
+{ inherit main; }

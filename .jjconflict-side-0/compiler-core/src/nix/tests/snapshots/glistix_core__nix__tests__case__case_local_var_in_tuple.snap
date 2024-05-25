@@ -1,0 +1,17 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\nfn go(x, y) {\n  let z = False\n  case True {\n    x if #(x, z) == #(True, False) -> x\n    _ -> False\n  }\n}\n"
+---
+let
+  go =
+    x: y:
+    let
+      z = false;
+    in
+    let
+      _pat' = true;
+    in
+    if [ _pat' z ] == [ true false ] then let x'1 = _pat'; in x'1
+    else false;
+in
+{ }

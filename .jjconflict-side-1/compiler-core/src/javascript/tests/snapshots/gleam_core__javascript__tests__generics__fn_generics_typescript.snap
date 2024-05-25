@@ -1,0 +1,5 @@
+---
+source: compiler-core/src/javascript/tests/generics.rs
+expression: "pub fn identity(a) -> a {\n  a\n}\n"
+---
+export function identity<J>(a: J): J;

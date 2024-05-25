@@ -1,0 +1,7 @@
+---
+source: compiler-core/src/javascript/tests/functions.rs
+expression: "pub fn main(arguments, eval) {\n  #(arguments, eval)\n}\n"
+---
+export function main(arguments$, eval$) {
+  return [arguments$, eval$];
+}
