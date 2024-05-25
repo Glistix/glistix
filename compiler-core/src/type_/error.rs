@@ -728,6 +728,8 @@ impl Error {
             | Error::UnsupportedExpressionTarget { location, .. }
             | Error::InvalidExternalJavascriptModule { location, .. }
             | Error::InvalidExternalJavascriptFunction { location, .. }
+            | Error::InvalidExternalNixModule { location, .. }
+            | Error::InvalidExternalNixFunction { location, .. }
             | Error::InexhaustiveCaseExpression { location, .. }
             | Error::InexhaustiveLetAssignment { location, .. }
             | Error::UnusedTypeAliasParameter { location, .. }
