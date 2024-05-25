@@ -1,4 +1,4 @@
-use crate::{assert_infer_with_module, assert_with_module_error};
+use crate::{assert_infer_with_module, assert_module_error, assert_with_module_error};
 
 // https://github.com/gleam-lang/gleam/issues/1760
 #[test]
@@ -221,6 +221,31 @@ pub fn main() -> One {
     );
 }
 
+#[test]
+fn import_type_duplicate_with_as() {
+    assert_with_module_error!(
+        ("one", "pub type One = Int"),
+        "import one.{type One as MyOne, type One as MyOne}
+
+pub type X = One
+",
+    );
+}
+
+#[test]
+fn import_type_duplicate_with_as_multiline() {
+    assert_with_module_error!(
+        ("one", "pub type One = Int"),
+        "import one.{
+          type One as MyOne,
+          type One as MyOne
+        }
+
+pub type X = One
+",
+    );
+}
+
 // https://github.com/gleam-lang/gleam/issues/2379
 #[test]
 fn deprecated_type_import_conflict() {
@@ -262,5 +287,28 @@ fn imported_constructor_instead_of_type() {
 pub fn main(x: Foo) {
   todo
 }",
+    );
+}
+
+#[test]
+fn import_errors_do_not_block_analysis() {
+    // An error in an import doesn't stop the rest of the module being analysed
+    assert_module_error!(
+        "import unknown_module
+
+pub fn main() {
+  1 + Nil
+}"
+    );
+}
+
+#[test]
+fn unqualified_import_errors_do_not_block_later_unqualified() {
+    assert_module_error!(
+        "import gleam.{Unknown, type Int as Integer}
+
+pub fn main() -> Integer {
+  Nil
+}"
     );
 }

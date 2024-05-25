@@ -50,6 +50,18 @@ pub struct Implementations {
     pub uses_nix_externals: bool,
 }
 
+impl Implementations {
+    pub fn supporting_all() -> Self {
+        Self {
+            gleam: true,
+            can_run_on_erlang: true,
+            can_run_on_javascript: true,
+            uses_javascript_externals: false,
+            uses_erlang_externals: false,
+        }
+    }
+}
+
 /// Tracking whether the function being currently type checked has externals
 /// implementations or not.
 /// This is used to determine whether an error should be raised in the case when
@@ -154,19 +166,67 @@ impl Implementations {
     }
 }
 
+/// This is used to tell apart regular function calls and `use` expressions:
+/// a `use` is still typed as if it were a normal function call but we want to
+/// be able to tell the difference in order to provide better error message.
+///
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
+pub enum CallKind {
+    Function,
+    Use {
+        call_location: SrcSpan,
+        assignments_location: SrcSpan,
+        last_statement_location: SrcSpan,
+    },
+}
+
+/// This is used to tell apart regular call arguments and the callback that is
+/// implicitly passed to a `use` function call.
+/// Both are going to be typed as usual but we want to tell them apart in order
+/// to report better error messages for `use` expressions.
+///
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
+pub enum ArgumentKind {
+    Regular,
+    UseCallback {
+        function_location: SrcSpan,
+        assignments_location: SrcSpan,
+        last_statement_location: SrcSpan,
+    },
+}
+
 #[derive(Debug)]
 pub(crate) struct ExprTyper<'a, 'b> {
     pub(crate) environment: &'a mut Environment<'b>,
+
+    // This is set to true if the previous expression that has been typed is
+    // determined to always panic.
+    // For example when typing a literal `panic`, this flag will be set to true.
+    // The same goes, for example, if the branches of a case expression all
+    // panic.
+    pub(crate) previous_panics: bool,
+
+    // This is used to track if we've already warned for unreachable code.
+    // After emitting the first unreachable code warning we never emit another
+    // one to avoid flooding with repetitive warnings.
+    pub(crate) already_warned_for_unreachable_code: bool,
 
     pub(crate) implementations: Implementations,
     pub(crate) current_function_definition: FunctionDefinition,
 
     // Type hydrator for creating types from annotations
     pub(crate) hydrator: Hydrator,
+
+    // Accumulated errors found while typing the expression
+    pub(crate) errors: &'a mut Vec<Error>,
 }
 
 impl<'a, 'b> ExprTyper<'a, 'b> {
-    pub fn new(environment: &'a mut Environment<'b>, definition: FunctionDefinition) -> Self {
+    pub fn new(
+        environment: &'a mut Environment<'b>,
+        definition: FunctionDefinition,
+        errors: &'a mut Vec<Error>,
+    ) -> Self {
         let mut hydrator = Hydrator::new();
 
         let implementations = Implementations {
@@ -185,9 +245,12 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         hydrator.permit_holes(true);
         Self {
             hydrator,
+            previous_panics: false,
+            already_warned_for_unreachable_code: false,
             environment,
             implementations,
             current_function_definition: definition,
+            errors,
         }
     }
 
@@ -222,6 +285,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     }
 
     pub fn infer(&mut self, expr: UntypedExpr) -> Result<TypedExpr, Error> {
+        if self.previous_panics {
+            self.warn_for_unreachable_code(expr.location(), PanicPosition::PreviousExpression);
+        }
+
         match expr {
             UntypedExpr::Todo {
                 location,
@@ -293,7 +360,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 fun,
                 arguments: args,
                 ..
-            } => self.infer_call(*fun, args, location),
+            } => self.infer_call(*fun, args, location, CallKind::Function),
 
             UntypedExpr::BinOp {
                 location,
@@ -392,11 +459,31 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             }
             None => None,
         };
+        self.previous_panics = true;
         Ok(TypedExpr::Panic {
             location,
             type_,
             message,
         })
+    }
+
+    pub(crate) fn warn_for_unreachable_code(
+        &mut self,
+        location: SrcSpan,
+        panic_position: PanicPosition,
+    ) {
+        // We don't want to warn twice for unreachable code inside the same
+        // block, so we have to keep track if we've already emitted a warning of
+        // this kind.
+        if !self.already_warned_for_unreachable_code {
+            self.already_warned_for_unreachable_code = true;
+            self.environment
+                .warnings
+                .emit(Warning::UnreachableCodeAfterPanic {
+                    location,
+                    panic_position,
+                })
+        }
     }
 
     fn infer_string(&mut self, value: EcoString, location: SrcSpan) -> TypedExpr {
@@ -470,8 +557,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
             match statement {
                 Statement::Use(use_) => {
-                    let expression = self.infer_use(use_, location, untyped.collect())?;
-                    statements.push(expression);
+                    let statement = self.infer_use(use_, location, untyped.collect())?;
+                    statements.push(statement);
                     break; // Inferring the use has consumed the rest of the exprs
                 }
 
@@ -484,7 +571,6 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     if i < count {
                         self.expression_discarded(&expression);
                     }
-
                     statements.push(Statement::Expression(expression));
                 }
 
@@ -504,6 +590,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         sequence_location: SrcSpan,
         mut following_expressions: Vec<UntypedStatement>,
     ) -> Result<TypedStatement, Error> {
+        let use_call_location = use_.call.location();
         let mut call = get_use_expression_call(*use_.call)?;
         let assignments = UseAssignments::from_use_expression(use_.assignments);
 
@@ -522,6 +609,15 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
         let statements = Vec1::try_from_vec(statements).expect("safe: todo added above");
 
+        // We need this to report good error messages in case there's a type error
+        // in use. We consider `use` to be the last statement of a block since
+        // it consumes everything that comes below it and returns a single value.
+        let last_statement_location = statements
+            .iter()
+            .find_or_last(|e| e.is_use())
+            .expect("safe: iter from non empty vec")
+            .location();
+
         let first = statements.first().location();
 
         // Collect the following expressions into a function to be passed as a
@@ -529,6 +625,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let callback = UntypedExpr::Fn {
             arguments: assignments.function_arguments,
             location: SrcSpan::new(first.start, sequence_location.end),
+            end_of_head_byte_index: sequence_location.end,
             return_annotation: None,
             is_capture: false,
             body: statements,
@@ -544,11 +641,21 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             implicit: true,
         });
 
-        let call = self.infer(UntypedExpr::Call {
-            location: SrcSpan::new(use_.location.start, sequence_location.end),
-            fun: call.function,
-            arguments: call.arguments,
-        })?;
+        let call_location = SrcSpan {
+            start: use_.location.start,
+            end: sequence_location.end,
+        };
+
+        let call = self.infer_call(
+            *call.function,
+            call.arguments,
+            call_location,
+            CallKind::Use {
+                call_location: use_call_location,
+                assignments_location: use_.assignments_location,
+                last_statement_location,
+            },
+        )?;
 
         Ok(Statement::Expression(call))
     }
@@ -612,9 +719,18 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         return_annotation: Option<TypeAst>,
         location: SrcSpan,
     ) -> Result<TypedExpr, Error> {
+        let already_warned_for_unreachable_code = self.already_warned_for_unreachable_code;
+        self.already_warned_for_unreachable_code = false;
+        self.previous_panics = false;
+
         let (args, body) = self.do_infer_fn(args, expected_args, body, &return_annotation)?;
         let args_types = args.iter().map(|a| a.type_.clone()).collect();
         let typ = fn_(args_types, body.last().type_());
+
+        // Defining an anonymous function never panics.
+        self.already_warned_for_unreachable_code = already_warned_for_unreachable_code;
+        self.previous_panics = false;
+
         Ok(TypedExpr::Fn {
             location,
             typ,
@@ -663,8 +779,38 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         fun: UntypedExpr,
         args: Vec<CallArg<UntypedExpr>>,
         location: SrcSpan,
+        kind: CallKind,
     ) -> Result<TypedExpr, Error> {
-        let (fun, args, typ) = self.do_infer_call(fun, args, location)?;
+        let (fun, args, typ) = self.do_infer_call(fun, args, location, kind)?;
+
+        // One common mistake is to think that the syntax for adding a message
+        // to a `todo` or a `panic` exception is to `todo("...")`, but really
+        // this does nothing as the `todo` or `panic` throws the exception
+        // before it gets to the function call `("...")`.
+        // If we find code doing this then emit a warning.
+        let todopanic = match fun {
+            TypedExpr::Todo { .. } => Some((location, TodoOrPanic::Todo)),
+            TypedExpr::Panic { .. } => Some((location, TodoOrPanic::Panic)),
+            _ => None,
+        };
+        if let Some((location, kind)) = todopanic {
+            let args_location = match (args.first(), args.last()) {
+                (Some(first), Some(last)) => Some(SrcSpan {
+                    start: first.location().start,
+                    end: last.location().end,
+                }),
+                _ => None,
+            };
+            self.environment
+                .warnings
+                .emit(Warning::TodoOrPanicUsedAsFunction {
+                    kind,
+                    location,
+                    args_location,
+                    args: args.len(),
+                });
+        }
+
         Ok(TypedExpr::Call {
             location,
             typ,
@@ -877,7 +1023,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             .into_iter()
             .map(|s| {
                 self.infer_bit_segment(*s.value, s.options, s.location, |env, expr| {
-                    env.infer_const(&None, expr)
+                    Ok(env.infer_const(&None, expr))
                 })
             })
             .try_collect()?;
@@ -909,7 +1055,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
         let options: Vec<_> = options.into_iter().map(infer_option).try_collect()?;
 
-        let typ = crate::bit_array::type_options_for_value(&options).map_err(|error| {
+        let typ = bit_array::type_options_for_value(&options).map_err(|error| {
             Error::BitArraySegmentError {
                 error: error.error,
                 location: error.location,
@@ -1078,8 +1224,14 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         }
 
         // Do not perform exhaustiveness checking if user explicitly used `let assert ... = ...`.
-        if kind.performs_exhaustiveness_check() {
-            self.check_let_exhaustiveness(location, value.type_(), &pattern)?;
+        let exhaustiveness_check = self.check_let_exhaustiveness(location, value.type_(), &pattern);
+        match kind {
+            AssignmentKind::Let => exhaustiveness_check?,
+            AssignmentKind::Assert { location } if exhaustiveness_check.is_ok() => self
+                .environment
+                .warnings
+                .emit(Warning::RedundantAssertAssignment { location }),
+            AssignmentKind::Assert { .. } => {}
         }
 
         Ok(Assignment {
@@ -1097,17 +1249,6 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         clauses: Vec<UntypedClause>,
         location: SrcSpan,
     ) -> Result<TypedExpr, Error> {
-        subjects
-            .iter()
-            .filter(|untyped_expr| untyped_expr.is_tuple())
-            .for_each(|literal_tuple| {
-                self.environment
-                    .warnings
-                    .emit(Warning::CaseMatchOnLiteralTuple {
-                        location: literal_tuple.location(),
-                    });
-            });
-
         let subjects_count = subjects.len();
         let mut typed_subjects = Vec::with_capacity(subjects_count);
         let mut subject_types = Vec::with_capacity(subjects_count);
@@ -1115,25 +1256,36 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
         let return_type = self.new_unbound_var();
 
+        self.previous_panics = false;
+        let mut any_subject_panics = false;
         for subject in subjects {
             let subject = self.in_new_scope(|subject_typer| {
                 let subject = subject_typer.infer(subject)?;
-
                 Ok(subject)
             })?;
 
+            any_subject_panics = any_subject_panics || self.previous_panics;
             subject_types.push(subject.type_());
             typed_subjects.push(subject);
         }
 
+        let mut all_clauses_panic = true;
         for clause in clauses {
+            self.previous_panics = false;
             let typed_clause = self.infer_clause(clause, &subject_types)?;
+            all_clauses_panic = all_clauses_panic && self.previous_panics;
             unify(return_type.clone(), typed_clause.then.type_())
                 .map_err(|e| e.case_clause_mismatch().into_error(typed_clause.location()))?;
             typed_clauses.push(typed_clause);
         }
 
+        self.previous_panics = all_clauses_panic || any_subject_panics;
+
         self.check_case_exhaustiveness(location, &subject_types, &typed_clauses)?;
+        typed_subjects
+            .iter()
+            .filter_map(check_subject_for_redundant_match)
+            .for_each(|warning| self.environment.warnings.emit(warning));
 
         Ok(TypedExpr::Case {
             location,
@@ -1534,7 +1686,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             }
 
             ClauseGuard::Constant(constant) => {
-                self.infer_const(&None, constant).map(ClauseGuard::Constant)
+                Ok(ClauseGuard::Constant(self.infer_const(&None, constant)))
             }
         }
     }
@@ -1637,6 +1789,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         },
                         module_name: module.name.clone(),
                         value_constructors: module.public_value_names(),
+                        type_with_same_name: false,
                     })?;
 
             // Emit a warning if the value being used is deprecated.
@@ -1968,6 +2121,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         module_name: module_name.clone(),
                         name: name.clone(),
                         value_constructors: module.public_value_names(),
+                        type_with_same_name: false,
                     })?
             }
         };
@@ -2000,14 +2154,9 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         })
     }
 
-    // TODO: extract the type annotation checking into a crate::analyse::infer_module_const
-    // function that uses this function internally
-    pub fn infer_const(
-        &mut self,
-        annotation: &Option<TypeAst>,
-        value: UntypedConstant,
-    ) -> Result<TypedConstant, Error> {
-        let inferred = match value {
+    // helper for infer_const to get the value of a constant ignoring annotations
+    fn infer_const_value(&mut self, value: UntypedConstant) -> Result<TypedConstant, Error> {
+        match value {
             Constant::Int {
                 location, value, ..
             } => Ok(Constant::Int { location, value }),
@@ -2169,8 +2318,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 }
 
                 let (mut args_types, return_type) =
-                    match_fun_type(fun.type_(), args.len(), self.environment)
-                        .map_err(|e| convert_not_fun_error(e, fun.location(), location))?;
+                    match_fun_type(fun.type_(), args.len(), self.environment).map_err(|e| {
+                        convert_not_fun_error(e, fun.location(), location, CallKind::Function)
+                    })?;
+
                 let args = args_types
                     .iter_mut()
                     .zip(args)
@@ -2181,7 +2332,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                             location,
                             implicit,
                         } = arg;
-                        let value = self.infer_const(&None, value)?;
+                        let value = self.infer_const(&None, value);
                         unify(typ.clone(), value.type_())
                             .map_err(|e| convert_unify_error(e, value.location()))?;
                         Ok(CallArg {
@@ -2234,16 +2385,72 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     ValueConstructorVariant::Record { .. } => unreachable!(),
                 }
             }
-        }?;
 
-        // Check type annotation is accurate.
-        if let Some(ann) = annotation {
-            let const_ann = self.type_from_ast(ann)?;
-            unify(const_ann, inferred.type_())
-                .map_err(|e| convert_unify_error(e, inferred.location()))?;
-        };
+            Constant::Invalid { .. } => panic!("invalid constants can not be in an untyped ast"),
+        }
+    }
 
-        Ok(inferred)
+    pub fn infer_const(
+        &mut self,
+        annotation: &Option<TypeAst>,
+        value: UntypedConstant,
+    ) -> TypedConstant {
+        let loc = value.location();
+        let inferred = self.infer_const_value(value);
+
+        // Get the type of the annotation if it exists and validate it against the inferred value.
+        let annotation = annotation.as_ref().map(|a| self.type_from_ast(a));
+        match (annotation, inferred) {
+            // No annotation and valid inferred value.
+            (None, Ok(inferred)) => inferred,
+            // No annotation and invalid inferred value. Use an unbound variable hole.
+            (None, Err(e)) => {
+                self.errors.push(e);
+                Constant::Invalid {
+                    location: loc,
+                    typ: self.new_unbound_var(),
+                }
+            }
+            // Type annotation and inferred value are valid. Ensure they are unifiable.
+            // NOTE: if the types are not unifiable we use the annotated type.
+            (Some(Ok(const_ann)), Ok(inferred)) => {
+                if let Err(e) = unify(const_ann.clone(), inferred.type_())
+                    .map_err(|e| convert_unify_error(e, inferred.location()))
+                {
+                    self.errors.push(e);
+                    Constant::Invalid {
+                        location: loc,
+                        typ: const_ann,
+                    }
+                } else {
+                    inferred
+                }
+            }
+            // Type annotation is valid but not the inferred value. Place a placeholder constant with the annotation type.
+            // This should limit the errors to only the definition.
+            (Some(Ok(const_ann)), Err(value_err)) => {
+                self.errors.push(value_err);
+                Constant::Invalid {
+                    location: loc,
+                    typ: const_ann,
+                }
+            }
+            // Type annotation is invalid but the inferred value is ok. Use the inferred type.
+            (Some(Err(annotation_err)), Ok(inferred)) => {
+                self.errors.push(annotation_err);
+                inferred
+            }
+            // Type annotation and inferred value are invalid. Place a placeholder constant with an unbound type.
+            // This should limit the errors to only the definition assuming the constant is used consistently.
+            (Some(Err(annotation_err)), Err(value_err)) => {
+                self.errors.push(annotation_err);
+                self.errors.push(value_err);
+                Constant::Invalid {
+                    location: loc,
+                    typ: self.new_unbound_var(),
+                }
+            }
+        }
     }
 
     fn infer_const_tuple(
@@ -2254,7 +2461,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let mut elements = Vec::with_capacity(untyped_elements.len());
 
         for element in untyped_elements {
-            let element = self.infer_const(&None, element)?;
+            let element = self.infer_const(&None, element);
             elements.push(element);
         }
 
@@ -2270,7 +2477,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let mut elements = Vec::with_capacity(untyped_elements.len());
 
         for element in untyped_elements {
-            let element = self.infer_const(&None, element)?;
+            let element = self.infer_const(&None, element);
             unify(typ.clone(), element.type_())
                 .map_err(|e| convert_unify_error(e, element.location()))?;
             elements.push(element);
@@ -2310,6 +2517,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         fun: UntypedExpr,
         args: Vec<CallArg<UntypedExpr>>,
         location: SrcSpan,
+        kind: CallKind,
     ) -> Result<(TypedExpr, Vec<TypedCallArg>, Arc<Type>), Error> {
         let fun = match fun {
             UntypedExpr::FieldAccess {
@@ -2327,7 +2535,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             fun => self.infer(fun),
         }?;
 
-        let (fun, args, typ) = self.do_infer_call_with_known_fun(fun, args, location)?;
+        let (fun, args, typ) = self.do_infer_call_with_known_fun(fun, args, location, kind)?;
         Ok((fun, args, typ))
     }
 
@@ -2336,6 +2544,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         fun: TypedExpr,
         mut args: Vec<CallArg<UntypedExpr>>,
         location: SrcSpan,
+        kind: CallKind,
     ) -> Result<(TypedExpr, Vec<TypedCallArg>, Arc<Type>), Error> {
         // Check to see if the function accepts labelled arguments
         match self
@@ -2352,20 +2561,57 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         // Extract the type of the fun, ensuring it actually is a function
         let (mut args_types, return_type) =
             match_fun_type(fun.type_(), args.len(), self.environment)
-                .map_err(|e| convert_not_fun_error(e, fun.location(), location))?;
+                .map_err(|e| convert_not_fun_error(e, fun.location(), location, kind))?;
+
+        // When typing the function's arguments we don't care if the previous
+        // expression panics or not because we want to provide a specialised
+        // error message for this particular case.
+        // So we set `previous_panics` to false to avoid raising any
+        // unnecessarily generic warning.
+        self.previous_panics = false;
 
         // Ensure that the given args have the correct types
+        let args_count = args_types.len();
         let args = args_types
             .iter_mut()
             .zip(args)
-            .map(|(typ, arg): (&mut Arc<Type>, _)| {
+            .enumerate()
+            .map(|(i, (typ, arg))| {
                 let CallArg {
                     label,
                     value,
                     location,
                     implicit,
                 } = arg;
-                let value = self.infer_call_argument(value, typ.clone())?;
+
+                // If we're typing a `use` call then the last argument is the
+                // use callback and we want to treat it differently to report
+                // better errors.
+                let argument_kind = match kind {
+                    CallKind::Use {
+                        call_location,
+                        last_statement_location,
+                        assignments_location,
+                    } if i == args_count - 1 => ArgumentKind::UseCallback {
+                        function_location: call_location,
+                        assignments_location,
+                        last_statement_location,
+                    },
+                    CallKind::Use { .. } | CallKind::Function => ArgumentKind::Regular,
+                };
+
+                // We don't want to emit a warning for unreachable function call if the
+                // function being called is itself `panic`, for that we emit a more
+                // specialised warning.
+                if self.previous_panics && !fun.is_panic() {
+                    self.warn_for_unreachable_code(
+                        value.location(),
+                        PanicPosition::PreviousFunctionArgument,
+                    )
+                }
+
+                let value = self.infer_call_argument(value, typ.clone(), argument_kind)?;
+
                 Ok(CallArg {
                     label,
                     value,
@@ -2374,6 +2620,14 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 })
             })
             .try_collect()?;
+
+        // We don't want to emit a warning for unreachable function call if the
+        // function being called is itself `panic`, for that we emit a more
+        // specialised warning.
+        if self.previous_panics && !fun.is_panic() {
+            self.warn_for_unreachable_code(fun.location(), PanicPosition::LastFunctionArgument);
+        }
+
         Ok((fun, args, return_type))
     }
 
@@ -2381,6 +2635,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         &mut self,
         value: UntypedExpr,
         typ: Arc<Type>,
+        kind: ArgumentKind,
     ) -> Result<TypedExpr, Error> {
         let typ = collapse_links(typ);
 
@@ -2418,7 +2673,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             (_, value) => self.infer(value),
         }?;
 
-        unify(typ, value.type_()).map_err(|e| convert_unify_error(e, value.location()))?;
+        unify(typ, value.type_())
+            .map_err(|e| convert_unify_call_error(e, value.location(), kind))?;
         Ok(value)
     }
 
@@ -2623,6 +2879,46 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         }
 
         Ok(())
+    }
+}
+
+fn check_subject_for_redundant_match(subject: &TypedExpr) -> Option<Warning> {
+    match subject {
+        TypedExpr::Tuple { elems, .. } if !elems.is_empty() => {
+            Some(Warning::CaseMatchOnLiteralCollection {
+                kind: LiteralCollectionKind::Tuple,
+                location: subject.location(),
+            })
+        }
+
+        TypedExpr::List { elements, tail, .. } if !elements.is_empty() || tail.is_some() => {
+            Some(Warning::CaseMatchOnLiteralCollection {
+                kind: LiteralCollectionKind::List,
+                location: subject.location(),
+            })
+        }
+
+        TypedExpr::BitArray { segments, .. } if !segments.is_empty() => {
+            // We don't want a warning when matching on literal bit arrays
+            // because it can make sense to do it; for example if one is
+            // matching on segments that do not align with the segments used
+            // for construction.
+            None
+        }
+
+        _ => match subject.record_constructor_arity() {
+            Some(0) => Some(Warning::CaseMatchOnLiteralValue {
+                location: subject.location(),
+            }),
+            Some(_) => Some(Warning::CaseMatchOnLiteralCollection {
+                kind: LiteralCollectionKind::Record,
+                location: subject.location(),
+            }),
+            None if subject.is_literal() => Some(Warning::CaseMatchOnLiteralValue {
+                location: subject.location(),
+            }),
+            None => None,
+        },
     }
 }
 

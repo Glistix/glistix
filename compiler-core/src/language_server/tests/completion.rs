@@ -963,7 +963,7 @@ pub fn main() {
                     },
                     end: Position {
                         line: 0,
-                        character: 11
+                        character: 10
                     }
                 },
                 new_text: "gleam".into()
@@ -1041,7 +1041,7 @@ pub fn test_helper() {
                         },
                         end: Position {
                             line: 0,
-                            character: 13
+                            character: 12
                         }
                     },
                     new_text: "app".into()
@@ -1059,7 +1059,7 @@ pub fn test_helper() {
                         },
                         end: Position {
                             line: 0,
-                            character: 13
+                            character: 12
                         }
                     },
                     new_text: "test_helper".into()
@@ -1099,7 +1099,7 @@ pub fn main() { 1 }
                     },
                     end: Position {
                         line: 0,
-                        character: 13
+                        character: 12
                     }
                 },
                 new_text: "dep".into()
@@ -1134,7 +1134,7 @@ pub fn main() {
                     },
                     end: Position {
                         line: 0,
-                        character: 13
+                        character: 12
                     }
                 },
                 new_text: "example_module".into()
@@ -1171,7 +1171,7 @@ pub fn main() {
                     },
                     end: Position {
                         line: 0,
-                        character: 13
+                        character: 12
                     }
                 },
                 new_text: "example_module".into()
@@ -1208,7 +1208,7 @@ pub fn main() {
                     },
                     end: Position {
                         line: 0,
-                        character: 13
+                        character: 12
                     }
                 },
                 new_text: "example_module".into()
@@ -1258,7 +1258,7 @@ pub fn main() {
                         },
                         end: Position {
                             line: 0,
-                            character: 13
+                            character: 12
                         }
                     },
                     new_text: "app".into()
@@ -1276,7 +1276,7 @@ pub fn main() {
                         },
                         end: Position {
                             line: 0,
-                            character: 13
+                            character: 12
                         }
                     },
                     new_text: "example_module".into()
@@ -1294,7 +1294,7 @@ pub fn main() {
                         },
                         end: Position {
                             line: 0,
-                            character: 13
+                            character: 12
                         }
                     },
                     new_text: "indirect_module".into()
@@ -1337,7 +1337,7 @@ pub fn main() { 1 }
                     },
                     end: Position {
                         line: 3,
-                        character: 13
+                        character: 12
                     }
                 },
                 new_text: "example_module".into()
@@ -1372,7 +1372,7 @@ pub fn main() {
                     },
                     end: Position {
                         line: 0,
-                        character: 13
+                        character: 12
                     }
                 },
                 new_text: "dep".into()
@@ -1407,7 +1407,7 @@ pub fn main() {
                     },
                     end: Position {
                         line: 0,
-                        character: 14
+                        character: 13
                     }
                 },
                 new_text: "dep".into()
@@ -1446,12 +1446,210 @@ pub fn main() {
                     },
                     end: Position {
                         line: 0,
-                        character: 13
+                        character: 12
                     }
                 },
                 new_text: internal_name.clone(),
             })),
             ..Default::default()
         },]
+    );
+}
+
+#[test]
+fn completions_for_an_unqualified_import() {
+    let code = "
+import dep.{}
+
+pub fn main() {
+  0
+}";
+    let dep = "pub const wibble = \"wibble\"
+const wobble = \"wobble\"
+@internal
+pub const wabble = \"wabble\"
+
+pub fn myfun() {
+    0
+}
+
+pub type Wibble = String
+";
+
+    assert_eq!(
+        completion(
+            TestProject::for_source(code).add_module("dep", dep),
+            Position::new(1, 12)
+        ),
+        vec![
+            CompletionItem {
+                label: "Wibble".into(),
+                kind: Some(CompletionItemKind::CLASS),
+                detail: Some("Type".into()),
+                insert_text: Some("type Wibble".into()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "myfun".into(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some("fn() -> Int".into()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "wabble".into(),
+                kind: Some(CompletionItemKind::CONSTANT),
+                detail: Some("String".into()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "wibble".into(),
+                kind: Some(CompletionItemKind::CONSTANT),
+                detail: Some("String".into()),
+                ..Default::default()
+            },
+        ]
+    );
+}
+
+#[test]
+fn completions_for_an_unqualified_import_on_new_line() {
+    let code = "
+import dep.{
+  wibble,
+
+}
+
+pub fn main() {
+  0
+}";
+    let dep = "pub const wibble = \"wibble\"
+
+pub fn myfun() {
+    0
+}
+
+pub type Wibble = String
+";
+
+    assert_eq!(
+        completion(
+            TestProject::for_source(code).add_module("dep", dep),
+            // putting cursor at beginning of line because some formatters
+            // remove the empty whitespace in the test code.
+            // Does also work with (3, 2) when empty spaces are not removed.
+            Position::new(3, 0)
+        ),
+        vec![
+            CompletionItem {
+                label: "Wibble".into(),
+                kind: Some(CompletionItemKind::CLASS),
+                detail: Some("Type".into()),
+                insert_text: Some("type Wibble".into()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "myfun".into(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some("fn() -> Int".into()),
+                ..Default::default()
+            },
+        ]
+    );
+}
+
+#[test]
+fn completions_for_an_unqualified_import_already_imported() {
+    let code = "
+import dep.{wibble,wabble,type Wibble}
+
+pub fn main() {
+  0
+}";
+    let dep = "pub const wibble = \"wibble\"
+const wobble = \"wobble\"
+@internal
+pub const wabble = \"wabble\"
+
+pub fn myfun() {
+    0
+}
+
+pub type Wibble = String
+";
+
+    assert_eq!(
+        completion(
+            TestProject::for_source(code).add_module("dep", dep),
+            Position::new(1, 12)
+        ),
+        vec![CompletionItem {
+            label: "myfun".into(),
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some("fn() -> Int".into()),
+            ..Default::default()
+        },]
+    );
+}
+
+#[test]
+fn completions_for_a_function_arg_annotation() {
+    let code = "
+pub fn wibble(
+  _: String,
+) -> Nil {
+  Nil
+}
+";
+
+    assert_eq!(
+        completion(TestProject::for_source(code), Position::new(2, 11)),
+        prelude_type_completions(),
+    );
+}
+
+#[test]
+fn completions_for_a_function_return_annotation() {
+    let code = "
+pub fn wibble(
+  _: String,
+) -> Nil {
+  Nil
+}
+";
+
+    assert_eq!(
+        completion(TestProject::for_source(code), Position::new(3, 7)),
+        prelude_type_completions(),
+    );
+}
+
+#[test]
+fn completions_for_a_var_annotation() {
+    let code = "
+pub fn main() {
+  let wibble: Int = 7
+}
+";
+
+    assert_eq!(
+        completion(TestProject::for_source(code), Position::new(2, 16)),
+        prelude_type_completions(),
+    );
+}
+
+#[test]
+fn completions_for_a_const_annotation() {
+    let code = "
+
+const wibble: Int = 7
+
+pub fn main() {
+  let wibble: Int = 7
+}
+";
+
+    assert_eq!(
+        completion(TestProject::for_source(code), Position::new(2, 16)),
+        prelude_type_completions(),
     );
 }

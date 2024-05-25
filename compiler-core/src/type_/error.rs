@@ -12,7 +12,10 @@ use ecow::EcoString;
 #[cfg(test)]
 use pretty_assertions::assert_eq;
 
-use super::FieldAccessUsage;
+use super::{
+    expression::{ArgumentKind, CallKind},
+    FieldAccessUsage,
+};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct UnknownType {
@@ -69,6 +72,7 @@ pub enum Error {
         name: EcoString,
         module_name: EcoString,
         type_constructors: Vec<EcoString>,
+        value_with_same_name: bool,
     },
 
     UnknownModuleValue {
@@ -76,14 +80,7 @@ pub enum Error {
         name: EcoString,
         module_name: EcoString,
         value_constructors: Vec<EcoString>,
-    },
-
-    UnknownModuleField {
-        location: SrcSpan,
-        name: EcoString,
-        module_name: EcoString,
-        value_constructors: Vec<EcoString>,
-        type_constructors: Vec<EcoString>,
+        type_with_same_name: bool,
     },
 
     NotFn {
@@ -386,6 +383,61 @@ pub enum Error {
         name: EcoString,
         location: SrcSpan,
     },
+
+    /// When there's something that is not a function to the left of the `<-`
+    /// operator in a use expression:
+    ///
+    /// For example:
+    ///
+    /// ```gleam
+    /// use <- "wibble"
+    /// todo
+    /// ```
+    NotFnInUse {
+        location: SrcSpan,
+        typ: Arc<Type>,
+    },
+
+    /// When the function to the right hand side of `<-` in a `use` expression
+    /// is called with the wrong number of arguments (given already takes into
+    /// account the use callback passed to the function).
+    ///
+    UseFnIncorrectArity {
+        location: SrcSpan,
+        expected: usize,
+        given: usize,
+    },
+
+    /// When on the left hand side of `<-` in a `use` expression there is the
+    /// wrong number of patterns.
+    ///
+    /// For example:
+    ///
+    /// ```gleam
+    /// use _, _ <- result.try(res)
+    /// todo
+    /// ```
+    ///
+    UseCallbackIncorrectArity {
+        call_location: SrcSpan,
+        pattern_location: SrcSpan,
+        expected: usize,
+        given: usize,
+    },
+
+    /// When on the right hand side of use there is a function that doesn't take
+    /// a callback function as its last argument.
+    ///
+    /// For example:
+    ///
+    /// ```gleam
+    /// use <- io.println
+    /// ```
+    ///
+    UseFnDoesntTakeCallback {
+        location: SrcSpan,
+        actual_type: Option<Type>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -404,6 +456,13 @@ pub enum PatternMatchKind {
 pub enum EmptyListCheckKind {
     Empty,
     NonEmpty,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiteralCollectionKind {
+    List,
+    Tuple,
+    Record,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -507,19 +566,39 @@ pub enum Warning {
     },
 
     /// This happens when someone tries to write a case expression where one of
-    /// the subjects is a literal tuple, for example:
+    /// the subjects is a literal tuple, list or bit array for example:
     ///
     /// ```gleam
     /// case #(wibble, wobble) { ... }
     /// ```
     ///
-    /// The tuple is redundant since we could do this:
+    /// Matching on a literal collection of elements is redundant since we can
+    /// always pass the single items it's made of separated by a comma:
     ///
     /// ```gleam
     /// case wibble, wobble { ... }
     /// ```
     ///
-    CaseMatchOnLiteralTuple {
+    CaseMatchOnLiteralCollection {
+        kind: LiteralCollectionKind,
+        location: SrcSpan,
+    },
+
+    /// This happens if someone tries to match on some kind of literal value
+    /// like an Int, a String, an empty List etc.
+    ///
+    /// ```gleam
+    /// case #() { ... }
+    /// ```
+    ///
+    /// The whole match becomes redundant since one can already tell beforehand
+    /// the structure of the value being matched.
+    ///
+    /// Note: for non-empty literal collection of values we want to provide a
+    ///       better error message that suggests to drop the wrapper, for that
+    ///       we have the `CaseMatchOnLiteralCollection` variant.
+    ///
+    CaseMatchOnLiteralValue {
         location: SrcSpan,
     },
 
@@ -553,9 +632,122 @@ pub enum Warning {
         location: SrcSpan,
         leaked: Type,
     },
+
+    RedundantAssertAssignment {
+        location: SrcSpan,
+    },
+
+    /// When a `todo` or `panic` is used as a function instead of providing the
+    /// error message with the `as` syntax.
+    ///
+    /// ```gleam
+    /// todo("this won't appear in the error message")
+    /// ```
+    ///
+    TodoOrPanicUsedAsFunction {
+        kind: TodoOrPanic,
+        location: SrcSpan,
+        args_location: Option<SrcSpan>,
+        args: usize,
+    },
+
+    UnreachableCodeAfterPanic {
+        location: SrcSpan,
+        panic_position: PanicPosition,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+
+pub enum PanicPosition {
+    /// When the unreachable part is a function argument, this means that one
+    /// of the previous arguments must be a panic.
+    PreviousFunctionArgument,
+
+    /// When the unreachable part is a function call, this means that its last
+    /// argument must be a panic.
+    LastFunctionArgument,
+
+    /// Any expression that doesn't fall in the previous two categories
+    PreviousExpression,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+pub enum TodoOrPanic {
+    Todo,
+    Panic,
 }
 
 impl Error {
+    // Location where the error started
+    pub fn start_location(&self) -> u32 {
+        match self {
+            Error::SrcImportingTest { location, .. }
+            | Error::BitArraySegmentError { location, .. }
+            | Error::UnknownVariable { location, .. }
+            | Error::UnknownType { location, .. }
+            | Error::UnknownModule { location, .. }
+            | Error::UnknownModuleType { location, .. }
+            | Error::UnknownModuleValue { location, .. }
+            | Error::NotFn { location, .. }
+            | Error::UnknownRecordField { location, .. }
+            | Error::IncorrectArity { location, .. }
+            | Error::UpdateMultiConstructorType { location, .. }
+            | Error::UnnecessarySpreadOperator { location, .. }
+            | Error::IncorrectTypeArity { location, .. }
+            | Error::CouldNotUnify { location, .. }
+            | Error::RecursiveType { location, .. }
+            | Error::DuplicateName {
+                location_a: location,
+                ..
+            }
+            | Error::DuplicateImport { location, .. }
+            | Error::DuplicateTypeName { location, .. }
+            | Error::DuplicateArgument { location, .. }
+            | Error::DuplicateField { location, .. }
+            | Error::PrivateTypeLeak { location, .. }
+            | Error::UnexpectedLabelledArg { location, .. }
+            | Error::PositionalArgumentAfterLabelled { location, .. }
+            | Error::IncorrectNumClausePatterns { location, .. }
+            | Error::NonLocalClauseGuardVariable { location, .. }
+            | Error::ExtraVarInAlternativePattern { location, .. }
+            | Error::MissingVarInAlternativePattern { location, .. }
+            | Error::DuplicateVarInPattern { location, .. }
+            | Error::OutOfBoundsTupleIndex { location, .. }
+            | Error::NotATuple { location, .. }
+            | Error::NotATupleUnbound { location, .. }
+            | Error::RecordAccessUnknownType { location, .. }
+            | Error::RecordUpdateInvalidConstructor { location, .. }
+            | Error::UnexpectedTypeHole { location, .. }
+            | Error::NotExhaustivePatternMatch { location, .. }
+            | Error::ArgumentNameAlreadyUsed { location, .. }
+            | Error::UnlabelledAfterlabelled { location, .. }
+            | Error::RecursiveTypeAlias { location, .. }
+            | Error::ExternalMissingAnnotation { location, .. }
+            | Error::NoImplementation { location, .. }
+            | Error::UnsupportedExpressionTarget { location, .. }
+            | Error::InvalidExternalJavascriptModule { location, .. }
+            | Error::InvalidExternalJavascriptFunction { location, .. }
+            | Error::InexhaustiveCaseExpression { location, .. }
+            | Error::InexhaustiveLetAssignment { location, .. }
+            | Error::UnusedTypeAliasParameter { location, .. }
+            | Error::DuplicateTypeParameter { location, .. }
+            | Error::UnsupportedPublicFunctionTarget { location, .. }
+            | Error::NotFnInUse { location, .. }
+            | Error::UseCallbackIncorrectArity {
+                pattern_location: location,
+                ..
+            }
+            | Error::UseFnDoesntTakeCallback { location, .. }
+            | Error::UseFnIncorrectArity { location, .. } => location.start,
+            Error::UnknownLabels { unknown, .. } => {
+                unknown.iter().map(|(_, s)| s.start).min().unwrap_or(0)
+            }
+            Error::ReservedModuleName { .. } => 0,
+            Error::KeywordInModuleName { .. } => 0,
+        }
+    }
+
     pub fn with_unify_error_situation(mut self, new_situation: UnifyErrorSituation) -> Self {
         match self {
             Error::CouldNotUnify {
@@ -609,6 +801,7 @@ pub enum UnknownValueConstructorError {
         name: EcoString,
         module_name: EcoString,
         value_constructors: Vec<EcoString>,
+        imported_value_as_type: bool,
     },
 }
 
@@ -641,11 +834,13 @@ pub fn convert_get_value_constructor_error(
             name,
             module_name,
             value_constructors,
+            imported_value_as_type,
         } => Error::UnknownModuleValue {
             location,
             name,
             module_name,
             value_constructors,
+            type_with_same_name: imported_value_as_type,
         },
     }
 }
@@ -672,6 +867,7 @@ pub enum UnknownTypeConstructorError {
         name: EcoString,
         module_name: EcoString,
         type_constructors: Vec<EcoString>,
+        imported_type_as_value: bool,
     },
 }
 
@@ -699,11 +895,13 @@ pub fn convert_get_type_constructor_error(
             name,
             module_name,
             type_constructors,
+            imported_type_as_value,
         } => Error::UnknownModuleType {
             location: *location,
             name,
             module_name,
             type_constructors,
+            value_with_same_name: imported_type_as_value,
         },
     }
 }
@@ -718,19 +916,38 @@ pub fn convert_not_fun_error(
     e: MatchFunTypeError,
     fn_location: SrcSpan,
     call_location: SrcSpan,
+    call_kind: CallKind,
 ) -> Error {
-    match e {
-        MatchFunTypeError::IncorrectArity { expected, given } => Error::IncorrectArity {
-            labels: vec![],
+    match (call_kind, e) {
+        (CallKind::Function, MatchFunTypeError::IncorrectArity { expected, given }) => {
+            Error::IncorrectArity {
+                labels: vec![],
+                location: call_location,
+                expected,
+                given,
+            }
+        }
+
+        (CallKind::Function, MatchFunTypeError::NotFn { typ }) => Error::NotFn {
+            location: fn_location,
+            typ,
+        },
+
+        (
+            CallKind::Use { call_location, .. },
+            MatchFunTypeError::IncorrectArity { expected, given },
+        ) => Error::UseFnIncorrectArity {
             location: call_location,
             expected,
             given,
         },
 
-        MatchFunTypeError::NotFn { typ } => Error::NotFn {
-            location: fn_location,
-            typ,
-        },
+        (CallKind::Use { call_location, .. }, MatchFunTypeError::NotFn { typ }) => {
+            Error::NotFnInUse {
+                location: call_location,
+                typ,
+            }
+        }
     }
 }
 
@@ -804,7 +1021,63 @@ fn unify_enclosed_type_test() {
     );
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub fn unify_wrong_arity(
+    t1: &Arc<Type>,
+    arity1: usize,
+    t2: &Arc<Type>,
+    arity2: usize,
+) -> UnifyError {
+    UnifyError::CouldNotUnify {
+        expected: t1.clone(),
+        given: t2.clone(),
+        situation: Some(UnifyErrorSituation::FunctionsMismatch {
+            reason: FunctionsMismatchReason::Arity {
+                expected: arity1,
+                given: arity2,
+            },
+        }),
+    }
+}
+
+pub fn unify_wrong_arguments(
+    expected: &Arc<Type>,
+    expected_arg: &Arc<Type>,
+    given: &Arc<Type>,
+    given_arg: &Arc<Type>,
+    position: usize,
+) -> UnifyError {
+    UnifyError::CouldNotUnify {
+        expected: expected.clone(),
+        given: given.clone(),
+        situation: Some(UnifyErrorSituation::FunctionsMismatch {
+            reason: FunctionsMismatchReason::Argument {
+                expected: expected_arg.clone(),
+                given: given_arg.clone(),
+                position,
+            },
+        }),
+    }
+}
+
+pub fn unify_wrong_returns(
+    expected: &Arc<Type>,
+    expected_return: &Arc<Type>,
+    given: &Arc<Type>,
+    given_return: &Arc<Type>,
+) -> UnifyError {
+    UnifyError::CouldNotUnify {
+        expected: expected.clone(),
+        given: given.clone(),
+        situation: Some(UnifyErrorSituation::FunctionsMismatch {
+            reason: FunctionsMismatchReason::Results {
+                expected: expected_return.clone(),
+                given: given_return.clone(),
+            },
+        }),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnifyErrorSituation {
     /// Clauses in a case expression were found to return different types.
     CaseClauseMismatch,
@@ -829,6 +1102,28 @@ pub enum UnifyErrorSituation {
 
     /// The tail of the list is not the same type as the other elements.
     ListTailMismatch,
+
+    /// When two functions cannot be unified.
+    FunctionsMismatch {
+        reason: FunctionsMismatchReason,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FunctionsMismatchReason {
+    Results {
+        expected: Arc<Type>,
+        given: Arc<Type>,
+    },
+    Arity {
+        expected: usize,
+        given: usize,
+    },
+    Argument {
+        expected: Arc<Type>,
+        given: Arc<Type>,
+        position: usize,
+    },
 }
 
 impl UnifyErrorSituation {
@@ -867,6 +1162,8 @@ match the one before it.",
                 "All elements in a list must have the same type, but the elements of
 this list don't match the type of the elements being prepended to it.",
             ),
+
+            Self::FunctionsMismatch { .. } => None,
         }
     }
 }
@@ -963,8 +1260,82 @@ impl UnifyError {
             Self::RecursiveType => Error::RecursiveType { location },
         }
     }
+
+    pub fn into_use_unify_error(
+        self,
+        function_location: SrcSpan,
+        pattern_location: SrcSpan,
+        last_statement_location: SrcSpan,
+        body_location: SrcSpan,
+    ) -> Error {
+        match &self {
+            // If the expected value is not a function, that means we're trying
+            // to pass something that doesn't take a function as callback to the
+            // right hand side of use.
+            Self::CouldNotUnify {
+                expected,
+                given: _,
+                situation: _,
+            } if !expected.as_ref().is_fun() => Error::UseFnDoesntTakeCallback {
+                location: function_location,
+                actual_type: Some(expected.as_ref().clone()),
+            },
+
+            Self::CouldNotUnify {
+                situation: Some(UnifyErrorSituation::FunctionsMismatch { reason }),
+                ..
+            } => match reason {
+                // If both the expected and given values are functions we can be a
+                // bit more specific with the error and highlight the reason of the
+                // problem instead of having a generic type mismatch error.
+                FunctionsMismatchReason::Results {
+                    expected: one,
+                    given: other,
+                } => Error::CouldNotUnify {
+                    location: last_statement_location,
+                    expected: one.clone(),
+                    given: other.clone(),
+                    situation: None,
+                    rigid_type_names: im::hashmap![],
+                },
+
+                FunctionsMismatchReason::Arity {
+                    expected: one,
+                    given: other,
+                } => Error::UseCallbackIncorrectArity {
+                    call_location: function_location,
+                    pattern_location,
+                    expected: *one,
+                    given: *other,
+                },
+
+                // For this one we just fallback to the generic cannot unify error
+                // as it is already plenty clear in a `use` expression.
+                FunctionsMismatchReason::Argument { .. } => self.into_error(body_location),
+            },
+
+            // In all other cases we fallback to the generic cannot unify error.
+            _ => self.into_error(body_location),
+        }
+    }
 }
 
 pub fn convert_unify_error(e: UnifyError, location: SrcSpan) -> Error {
     e.into_error(location)
+}
+
+pub fn convert_unify_call_error(e: UnifyError, location: SrcSpan, kind: ArgumentKind) -> Error {
+    match kind {
+        ArgumentKind::UseCallback {
+            function_location,
+            assignments_location,
+            last_statement_location,
+        } => e.into_use_unify_error(
+            function_location,
+            assignments_location,
+            last_statement_location,
+            location,
+        ),
+        ArgumentKind::Regular => convert_unify_error(e, location),
+    }
 }

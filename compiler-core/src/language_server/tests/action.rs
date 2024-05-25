@@ -1,4 +1,6 @@
-use crate::line_numbers::LineNumbers;
+use std::assert_eq;
+
+use crate::{language_server::engine, line_numbers::LineNumbers};
 use lsp_types::{
     CodeActionContext, CodeActionParams, PartialResultParams, Position, Range,
     TextDocumentIdentifier, Url, WorkDoneProgressParams, WorkspaceEdit,
@@ -6,7 +8,16 @@ use lsp_types::{
 
 use super::*;
 
-fn remove_unused_action(src: &str, line: u32) -> String {
+const TEST_FILE_PATH: &str = match cfg!(target_family = "windows") {
+    true => r"\\?\C:\src\app.gleam",
+    false => "/src/app.gleam",
+};
+
+fn test_file_url() -> Url {
+    Url::from_file_path(Utf8PathBuf::from(TEST_FILE_PATH)).expect("file path is valid url")
+}
+
+fn engine_response(src: &str, line: u32) -> engine::Response<Option<Vec<lsp_types::CodeAction>>> {
     let io = LanguageServerTestIO::new();
     let mut engine = setup_engine(&io);
 
@@ -22,17 +33,8 @@ fn remove_unused_action(src: &str, line: u32) -> String {
     _ = io.src_module("app", src);
     engine.compile_please().result.expect("compiled");
 
-    // create the code action request
-    let path = Utf8PathBuf::from(if cfg!(target_family = "windows") {
-        r"\\?\C:\src\app.gleam"
-    } else {
-        "/src/app.gleam"
-    });
-
-    let url = Url::from_file_path(path).unwrap();
-
     let params = CodeActionParams {
-        text_document: TextDocumentIdentifier::new(url.clone()),
+        text_document: TextDocumentIdentifier::new(test_file_url()),
         context: CodeActionContext {
             diagnostics: vec![],
             only: None,
@@ -47,14 +49,19 @@ fn remove_unused_action(src: &str, line: u32) -> String {
         },
     };
 
-    // find the remove unused action response
-    let response = engine.action(params).result.unwrap().and_then(|actions| {
-        actions
-            .into_iter()
-            .find(|action| action.title == "Remove unused imports")
-    });
+    engine.action(params)
+}
+
+const REMOVE_UNUSED_IMPORTS_TITLE: &str = "Remove unused imports";
+const REMOVE_REDUNDANT_TUPLES: &str = "Remove redundant tuples";
+
+fn apply_first_code_action_with_title(src: &str, line: u32, title: &str) -> String {
+    let response = engine_response(src, line)
+        .result
+        .unwrap()
+        .and_then(|actions| actions.into_iter().find(|action| action.title == title));
     if let Some(action) = response {
-        apply_code_action(src, &url, &action)
+        apply_code_action(src, &test_file_url(), &action)
     } else {
         panic!("No code action produced by the engine")
     }
@@ -89,7 +96,7 @@ fn apply_code_edit(
             let end =
                 line_numbers.byte_index(edit.range.end.line, edit.range.end.character) - offset;
             let range = (start as usize)..(end as usize);
-            offset += end - start;
+            offset += end - start - edit.new_text.len() as u32;
             result.replace_range(range, &edit.new_text);
         }
     }
@@ -111,15 +118,37 @@ pub fn main() {
 ";
     let expected = "
 // test
-
 import result
-
 
 pub fn main() {
   result.is_ok
 }
 ";
-    assert_eq!(remove_unused_action(code, 2), expected.to_string())
+    assert_eq!(
+        apply_first_code_action_with_title(code, 2, REMOVE_UNUSED_IMPORTS_TITLE),
+        expected.to_string()
+    )
+}
+
+#[test]
+fn test_remove_unused_start_of_file() {
+    let code = "import option
+import result
+
+pub fn main() {
+  result.is_ok
+}
+";
+    let expected = "import result
+
+pub fn main() {
+  result.is_ok
+}
+";
+    assert_eq!(
+        apply_first_code_action_with_title(code, 2, REMOVE_UNUSED_IMPORTS_TITLE),
+        expected.to_string()
+    )
 }
 
 #[test]
@@ -137,15 +166,137 @@ pub fn main() {
 // test
 import result.{is_ok}%SPACE%
 
-
 pub fn main() {
   is_ok
 }
 ";
     assert_eq!(
-        remove_unused_action(code, 2),
+        apply_first_code_action_with_title(code, 2, REMOVE_UNUSED_IMPORTS_TITLE),
         expected.replace("%SPACE%", " ")
     )
+}
+
+#[test]
+fn test_remove_redundant_tuple_in_case_subject_simple() {
+    let code = "
+pub fn main() {
+  case #(1) { #(a) -> 0 }
+  case #(1, 2) { #(a, b) -> 0 }
+}
+";
+
+    let expected = "
+pub fn main() {
+  case 1 { a -> 0 }
+  case 1, 2 { a, b -> 0 }
+}
+";
+
+    assert_eq!(
+        apply_first_code_action_with_title(code, 7, REMOVE_REDUNDANT_TUPLES),
+        expected
+    );
+}
+
+#[test]
+fn test_remove_redundant_tuple_in_case_subject_nested() {
+    let code = "
+pub fn main() {
+  case #(case #(0) { #(a) -> 0 }) { #(b) -> 0 }
+}
+";
+
+    let expected = "
+pub fn main() {
+  case case 0 { a -> 0 } { b -> 0 }
+}
+";
+
+    assert_eq!(
+        apply_first_code_action_with_title(code, 7, REMOVE_REDUNDANT_TUPLES),
+        expected
+    );
+}
+
+#[test]
+fn test_remove_redundant_tuple_in_case_retain_extras() {
+    let code = "
+pub fn main() {
+  case
+    #(
+      // first comment
+      1,
+      // second comment
+      2,
+      3 // third comment before comma
+
+      ,
+
+      // fourth comment after comma
+
+    )
+  {
+    #(
+      // first comment
+      a,
+      // second comment
+      b,
+      c // third comment before comma
+
+      ,
+
+      // fourth comment after comma
+
+    ) -> 0
+  }
+}
+";
+
+    let result = apply_first_code_action_with_title(code, 20, REMOVE_REDUNDANT_TUPLES);
+
+    insta::assert_snapshot!(result);
+}
+
+#[test]
+fn test_remove_redundant_tuple_in_case_subject_ignore_empty_tuple() {
+    let code = "
+pub fn main() {
+  case #() { #() -> 0 }
+}
+";
+
+    assert!(engine_response(code, 11)
+        .result
+        .expect("ok response")
+        .is_none());
+}
+
+#[test]
+fn test_remove_redundant_tuple_in_case_subject_only_safe_remove() {
+    let code = "
+pub fn main() {
+  case #(0), #(1) {
+    #(1), #(b) -> 0
+    a, #(0) -> 1 // The first of this clause is not a tuple
+    #(a), #(b) -> 2
+  }
+}
+";
+
+    let expected = "
+pub fn main() {
+  case #(0), 1 {
+    #(1), b -> 0
+    a, 0 -> 1 // The first of this clause is not a tuple
+    #(a), b -> 2
+  }
+}
+";
+
+    assert_eq!(
+        apply_first_code_action_with_title(code, 11, REMOVE_REDUNDANT_TUPLES),
+        expected
+    );
 }
 
 /* TODO: implement qualified unused location

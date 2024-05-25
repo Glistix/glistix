@@ -142,6 +142,7 @@ fn module_with_private_type() {
                 module: "the/module".into(),
                 parameters: vec![],
                 deprecation: Deprecation::NotDeprecated,
+                documentation: None,
             },
         )]
         .into(),
@@ -194,6 +195,7 @@ fn module_with_app_type() {
                 module: "the/module".into(),
                 parameters: vec![],
                 deprecation: Deprecation::NotDeprecated,
+                documentation: None,
             },
         )]
         .into(),
@@ -224,6 +226,7 @@ fn module_with_fn_type() {
                 module: "the/module".into(),
                 parameters: vec![],
                 deprecation: Deprecation::NotDeprecated,
+                documentation: None,
             },
         )]
         .into(),
@@ -254,6 +257,7 @@ fn module_with_tuple_type() {
                 module: "the/module".into(),
                 parameters: vec![],
                 deprecation: Deprecation::NotDeprecated,
+                documentation: None,
             },
         )]
         .into(),
@@ -290,6 +294,7 @@ fn module_with_generic_type() {
                     module: "the/module".into(),
                     parameters: vec![t1, t2],
                     deprecation: Deprecation::NotDeprecated,
+                    documentation: None,
                 },
             )]
             .into(),
@@ -326,6 +331,84 @@ fn module_with_type_links() {
                     module: "a".into(),
                     parameters: vec![],
                     deprecation: Deprecation::NotDeprecated,
+                    documentation: None,
+                },
+            )]
+            .into(),
+            types_value_constructors: HashMap::new(),
+            values: HashMap::new(),
+            unused_imports: Vec::new(),
+            accessors: HashMap::new(),
+            line_numbers: LineNumbers::new(""),
+            src_path: "some_path".into(),
+        }
+    }
+
+    assert_eq!(roundtrip(&make(linked_type)), make(type_));
+}
+
+#[test]
+fn module_with_type_constructor_documentation() {
+    let linked_type = type_::link(type_::int());
+    let type_ = type_::int();
+
+    fn make(type_: Arc<Type>) -> ModuleInterface {
+        ModuleInterface {
+            is_internal: false,
+            contains_todo: false,
+            package: "some_package".into(),
+            origin: Origin::Src,
+            name: "a".into(),
+            types: [(
+                "SomeType".into(),
+                TypeConstructor {
+                    typ: type_,
+                    publicity: Publicity::Public,
+                    origin: Default::default(),
+                    module: "a".into(),
+                    parameters: vec![],
+                    deprecation: Deprecation::NotDeprecated,
+                    documentation: Some("type documentation".into()),
+                },
+            )]
+            .into(),
+            types_value_constructors: HashMap::new(),
+            values: HashMap::new(),
+            unused_imports: Vec::new(),
+            accessors: HashMap::new(),
+            line_numbers: LineNumbers::new(""),
+            src_path: "some_path".into(),
+        }
+    }
+
+    assert_eq!(roundtrip(&make(linked_type)), make(type_));
+}
+
+#[test]
+fn module_with_type_constructor_origin() {
+    let linked_type = type_::link(type_::int());
+    let type_ = type_::int();
+
+    fn make(type_: Arc<Type>) -> ModuleInterface {
+        ModuleInterface {
+            is_internal: false,
+            contains_todo: false,
+            package: "some_package".into(),
+            origin: Origin::Src,
+            name: "a".into(),
+            types: [(
+                "SomeType".into(),
+                TypeConstructor {
+                    typ: type_,
+                    publicity: Publicity::Public,
+                    origin: SrcSpan {
+                        start: 535,
+                        end: 543,
+                    },
+                    module: "a".into(),
+                    parameters: vec![],
+                    deprecation: Deprecation::NotDeprecated,
+                    documentation: None,
                 },
             )]
             .into(),
@@ -1160,6 +1243,7 @@ fn deprecated_type() {
                 deprecation: Deprecation::Deprecated {
                     message: "oh no".into(),
                 },
+                documentation: None,
             },
         )]
         .into(),

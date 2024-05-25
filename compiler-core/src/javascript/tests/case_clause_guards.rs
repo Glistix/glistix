@@ -41,6 +41,30 @@ fn bitarray_with_var() {
     )
 }
 
+// https://github.com/gleam-lang/gleam/issues/3004
+#[test]
+fn keyword_var() {
+    assert_js!(
+        r#"
+pub const function = 5
+pub const do = 10
+pub fn main() {
+  let class = 5
+  let while = 10
+  let var = 7
+  case var {
+    _ if class == while -> True
+    _ if [class] == [5] -> True
+    function if #(function) == #(5) -> False
+    _ if do == function -> True
+    while if while > 5 -> False
+    class -> False
+  }
+}
+"#,
+    );
+}
+
 #[test]
 fn operator_wrapping_right() {
     assert_js!(
@@ -179,7 +203,7 @@ fn alternative_patterns_assignment() {
     [x] | [_, x] -> x
     _ -> 1
   }
-}  
+}
 "#,
     );
 }
@@ -192,7 +216,7 @@ fn alternative_patterns_guard() {
     [x] | [_, x] if x == 1 -> x
     _ -> 0
   }
-}   
+}
 "#,
     );
 }
@@ -204,11 +228,9 @@ fn field_access() {
         pub type Person {
           Person(username: String, name: String, age: Int)
         }
-        
         pub fn main() {
           let given_name = "jack"
           let raiden = Person("raiden", "jack", 31)
-          
           case given_name {
             name if name == raiden.name -> "It's jack"
             _ -> "It's not jack"
@@ -332,6 +354,58 @@ fn module_access() {
             let name = "Tony Stark"
             case name {
               n if n == hero.ironman.name -> True
+              _ -> False
+            }
+          }
+        "#
+    );
+}
+
+#[test]
+fn module_access_submodule() {
+    assert_js!(
+        (
+            "package",
+            "hero/submodule",
+            r#"
+              pub type Hero {
+                Hero(name: String)
+              }
+              pub const ironman = Hero("Tony Stark")
+            "#
+        ),
+        r#"
+          import hero/submodule
+          pub fn main() {
+            let name = "Tony Stark"
+            case name {
+              n if n == submodule.ironman.name -> True
+              _ -> False
+            }
+          }
+        "#
+    );
+}
+
+#[test]
+fn module_access_aliased() {
+    assert_js!(
+        (
+            "package",
+            "hero/submodule",
+            r#"
+              pub type Hero {
+                Hero(name: String)
+              }
+              pub const ironman = Hero("Tony Stark")
+            "#
+        ),
+        r#"
+          import hero/submodule as myhero
+          pub fn main() {
+            let name = "Tony Stark"
+            case name {
+              n if n == myhero.ironman.name -> True
               _ -> False
             }
           }

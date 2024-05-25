@@ -1,8 +1,9 @@
-use std::time::SystemTime;
+use std::{collections::HashSet, time::SystemTime};
 
 use crate::{
     build::{Mode, NullTelemetry, PackageCompiler, StaleTracker, TargetCodegenConfiguration},
     config::{DocsPage, PackageConfig},
+    docs::DocContext,
     io::{memory::InMemoryFileSystem, FileSystemWriter},
     paths::ProjectPaths,
     uid::UniqueIdGenerator,
@@ -58,6 +59,7 @@ fn compile_with_markdown_pages(
             &mut type_manifests,
             &mut defined_modules,
             &mut StaleTracker::default(),
+            &mut HashSet::new(),
             &NullTelemetry,
         )
         .unwrap();
@@ -82,6 +84,7 @@ fn compile_with_markdown_pages(
         &docs_pages,
         pages_fs,
         SystemTime::UNIX_EPOCH,
+        DocContext::HexPublish,
     )
     .into_iter()
     .filter(|file| file.path.extension() == Some("html"))

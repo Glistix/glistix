@@ -181,6 +181,14 @@ impl<'a> ModuleEncoder<'a> {
                 .init_parameters(constructor.parameters.len() as u32),
             &constructor.parameters,
         );
+        self.build_src_span(builder.reborrow().init_origin(), constructor.origin);
+        builder.set_documentation(
+            constructor
+                .documentation
+                .as_ref()
+                .map(EcoString::as_str)
+                .unwrap_or_default(),
+        );
     }
 
     fn build_type_value_constructor(
@@ -383,6 +391,10 @@ impl<'a> ModuleEncoder<'a> {
                         .as_ref()
                         .expect("This is guaranteed to hold a value."),
                 );
+            }
+
+            Constant::Invalid { .. } => {
+                panic!("invalid constants should not reach code generation")
             }
         }
     }

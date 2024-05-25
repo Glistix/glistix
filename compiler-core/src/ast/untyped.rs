@@ -21,7 +21,7 @@ pub enum UntypedExpr {
 
     Block {
         location: SrcSpan,
-        statements: Vec1<Statement<(), Self>>,
+        statements: Vec1<UntypedStatement>,
     },
 
     Var {
@@ -31,7 +31,11 @@ pub enum UntypedExpr {
 
     // TODO: create new variant for captures specifically
     Fn {
+        /// For anonymous functions, this is the location of the entire function including the end of the body.
+        /// For named functions, this is the location of the function head.
         location: SrcSpan,
+        /// The byte location of the end of the function head before the opening bracket
+        end_of_head_byte_index: u32,
         is_capture: bool,
         arguments: Vec<Arg<()>>,
         body: Vec1<UntypedStatement>,
@@ -225,6 +229,16 @@ impl UntypedExpr {
     pub fn is_pipeline(&self) -> bool {
         matches!(self, Self::PipeLine { .. })
     }
+
+    #[must_use]
+    pub fn is_todo(&self) -> bool {
+        matches!(self, Self::Todo { .. })
+    }
+
+    #[must_use]
+    pub fn is_panic(&self) -> bool {
+        matches!(self, Self::Panic { .. })
+    }
 }
 
 impl HasLocation for UntypedExpr {
@@ -235,7 +249,36 @@ impl HasLocation for UntypedExpr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Use {
-    pub location: SrcSpan,
+    /// This is the expression with the untyped/typed code of the use callback
+    /// function.
+    ///
     pub call: Box<UntypedExpr>,
+
+    /// This is the location of the whole use line, starting from the `use`
+    /// keyword and ending with the function call on the right hand side of
+    /// `<-`.
+    ///
+    /// ```gleam
+    /// use a <- reult.try(result)
+    /// ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    /// ```
+    ///
+    pub location: SrcSpan,
+
+    /// This is the SrcSpan of the patterns you find on the left hand side of
+    /// `<-` in a use expression.
+    ///
+    /// ```gleam
+    /// use pattern1, pattern2 <- todo
+    ///     ^^^^^^^^^^^^^^^^^^
+    /// ```
+    ///
+    /// In case there's no patterns it will be corresponding to the SrcSpan of
+    /// the `use` keyword itself.
+    ///
+    pub assignments_location: SrcSpan,
+
+    /// The patterns on the left hand side of `<-` in a use expression.
+    ///
     pub assignments: Vec<UseAssignment>,
 }

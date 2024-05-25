@@ -11,7 +11,7 @@ use hexpm::version::Version;
 use http::Uri;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
-use std::fmt;
+use std::fmt::{self};
 use std::marker::PhantomData;
 
 #[cfg(test)]
@@ -49,7 +49,7 @@ impl<'de> Deserialize<'de> for SpdxLicense {
     where
         D: serde::Deserializer<'de>,
     {
-        let s: &str = serde::de::Deserialize::deserialize(deserializer)?;
+        let s: &str = Deserialize::deserialize(deserializer)?;
         match spdx::license_id(s) {
             None => Err(serde::de::Error::custom(format!(
                 "{s} is not a valid SPDX License ID"
@@ -147,12 +147,12 @@ impl PackageConfig {
     /// previously selected versions.
     ///
     pub fn locked(&self, manifest: Option<&Manifest>) -> Result<HashMap<EcoString, Version>> {
-        Ok(match manifest {
-            None => HashMap::new(),
+        match manifest {
+            None => Ok(HashMap::new()),
             Some(manifest) => {
                 StalePackageRemover::fresh_and_locked(&self.all_dependencies()?, manifest)
             }
-        })
+        }
     }
 
     /// Determines whether the given module should be hidden in the docs or not
@@ -184,8 +184,8 @@ impl PackageConfig {
     // with the current compiler version
     pub fn check_gleam_compatibility(&self) -> Result<(), Error> {
         if let Some(required_version) = &self.gleam_version {
-            let compiler_version = hexpm::version::Version::parse(COMPILER_VERSION)
-                .expect("Parse compiler semantic version");
+            let compiler_version =
+                Version::parse(COMPILER_VERSION).expect("Parse compiler semantic version");
             let range = hexpm::version::Range::new(required_version.to_string())
                 .to_pubgrub()
                 .map_err(|error| Error::InvalidVersionFormat {
@@ -221,7 +221,7 @@ impl<'a> StalePackageRemover<'a> {
     pub fn fresh_and_locked(
         requirements: &'a HashMap<EcoString, Requirement>,
         manifest: &'a Manifest,
-    ) -> HashMap<EcoString, Version> {
+    ) -> Result<HashMap<EcoString, Version>> {
         let locked = manifest
             .packages
             .iter()
@@ -238,7 +238,7 @@ impl<'a> StalePackageRemover<'a> {
         &mut self,
         requirements: &'a HashMap<EcoString, Requirement>,
         manifest: &'a Manifest,
-    ) -> HashMap<EcoString, Version> {
+    ) -> Result<HashMap<EcoString, Version>> {
         // Record all the requirements that have not changed
         for (name, requirement) in requirements {
             if manifest.requirements.get(name) != Some(requirement) {
@@ -246,12 +246,12 @@ impl<'a> StalePackageRemover<'a> {
             }
 
             // Recursively record the package and its deps as being fresh
-            self.record_tree_fresh(name);
+            self.record_tree_fresh(name)?;
         }
 
         // Return all the previously resolved packages that have not been
         // recorded as fresh
-        manifest
+        Ok(manifest
             .packages
             .iter()
             .filter(|package| {
@@ -265,21 +265,19 @@ impl<'a> StalePackageRemover<'a> {
                 locked
             })
             .map(|package| (package.name.clone(), package.version.clone()))
-            .collect()
+            .collect())
     }
 
-    fn record_tree_fresh(&mut self, name: &'a str) {
+    fn record_tree_fresh(&mut self, name: &'a str) -> Result<()> {
         // Record the top level package
         let _ = self.fresh.insert(name);
 
-        let deps = self
-            .locked
-            .get(name)
-            .expect("Package fresh but not in manifest");
+        let deps = self.locked.get(name).ok_or(Error::CorruptManifest)?;
         // Record each of its deps recursively
         for package in *deps {
-            self.record_tree_fresh(package);
+            self.record_tree_fresh(package)?;
         }
+        Ok(())
     }
 }
 

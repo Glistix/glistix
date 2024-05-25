@@ -1,14 +1,13 @@
-use crate::analyse::TargetSupport;
+use crate::analyse::{ModuleAnalyzerConstructor, TargetSupport};
 use crate::line_numbers::{self, LineNumbers};
 use crate::type_::PRELUDE_MODULE_NAME;
 use crate::{
     ast::{SrcSpan, TypedModule, UntypedModule},
     build::{
         elixir_libraries::ElixirLibraries,
-        module_loader::SourceFingerprint,
         native_file_copier::NativeFileCopier,
         package_loader::{CodegenRequired, PackageLoader, StaleTracker},
-        Mode, Module, Origin, Package, Target,
+        Mode, Module, Origin, Outcome, Package, SourceFingerprint, Target,
     },
     codegen::{Erlang, ErlangApp, JavaScript, TypeScriptDeclarations},
     config::PackageConfig,
@@ -25,6 +24,7 @@ use askama::Template;
 use ecow::EcoString;
 use std::collections::HashSet;
 use std::{collections::HashMap, fmt::write, time::SystemTime};
+use vec1::Vec1;
 
 use crate::codegen::Nix;
 use camino::{Utf8Path, Utf8PathBuf};
@@ -93,13 +93,16 @@ where
         existing_modules: &mut im::HashMap<EcoString, type_::ModuleInterface>,
         already_defined_modules: &mut im::HashMap<EcoString, Utf8PathBuf>,
         stale_modules: &mut StaleTracker,
+        incomplete_modules: &mut HashSet<EcoString>,
         telemetry: &dyn Telemetry,
-    ) -> Result<Vec<Module>, Error> {
+    ) -> Outcome<Vec<Module>, Error> {
         let span = tracing::info_span!("compile", package = %self.config.name.as_str());
         let _enter = span.enter();
 
         // Ensure that the package is compatible with this version of Gleam
-        self.config.check_gleam_compatibility()?;
+        if let Err(e) = self.config.check_gleam_compatibility() {
+            return e.into();
+        }
 
         let artefact_directory = self.out.join(paths::ARTEFACT_DIRECTORY_NAME);
         let codegen_required = if self.perform_codegen {
@@ -107,7 +110,7 @@ where
         } else {
             CodegenRequired::No
         };
-        let loaded = PackageLoader::new(
+        let loader = PackageLoader::new(
             self.io.clone(),
             self.ids.clone(),
             self.mode,
@@ -119,8 +122,12 @@ where
             &self.config.name,
             stale_modules,
             already_defined_modules,
-        )
-        .run()?;
+            incomplete_modules,
+        );
+        let loaded = match loader.run() {
+            Ok(loaded) => loaded,
+            Err(error) => return error.into(),
+        };
 
         // Load the cached modules that have previously been compiled
         for module in loaded.cached.into_iter() {
@@ -138,7 +145,7 @@ where
 
         // Type check the modules that are new or have changed
         tracing::info!(count=%loaded.to_compile.len(), "analysing_modules");
-        let modules = analyse(
+        let outcome = analyse(
             &self.config,
             self.target.target(),
             self.mode,
@@ -147,12 +154,24 @@ where
             existing_modules,
             warnings,
             self.target_support,
-        )?;
+            incomplete_modules,
+        );
+        let modules = match outcome {
+            Outcome::Ok(modules) => modules,
+            Outcome::PartialFailure(_, _) | Outcome::TotalFailure(_) => return outcome,
+        };
 
         tracing::debug!("performing_code_generation");
-        self.perform_codegen(&modules)?;
-        self.encode_and_write_metadata(&modules)?;
-        Ok(modules)
+
+        if let Err(error) = self.perform_codegen(&modules) {
+            return error.into();
+        }
+
+        if let Err(error) = self.encode_and_write_metadata(&modules) {
+            return error.into();
+        }
+
+        Outcome::Ok(modules)
     }
 
     fn compile_erlang_to_beam(&mut self, modules: &HashSet<Utf8PathBuf>) -> Result<(), Error> {
@@ -419,7 +438,8 @@ fn analyse(
     module_types: &mut im::HashMap<EcoString, type_::ModuleInterface>,
     warnings: &WarningEmitter,
     target_support: TargetSupport,
-) -> Result<Vec<Module>, Error> {
+    incomplete_modules: &mut HashSet<EcoString>,
+) -> Outcome<Vec<Module>, Error> {
     let mut modules = Vec::with_capacity(parsed_modules.len() + 1);
     let direct_dependencies = package_config.dependencies_for(mode).expect("Package deps");
 
@@ -445,44 +465,75 @@ fn analyse(
         tracing::debug!(module = ?name, "Type checking");
 
         let line_numbers = LineNumbers::new(&code);
-        let ast = crate::analyse::infer_module(
+
+        let analysis = crate::analyse::ModuleAnalyzerConstructor {
             target,
             ids,
-            ast,
             origin,
-            module_types,
-            &TypeWarningEmitter::new(path.clone(), code.clone(), warnings.clone()),
-            &direct_dependencies,
+            importable_modules: module_types,
+            warnings: &TypeWarningEmitter::new(path.clone(), code.clone(), warnings.clone()),
+            direct_dependencies: &direct_dependencies,
             target_support,
-            line_numbers,
             package_config,
-            path.clone(),
-        )
-        .map_err(|error| Error::Type {
-            path: path.clone(),
-            src: code.clone(),
-            error,
-        })?;
+        }
+        .infer_module(ast, line_numbers, path.clone());
 
-        // Register the types from this module so they can be imported into
-        // other modules.
-        let _ = module_types.insert(name.clone(), ast.type_info.clone());
+        match analysis {
+            Outcome::Ok(ast) => {
+                // Module has compiled successfully. Make sure it isn't marked as incomplete.
+                let _ = incomplete_modules.remove(&name.clone());
+                // Register the types from this module so they can be imported into
+                // other modules.
+                let _ = module_types.insert(name.clone(), ast.type_info.clone());
+                // Register the successfully type checked module data so that it can be
+                // used for code generation and in the language server.
+                modules.push(Module {
+                    dependencies,
+                    origin,
+                    extra,
+                    mtime,
+                    name,
+                    code,
+                    ast,
+                    input_path: path,
+                });
+            }
 
-        // Register the successfully type checked module data so that it can be
-        // used for code generation
-        modules.push(Module {
-            dependencies,
-            origin,
-            extra,
-            mtime,
-            name,
-            code,
-            ast,
-            input_path: path,
-        });
+            Outcome::PartialFailure(ast, errors) => {
+                let error = Error::Type {
+                    path: path.clone(),
+                    src: code.clone(),
+                    errors,
+                };
+                // Mark as incomplete so that this module isn't reloaded from cache.
+                let _ = incomplete_modules.insert(name.clone());
+                // Register the partially type checked module data so that it can be
+                // used in the language server.
+                modules.push(Module {
+                    dependencies,
+                    origin,
+                    extra,
+                    mtime,
+                    name,
+                    code,
+                    ast,
+                    input_path: path,
+                });
+                // WARNING: This cannot be used for code generation as the code has errors.
+                return Outcome::PartialFailure(modules, error);
+            }
+
+            Outcome::TotalFailure(errors) => {
+                return Outcome::TotalFailure(Error::Type {
+                    path: path.clone(),
+                    src: code.clone(),
+                    errors,
+                })
+            }
+        };
     }
 
-    Ok(modules)
+    Outcome::Ok(modules)
 }
 
 pub(crate) fn module_name(package_path: &Utf8Path, full_module_path: &Utf8Path) -> EcoString {

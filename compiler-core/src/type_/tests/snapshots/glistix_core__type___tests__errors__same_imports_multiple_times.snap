@@ -13,3 +13,10 @@ error: Duplicate import
 `foo` has been imported multiple times.
 Names in a Gleam module must be unique so one will need to be renamed.
 
+error: Unknown variable
+  ┌─ /src/one/two.gleam:4:31
+  │
+4 │         pub fn go() { bar() + zoo() }
+  │                               ^^^
+
+The name `zoo` is not in scope here.

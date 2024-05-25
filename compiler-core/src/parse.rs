@@ -598,6 +598,7 @@ where
                         ..
                     })) => UntypedExpr::Fn {
                         location: SrcSpan::new(location.start, end_position),
+                        end_of_head_byte_index: location.end,
                         is_capture: false,
                         arguments: args,
                         body,
@@ -631,8 +632,6 @@ where
                         ParseErrorType::ExpectedExpr,
                         SrcSpan { start, end: case_e },
                     );
-                } else if clauses.is_empty() {
-                    return parse_error(ParseErrorType::NoCaseClause, SrcSpan { start, end });
                 } else {
                     UntypedExpr::Case {
                         location: SrcSpan { start, end },
@@ -810,7 +809,7 @@ where
     // use <- module.function(a, b)
     // use a, b, c <- function(a, b)
     // use a, b, c, <- function(a, b)
-    fn parse_use(&mut self, start: u32) -> Result<UntypedStatement, ParseError> {
+    fn parse_use(&mut self, start: u32, end: u32) -> Result<UntypedStatement, ParseError> {
         let assignments = if let Some((_, Token::LArrow, _)) = self.tok0 {
             vec![]
         } else {
@@ -820,8 +819,17 @@ where
         _ = self.expect_one_following_series(&Token::LArrow, "a use variable assignment")?;
         let call = self.expect_expression()?;
 
+        let assignments_location = match (assignments.first(), assignments.last()) {
+            (Some(first), Some(last)) => SrcSpan {
+                start: first.location.start,
+                end: last.location.end,
+            },
+            (_, _) => SrcSpan { start, end },
+        };
+
         Ok(Statement::Use(Use {
             location: SrcSpan::new(start, call.location().end),
+            assignments_location,
             assignments,
             call: Box::new(call),
         }))
@@ -850,9 +858,11 @@ where
 
     // An assignment, with `Let` already consumed
     fn parse_assignment(&mut self, start: u32) -> Result<UntypedStatement, ParseError> {
-        let kind = if let Some((_, Token::Assert, _)) = self.tok0 {
+        let kind = if let Some((assert_start, Token::Assert, assert_end)) = self.tok0 {
             _ = self.next_tok();
-            AssignmentKind::Assert
+            AssignmentKind::Assert {
+                location: SrcSpan::new(assert_start, assert_end),
+            }
         } else {
             AssignmentKind::Let
         };
@@ -918,9 +928,9 @@ where
 
     fn parse_statement(&mut self) -> Result<Option<UntypedStatement>, ParseError> {
         match self.tok0.take() {
-            Some((start, Token::Use, _)) => {
+            Some((start, Token::Use, end)) => {
                 self.advance();
-                Ok(Some(self.parse_use(start)?))
+                Ok(Some(self.parse_use(start, end)?))
             }
 
             Some((start, Token::Let, _)) => {
@@ -1578,7 +1588,7 @@ where
                 let end = return_annotation
                     .as_ref()
                     .map(|l| l.location().end)
-                    .unwrap_or_else(|| if is_anon { rbr_e } else { rpar_e });
+                    .unwrap_or(rpar_e);
                 let body = match some_body {
                     None => vec1![Statement::Expression(UntypedExpr::Todo {
                         kind: TodoKind::EmptyFunction,
@@ -1902,13 +1912,16 @@ where
                         let _ = Parser::next_tok(p);
                         let doc = p.take_documentation(start);
                         match Parser::parse_type(p)? {
-                            Some(type_ast) => Ok(Some(RecordConstructorArg {
-                                label: Some(name),
-                                ast: type_ast,
-                                location: SrcSpan { start, end },
-                                type_: (),
-                                doc,
-                            })),
+                            Some(type_ast) => {
+                                let end = type_ast.location().end;
+                                Ok(Some(RecordConstructorArg {
+                                    label: Some(name),
+                                    ast: type_ast,
+                                    location: SrcSpan { start, end },
+                                    type_: (),
+                                    doc,
+                                }))
+                            }
                             None => {
                                 parse_error(ParseErrorType::ExpectedType, SrcSpan { start, end })
                             }
@@ -1979,11 +1992,11 @@ where
             }
 
             // Tuple
-            Some((start, Token::Hash, end)) => {
+            Some((start, Token::Hash, _)) => {
                 self.advance();
                 let _ = self.expect_one(&Token::LeftParen)?;
                 let elems = self.parse_types()?;
-                let _ = self.expect_one(&Token::RightParen)?;
+                let (_, end) = self.expect_one(&Token::RightParen)?;
                 Ok(Some(TypeAst::Tuple(TypeAstTuple {
                     location: SrcSpan { start, end },
                     elems,
@@ -2179,8 +2192,9 @@ where
                         as_name: None,
                     };
                     if self.maybe_one(&Token::As).is_some() {
-                        let (_, as_name, _) = self.expect_name()?;
+                        let (_, as_name, end) = self.expect_name()?;
                         import.as_name = Some(as_name);
+                        import.location.end = end;
                     }
                     imports.values.push(import)
                 }
@@ -2194,8 +2208,9 @@ where
                         as_name: None,
                     };
                     if self.maybe_one(&Token::As).is_some() {
-                        let (_, as_name, _) = self.expect_upname()?;
+                        let (_, as_name, end) = self.expect_upname()?;
                         import.as_name = Some(as_name);
+                        import.location.end = end;
                     }
                     imports.values.push(import)
                 }
@@ -2210,8 +2225,9 @@ where
                         as_name: None,
                     };
                     if self.maybe_one(&Token::As).is_some() {
-                        let (_, as_name, _) = self.expect_upname()?;
+                        let (_, as_name, end) = self.expect_upname()?;
                         import.as_name = Some(as_name);
+                        import.location.end = end;
                     }
                     imports.types.push(import)
                 }
@@ -2410,13 +2426,23 @@ where
 
             Some((start, Token::Name { name }, end)) => {
                 self.advance(); // name
-                Ok(Some(Constant::Var {
-                    location: SrcSpan { start, end },
-                    module: None,
-                    name,
-                    constructor: None,
-                    typ: (),
-                }))
+
+                match self.tok0 {
+                    Some((_, Token::LeftParen, _)) => parse_error(
+                        ParseErrorType::UnexpectedFunction,
+                        SrcSpan {
+                            start,
+                            end: end + 1,
+                        },
+                    ),
+                    _ => Ok(Some(Constant::Var {
+                        location: SrcSpan { start, end },
+                        module: None,
+                        name,
+                        constructor: None,
+                        typ: (),
+                    })),
+                }
             }
 
             // Helpful error for fn
@@ -2882,22 +2908,34 @@ where
     // returns old tok0
     fn next_tok(&mut self) -> Option<Spanned> {
         let t = self.tok0.take();
+        let mut previous_newline = None;
         let mut nxt;
         loop {
             match self.tokens.next() {
                 // gather and skip extra
-                Some(Ok((s, Token::EmptyLine, _))) => {
-                    self.extra.empty_lines.push(s);
-                }
                 Some(Ok((start, Token::CommentNormal, end))) => {
                     self.extra.comments.push(SrcSpan { start, end });
+                    previous_newline = None;
                 }
                 Some(Ok((start, Token::CommentDoc { content }, end))) => {
                     self.extra.doc_comments.push(SrcSpan::new(start, end));
                     self.doc_comments.push_back((start, content));
+                    previous_newline = None;
                 }
                 Some(Ok((start, Token::CommentModule, end))) => {
                     self.extra.module_comments.push(SrcSpan { start, end });
+                    previous_newline = None;
+                }
+                Some(Ok((start, Token::NewLine, _))) => {
+                    self.extra.new_lines.push(start);
+                    // If the previous token is a newline as well that means we
+                    // have run into an empty line.
+                    if let Some(start) = previous_newline {
+                        // We increase the byte position so that newline's start
+                        // doesn't overlap with the previous token's end.
+                        self.extra.empty_lines.push(start + 1);
+                    }
+                    previous_newline = Some(start);
                 }
 
                 // die on lex error
@@ -3388,22 +3426,84 @@ fn parse_error<T>(error: ParseErrorType, location: SrcSpan) -> Result<T, ParseEr
 ///
 /// Useful for checking if a user tried to enter a reserved word as a name.
 fn is_reserved_word(tok: Token) -> bool {
-    matches![
-        tok,
+    match tok {
         Token::As
-            | Token::Assert
-            | Token::Case
-            | Token::Const
-            | Token::Fn
-            | Token::If
-            | Token::Import
-            | Token::Let
-            | Token::Opaque
-            | Token::Pub
-            | Token::Todo
-            | Token::Type
-            | Token::Use
-    ]
+        | Token::Assert
+        | Token::Case
+        | Token::Const
+        | Token::Fn
+        | Token::If
+        | Token::Import
+        | Token::Let
+        | Token::Opaque
+        | Token::Pub
+        | Token::Todo
+        | Token::Type
+        | Token::Use
+        | Token::Auto
+        | Token::Delegate
+        | Token::Derive
+        | Token::Echo
+        | Token::Else
+        | Token::Implement
+        | Token::Macro
+        | Token::Panic
+        | Token::Test => true,
+
+        Token::Name { .. }
+        | Token::UpName { .. }
+        | Token::DiscardName { .. }
+        | Token::Int { .. }
+        | Token::Float { .. }
+        | Token::String { .. }
+        | Token::CommentDoc { .. }
+        | Token::LeftParen
+        | Token::RightParen
+        | Token::LeftSquare
+        | Token::RightSquare
+        | Token::LeftBrace
+        | Token::RightBrace
+        | Token::Plus
+        | Token::Minus
+        | Token::Star
+        | Token::Slash
+        | Token::Less
+        | Token::Greater
+        | Token::LessEqual
+        | Token::GreaterEqual
+        | Token::Percent
+        | Token::PlusDot
+        | Token::MinusDot
+        | Token::StarDot
+        | Token::SlashDot
+        | Token::LessDot
+        | Token::GreaterDot
+        | Token::LessEqualDot
+        | Token::GreaterEqualDot
+        | Token::LtGt
+        | Token::Colon
+        | Token::Comma
+        | Token::Hash
+        | Token::Bang
+        | Token::Equal
+        | Token::EqualEqual
+        | Token::NotEqual
+        | Token::Vbar
+        | Token::VbarVbar
+        | Token::AmperAmper
+        | Token::LtLt
+        | Token::GtGt
+        | Token::Pipe
+        | Token::Dot
+        | Token::RArrow
+        | Token::LArrow
+        | Token::DotDot
+        | Token::At
+        | Token::EndOfFile
+        | Token::CommentNormal
+        | Token::CommentModule
+        | Token::NewLine => false,
+    }
 }
 
 // Parsing a function call into the appropriate structure
@@ -3469,6 +3569,7 @@ pub fn make_call(
         // An anon function using the capture syntax run(_, 1, 2)
         1 => Ok(UntypedExpr::Fn {
             location: call.location(),
+            end_of_head_byte_index: call.location().end,
             is_capture: true,
             arguments: vec![Arg {
                 location: SrcSpan { start: 0, end: 0 },

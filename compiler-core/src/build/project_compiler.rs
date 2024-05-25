@@ -28,7 +28,7 @@ use std::{
     time::Instant,
 };
 
-use super::{elixir_libraries::ElixirLibraries, Codegen, ErlangAppCodegenConfiguration};
+use super::{elixir_libraries::ElixirLibraries, Codegen, ErlangAppCodegenConfiguration, Outcome};
 
 use camino::{Utf8Path, Utf8PathBuf};
 
@@ -84,6 +84,9 @@ pub struct ProjectCompiler<IO> {
     importable_modules: im::HashMap<EcoString, type_::ModuleInterface>,
     defined_modules: im::HashMap<EcoString, Utf8PathBuf>,
     stale_modules: StaleTracker,
+    /// The set of modules that have had partial compilation done since the last
+    /// successful compilation.
+    incomplete_modules: HashSet<EcoString>,
     warnings: WarningEmitter,
     telemetry: Box<dyn Telemetry>,
     options: Options,
@@ -120,6 +123,7 @@ where
             importable_modules: im::HashMap::new(),
             defined_modules: im::HashMap::new(),
             stale_modules: StaleTracker::default(),
+            incomplete_modules: HashSet::new(),
             ids: UniqueIdGenerator::new(),
             warnings: WarningEmitter::new(warning_emitter),
             subprocess_stdio: Stdio::Inherit,
@@ -167,7 +171,7 @@ where
         // dependency has warnings, only if the root package does.
         self.warnings.reset_count();
 
-        let root_package = self.compile_root_package()?;
+        let root_package = self.compile_root_package().into_result()?;
 
         // TODO: test
         if self.options.warnings_as_errors && self.warnings.count() > 0 {
@@ -183,10 +187,10 @@ where
         })
     }
 
-    pub fn compile_root_package(&mut self) -> Result<Package, Error> {
+    pub fn compile_root_package(&mut self) -> Outcome<Package, Error> {
         let config = self.config.clone();
-        let modules = self.compile_gleam_package(&config, true, self.paths.root().to_path_buf())?;
-        Ok(Package { config, modules })
+        self.compile_gleam_package(&config, true, self.paths.root().to_path_buf())
+            .map(|modules| Package { config, modules })
     }
 
     /// Checks that version file found in the build directory matches the
@@ -492,6 +496,7 @@ where
         let config_path = package_root.join("gleam.toml");
         let config = PackageConfig::read(config_path, &self.io)?;
         self.compile_gleam_package(&config, false, package_root)
+            .into_result()
     }
 
     fn compile_gleam_package(
@@ -499,7 +504,7 @@ where
         config: &PackageConfig,
         is_root: bool,
         root_path: Utf8PathBuf,
-    ) -> Result<Vec<Module>, Error> {
+    ) -> Outcome<Vec<Module>, Error> {
         let out_path =
             self.paths
                 .build_directory_for_package(self.mode(), self.target(), &config.name);
@@ -568,15 +573,14 @@ where
         };
 
         // Compile project to Erlang or JavaScript source code
-        let compiled = compiler.compile(
+        compiler.compile(
             &mut self.warnings,
             &mut self.importable_modules,
             &mut self.defined_modules,
             &mut self.stale_modules,
+            &mut self.incomplete_modules,
             self.telemetry.as_ref(),
-        )?;
-
-        Ok(compiled)
+        )
     }
 }
 

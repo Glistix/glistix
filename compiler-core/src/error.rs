@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use crate::build::{Runtime, Target};
+use crate::build::{Outcome, Runtime, Target};
 use crate::diagnostic::{Diagnostic, Label, Location};
 use crate::type_::error::RecordVariants;
 use crate::type_::error::{MissingAnnotation, UnknownTypeHint};
@@ -12,14 +12,19 @@ use crate::{
     type_::{pretty::Printer, UnifyErrorSituation},
 };
 use ecow::EcoString;
-use hexpm::version::pubgrub_report::{DefaultStringReporter, Reporter};
 use hexpm::version::ResolutionError;
 use itertools::Itertools;
+use pubgrub::package::Package;
+use pubgrub::report::DerivationTree;
+use pubgrub::version::Version;
+use std::collections::HashSet;
 use std::env;
 use std::fmt::Debug;
+use std::io::Write;
 use std::path::PathBuf;
 use termcolor::Buffer;
 use thiserror::Error;
+use vec1::Vec1;
 
 use camino::{Utf8Path, Utf8PathBuf};
 
@@ -55,7 +60,7 @@ pub enum Error {
     Type {
         path: Utf8PathBuf,
         src: EcoString,
-        error: crate::type_::Error,
+        errors: Vec1<crate::type_::Error>,
     },
 
     #[error("unknown import {import}")]
@@ -178,7 +183,7 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     JavaScript {
         path: Utf8PathBuf,
         src: EcoString,
-        error: crate::javascript::Error,
+        error: javascript::Error,
     },
 
     #[error("Invalid runtime for {target} target: {invalid_runtime}")]
@@ -272,6 +277,15 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
 
     #[error("Publishing packages to reserve names is not permitted")]
     HexPackageSquatting,
+
+    #[error("Corrupt manifest.toml")]
+    CorruptManifest,
+
+    #[error("The Gleam module {path} would overwrite the Erlang module {name}")]
+    GleamModuleWouldOverwriteStandardErlangModule { name: EcoString, path: Utf8PathBuf },
+
+    #[error("Version already published")]
+    HexPublishReplaceRequired { version: String },
 }
 
 impl Error {
@@ -308,10 +322,43 @@ impl Error {
     }
 
     pub fn dependency_resolution_failed(error: ResolutionError) -> Error {
+        fn collect_conflicting_packages<'dt, P: Package, V: Version>(
+            derivation_tree: &'dt DerivationTree<P, V>,
+            conflicting_packages: &mut HashSet<&'dt P>,
+        ) {
+            match derivation_tree {
+                DerivationTree::External(external) => match external {
+                    pubgrub::report::External::NotRoot(package, _) => {
+                        let _ = conflicting_packages.insert(package);
+                    }
+                    pubgrub::report::External::NoVersions(package, _) => {
+                        let _ = conflicting_packages.insert(package);
+                    }
+                    pubgrub::report::External::UnavailableDependencies(package, _) => {
+                        let _ = conflicting_packages.insert(package);
+                    }
+                    pubgrub::report::External::FromDependencyOf(package, _, dep_package, _) => {
+                        let _ = conflicting_packages.insert(package);
+                        let _ = conflicting_packages.insert(dep_package);
+                    }
+                },
+                DerivationTree::Derived(derived) => {
+                    collect_conflicting_packages(&derived.cause1, conflicting_packages);
+                    collect_conflicting_packages(&derived.cause2, conflicting_packages);
+                }
+            }
+        }
+
         Self::DependencyResolutionFailed(match error {
             ResolutionError::NoSolution(mut derivation_tree) => {
                 derivation_tree.collapse_no_versions();
-                let report = DefaultStringReporter::report(&derivation_tree);
+
+                let mut conflicting_packages = HashSet::new();
+                collect_conflicting_packages(&derivation_tree, &mut conflicting_packages);
+
+                let report = format!("{}\n\n{}",
+                    String::from("Unable to find compatible versions for the version constraints in your gleam.toml. The conflicting packages are:"),
+                    conflicting_packages.into_iter().map(|s| format!("- {}", s)).join("\n"));
                 wrap(&report)
             }
 
@@ -356,6 +403,12 @@ impl Error {
         Self::ExpandTar {
             error: error.to_string(),
         }
+    }
+}
+
+impl<T> From<Error> for Outcome<T, Error> {
+    fn from(error: Error) -> Self {
+        Outcome::TotalFailure(error)
     }
 }
 
@@ -625,14 +678,19 @@ fn did_you_mean(name: &str, options: &[EcoString]) -> Option<String> {
 
 impl Error {
     pub fn pretty_string(&self) -> String {
-        self.to_diagnostic().pretty_string()
+        let mut nocolor = Buffer::no_color();
+        self.pretty(&mut nocolor);
+        String::from_utf8(nocolor.into_inner()).expect("Error printing produced invalid utf8")
     }
 
     pub fn pretty(&self, buffer: &mut Buffer) {
-        self.to_diagnostic().write(buffer)
+        for diagnostic in self.to_diagnostics() {
+            diagnostic.write(buffer);
+            writeln!(buffer).expect("write new line after diagnostic");
+        }
     }
 
-    pub fn to_diagnostic(&self) -> Diagnostic {
+    pub fn to_diagnostics(&self) -> Vec<Diagnostic> {
         use crate::type_::Error as TypeError;
         match self {
             Error::HexPackageSquatting => {
@@ -643,13 +701,13 @@ package deletion or account suspension.
 "
                     .into();
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Invalid Hex package".into(),
                     text,
                     level: Level::Error,
                     location: None,
                     hint: None,
-                }
+                }]
             }
 
             Error::MetadataDecodeError { error } => {
@@ -661,13 +719,13 @@ of the Gleam dependency modules."
                     text.push_str(error);
                 }
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Failed to decode module metadata".into(),
                     text,
                     level: Level::Error,
                     location: None,
                     hint: None,
-                }
+                }]
             }
 
             Error::InvalidProjectName { name, reason } => {
@@ -695,16 +753,16 @@ This prefix is intended for official Gleam packages only.",
                     }
                 );
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Invalid project name".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
-            Error::InvalidModuleName { module } => Diagnostic {
+            Error::InvalidModuleName { module } => vec![Diagnostic {
                 title: "Invalid module name".into(),
                 text: format!(
                     "`{module}` is not a valid module name.
@@ -714,23 +772,23 @@ forward slash and must not end with a slash."
                 level: Level::Error,
                 location: None,
                 hint: None,
-            },
+            }],
 
             Error::ModuleDoesNotExist { module, suggestion } => {
                 let hint = match suggestion {
                     Some(suggestion) => format!("Did you mean `{suggestion}`?"),
                     None => format!("Try creating the file `src/{module}.gleam`."),
                 };
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Module does not exist".into(),
                     text: format!("Module `{module}` was not found."),
                     level: Level::Error,
                     location: None,
                     hint: Some(hint),
-                }
+                }]
             }
 
-            Error::ModuleDoesNotHaveMainFunction { module } => Diagnostic {
+            Error::ModuleDoesNotHaveMainFunction { module } => vec![Diagnostic {
                 title: "Module does not have a main function".into(),
                 text: format!(
                     "`{module}` does not have a main function so the module can not be run."
@@ -741,9 +799,9 @@ forward slash and must not end with a slash."
                     "Add a public `main` function to \
 to `src/{module}.gleam`."
                 )),
-            },
+            }],
 
-            Error::MainFunctionDoesNotSupportTarget { module, target } => Diagnostic {
+            Error::MainFunctionDoesNotSupportTarget { module, target } => vec![Diagnostic {
                 title: "Target not supported".into(),
                 text: wrap_format!(
                     "`{module}` has a main function, but it does not support the {target} \
@@ -752,9 +810,9 @@ target, so it cannot be run."
                 level: Level::Error,
                 location: None,
                 hint: None,
-            },
+            }],
 
-            Error::MainFunctionHasWrongArity { module, arity } => Diagnostic {
+            Error::MainFunctionHasWrongArity { module, arity } => vec![Diagnostic {
                 title: "Main function has wrong arity".into(),
                 text: format!(
                     "`{module}:main` should have an arity of 0 to be run but its arity is {arity}."
@@ -762,17 +820,17 @@ target, so it cannot be run."
                 level: Level::Error,
                 location: None,
                 hint: Some("Change the function signature of main to `pub fn main() {}`.".into()),
-            },
+            }],
 
-            Error::ProjectRootAlreadyExist { path } => Diagnostic {
+            Error::ProjectRootAlreadyExist { path } => vec![Diagnostic {
                 title: "Project folder already exists".into(),
                 text: format!("Project folder root:\n\n  {path}"),
                 level: Level::Error,
                 hint: None,
                 location: None,
-            },
+            }],
 
-            Error::OutputFilesAlreadyExist { file_names } => Diagnostic {
+            Error::OutputFilesAlreadyExist { file_names } => vec![Diagnostic {
                 title: format!(
                     "{} already exist{} in target directory",
                     if file_names.len() == 1 {
@@ -794,9 +852,9 @@ If you want to overwrite these files, delete them and run the command again.
                 level: Level::Error,
                 hint: None,
                 location: None,
-            },
+            }],
 
-            Error::CannotPublishTodo { unfinished } => Diagnostic {
+            Error::CannotPublishTodo { unfinished } => vec![Diagnostic {
                 title: "Cannot publish unfinished code".into(),
                 text: format!(
                     "These modules contain todo expressions and cannot be published:
@@ -813,9 +871,9 @@ Please remove them and try again.
                 level: Level::Error,
                 hint: None,
                 location: None,
-            },
+            }],
 
-            Error::CannotPublishLeakedInternalType { unfinished } => Diagnostic {
+            Error::CannotPublishLeakedInternalType { unfinished } => vec![Diagnostic {
                 title: "Cannot publish unfinished code".into(),
                 text: format!(
                     "These modules leak internal types in their public API and cannot be published:
@@ -832,7 +890,7 @@ Please make sure internal types do not appear in public functions and try again.
                 level: Level::Error,
                 hint: None,
                 location: None,
-            },
+            }],
 
             Error::UnableToFindProjectRoot { path } => {
                 let text = wrap_format!(
@@ -840,13 +898,13 @@ Please make sure internal types do not appear in public functions and try again.
 
 We searched in {path} and all parent directories."
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Project not found".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::VersionDoesNotMatch { toml_ver, app_ver } => {
@@ -854,13 +912,13 @@ We searched in {path} and all parent directories."
                     "The version in gleam.toml \"{toml_ver}\" does not match the version in
 your app.src file \"{app_ver}\"."
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Version does not match".into(),
                     hint: None,
                     text,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::ShellProgramNotFound { program } => {
@@ -892,13 +950,13 @@ You can also install rebar3 via homebrew using \"brew install rebar3\"",
                     _ => (),
                 };
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Program not found".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::ShellCommand {
@@ -907,13 +965,13 @@ You can also install rebar3 via homebrew using \"brew install rebar3\"",
             } => {
                 let text =
                     format!("There was a problem when running the shell command `{command}`.");
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Shell command failure".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::ShellCommand {
@@ -929,13 +987,13 @@ The error from the shell command library was:
                     command,
                     std_io_error_kind_text(err)
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Shell command failure".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::Gzip(detail) => {
@@ -946,13 +1004,13 @@ This was error from the gzip library:
 
     {detail}"
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Gzip compression failure".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::AddTar { path, err } => {
@@ -964,13 +1022,13 @@ This was error from the tar library:
 
     {err}"
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Failure creating tar archive".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::ExpandTar { error } => {
@@ -981,13 +1039,13 @@ This was error from the tar library:
 
     {error}"
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Failure opening tar archive".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::TarFinish(detail) => {
@@ -998,13 +1056,13 @@ This was error from the tar library:
 
     {detail}"
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Failure creating tar archive".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::Hex(detail) => {
@@ -1015,13 +1073,13 @@ This was error from the Hex client library:
 
     {detail}"
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Hex API failure".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::DuplicateModule {
@@ -1036,22 +1094,22 @@ First:  {first}
 Second: {second}"
                 );
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Duplicate module".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
-            Error::DuplicateSourceFile { file } => Diagnostic {
+            Error::DuplicateSourceFile { file } => vec![Diagnostic {
                 title: "Duplicate Source file".into(),
                 text: format!("The file `{file}` is defined multiple times."),
                 hint: None,
                 level: Level::Error,
                 location: None,
-            },
+            }],
 
             Error::FileIo {
                 kind,
@@ -1075,13 +1133,13 @@ Second: {second}"
                     path,
                     err,
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "File IO failure".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::NonUtf8Path { path } => {
@@ -1089,13 +1147,13 @@ Second: {second}"
                     "Encountered a non UTF-8 path '{}', but only UTF-8 paths are supported.",
                     path.to_string_lossy()
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Non UTF-8 Path Encountered".into(),
                     text,
                     level: Level::Error,
                     location: None,
                     hint: None,
-                }
+                }]
             }
 
             Error::GitInitialization { error } => {
@@ -1104,16 +1162,19 @@ Second: {second}"
 
     {error}"
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Failed to initialize git repository".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
-            Error::Type { path, src, error } => match error {
+            Error::Type { path, src, errors: error } => error
+                .iter()
+                .map(|error| {
+                    match error {
                 TypeError::SrcImportingTest {
                     location,
                     src_module,
@@ -1222,11 +1283,10 @@ not expect any. Please remove the label `{label}`."
                 }
 
                 TypeError::PositionalArgumentAfterLabelled { location } => {
-                    let text =
-                        "This unlabeled argument has been supplied after a labelled argument.
+                    let text = "This unlabeled argument has been supplied after a labelled argument.
 Once a labelled argument has been supplied all following arguments must
 also be labelled."
-                            .into();
+                        .into();
                     Diagnostic {
                         title: "Unexpected positional argument".into(),
                         text,
@@ -1340,9 +1400,9 @@ Names in a Gleam module must be unique so one will need to be renamed."
 
                 TypeError::DuplicateField { location, label } => {
                     let text =
-                        format!("The field `{label}` has already been defined. Rename this field.");
+                        format!("The label `{label}` has already been defined. Rename this label.");
                     Diagnostic {
-                        title: "Duplicate field".into(),
+                        title: "Duplicate label".into(),
                         text,
                         hint: None,
                         level: Level::Error,
@@ -1359,8 +1419,7 @@ Names in a Gleam module must be unique so one will need to be renamed."
                 }
 
                 TypeError::DuplicateArgument { location, label } => {
-                    let text =
-                        format!("The labelled argument `{label}` has already been supplied.");
+                    let text = format!("The labelled argument `{label}` has already been supplied.");
                     Diagnostic {
                         title: "Duplicate argument".into(),
                         text,
@@ -1604,15 +1663,14 @@ But function expects:
                 } => {
                     let mut printer = Printer::new();
                     printer.with_names(annotated_names.clone());
-                    let mut text =
-                        if let Some(description) = situation.and_then(|s| s.description()) {
-                            let mut text = description.to_string();
-                            text.push('\n');
-                            text.push('\n');
-                            text
-                        } else {
-                            "".into()
-                        };
+                    let mut text = if let Some(description) = situation.as_ref().and_then(|s| s.description()) {
+                        let mut text = description.to_string();
+                        text.push('\n');
+                        text.push('\n');
+                        text
+                    } else {
+                        "".into()
+                    };
                     text.push_str("Expected type:\n\n");
                     text.push_str(&printer.pretty_print(expected, 4));
                     text.push_str("\n\nFound type:\n\n");
@@ -1679,9 +1737,7 @@ number of arguments."
                             .map(|p| format!("  - {p}"))
                             .sorted()
                             .join("\n");
-                        format!(
-                            "This call accepts these additional labelled arguments:\n\n{labels}",
-                        )
+                        format!("This call accepts these additional labelled arguments:\n\n{labels}",)
                     };
                     let expected = match expected {
                         0 => "no arguments".into(),
@@ -1744,9 +1800,7 @@ constructing a new record with its values."
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
-                                text: Some(
-                                    "I can't tell this is always the right constructor".into(),
-                                ),
+                                text: Some("I can't tell this is always the right constructor".into()),
                                 span: *location,
                             },
                             path: path.clone(),
@@ -1766,15 +1820,14 @@ constructing a new record with its values."
                         UnknownTypeHint::ValueInScopeWithSameName => None,
                     };
 
-                    let mut text = wrap_format!(
-                        "The type `{name}` is not defined or imported in this module."
-                    );
+                    let mut text =
+                        wrap_format!("The type `{name}` is not defined or imported in this module.");
 
                     match hint {
                         UnknownTypeHint::ValueInScopeWithSameName => {
                             let hint = wrap_format!(
-                                "There is a value in scope with the name `{name}`, but no type in scope with that name."
-                            );
+                                    "There is a value in scope with the name `{name}`, but no type in scope with that name."
+                                );
                             text.push('\n');
                             text.push_str(hint.as_str());
                         }
@@ -1884,9 +1937,13 @@ Private types can only be used within the module that defines them.",
                     name,
                     module_name,
                     type_constructors,
+                    value_with_same_name: imported_type_as_value
                 } => {
-                    let text =
-                        format!("The module `{module_name}` does not have a `{name}` type.",);
+                    let text = if *imported_type_as_value {
+                        format!("`{name}` is only a value, it cannot be imported as a type.")
+                    } else {
+                        format!("The module `{module_name}` does not have a `{name}` type.")
+                    };
                     Diagnostic {
                         title: "Unknown module type".into(),
                         text,
@@ -1894,7 +1951,11 @@ Private types can only be used within the module that defines them.",
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
-                                text: did_you_mean(name, type_constructors),
+                                text: if *imported_type_as_value {
+                                    Some(format!("Did you mean `{name}`?"))
+                                } else {
+                                    did_you_mean(name, type_constructors)
+                                },
                                 span: *location,
                             },
                             path: path.clone(),
@@ -1909,9 +1970,13 @@ Private types can only be used within the module that defines them.",
                     name,
                     module_name,
                     value_constructors,
+                    type_with_same_name: imported_value_as_type,
                 } => {
-                    let text =
-                        format!("The module `{module_name}` does not have a `{name}` value.",);
+                    let text = if *imported_value_as_type {
+                        format!("`{name}` is only a type, it cannot be imported as a value.")
+                    } else {
+                        format!("The module `{module_name}` does not have a `{name}` value.")
+                    };
                     Diagnostic {
                         title: "Unknown module field".into(),
                         text,
@@ -1919,38 +1984,11 @@ Private types can only be used within the module that defines them.",
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
-                                text: did_you_mean(name, value_constructors),
-                                span: *location,
-                            },
-                            path: path.clone(),
-                            src: src.clone(),
-                            extra_labels: vec![],
-                        }),
-                    }
-                }
-
-                TypeError::UnknownModuleField {
-                    location,
-                    name,
-                    module_name,
-                    type_constructors,
-                    value_constructors,
-                } => {
-                    let options: Vec<_> = type_constructors
-                        .iter()
-                        .chain(value_constructors)
-                        .cloned()
-                        .collect();
-                    let text =
-                        format!("The module `{module_name}` does not have a `{name}` field.",);
-                    Diagnostic {
-                        title: "Unknown module field".into(),
-                        text,
-                        hint: None,
-                        level: Level::Error,
-                        location: Some(Location {
-                            label: Label {
-                                text: did_you_mean(name, &options),
+                                text: if *imported_value_as_type {
+                                    Some(format!("Did you mean `type {name}`?"))
+                                } else {
+                                    did_you_mean(name, value_constructors)
+                                },
                                 span: *location,
                             },
                             path: path.clone(),
@@ -1966,9 +2004,9 @@ Private types can only be used within the module that defines them.",
                     given,
                 } => {
                     let text = wrap_format!(
-                        "This case expression has {expected} subjects, but this pattern matches {given}.
+                            "This case expression has {expected} subjects, but this pattern matches {given}.
 Each clause must have a pattern for every subject value.",
-                    );
+                        );
                     Diagnostic {
                         title: "Incorrect number of patterns".into(),
                         text,
@@ -2195,82 +2233,82 @@ function and try again."
 
                 TypeError::BitArraySegmentError { error, location } => {
                     let (label, mut extra) = match error {
-                        bit_array::ErrorType::ConflictingTypeOptions { existing_type } => (
-                            "This is an extra type specifier",
-                            vec![format!("Hint: This segment already has the type {existing_type}.")],
-                        ),
+                            bit_array::ErrorType::ConflictingTypeOptions { existing_type } => (
+                                "This is an extra type specifier",
+                                vec![format!("Hint: This segment already has the type {existing_type}.")],
+                            ),
 
-                        bit_array::ErrorType::ConflictingSignednessOptions {
-                            existing_signed
-                        } => (
-                            "This is an extra signedness specifier",
-                            vec![format!(
-                                "Hint: This segment already has a signedness of {existing_signed}."
-                            )],
-                        ),
+                            bit_array::ErrorType::ConflictingSignednessOptions {
+                                existing_signed
+                            } => (
+                                "This is an extra signedness specifier",
+                                vec![format!(
+                                    "Hint: This segment already has a signedness of {existing_signed}."
+                                )],
+                            ),
 
-                        bit_array::ErrorType::ConflictingEndiannessOptions {
-                            existing_endianness
-                        } => (
-                            "This is an extra endianness specifier",
-                            vec![format!(
-                                "Hint: This segment already has an endianness of {existing_endianness}."
-                            )],
-                        ),
+                            bit_array::ErrorType::ConflictingEndiannessOptions {
+                                existing_endianness
+                            } => (
+                                "This is an extra endianness specifier",
+                                vec![format!(
+                                    "Hint: This segment already has an endianness of {existing_endianness}."
+                                )],
+                            ),
 
-                        bit_array::ErrorType::ConflictingSizeOptions => (
-                            "This is an extra size specifier",
-                            vec!["Hint: This segment already has a size.".into()],
-                        ),
+                            bit_array::ErrorType::ConflictingSizeOptions => (
+                                "This is an extra size specifier",
+                                vec!["Hint: This segment already has a size.".into()],
+                            ),
 
-                        bit_array::ErrorType::ConflictingUnitOptions => (
-                            "This is an extra unit specifier",
-                            vec!["Hint: A BitArray segment can have at most 1 unit.".into()],
-                        ),
+                            bit_array::ErrorType::ConflictingUnitOptions => (
+                                "This is an extra unit specifier",
+                                vec!["Hint: A BitArray segment can have at most 1 unit.".into()],
+                            ),
 
-                        bit_array::ErrorType::FloatWithSize => (
-                            "Invalid float size",
-                            vec!["Hint: floats have an exact size of 16/32/64 bits.".into()],
-                        ),
+                            bit_array::ErrorType::FloatWithSize => (
+                                "Invalid float size",
+                                vec!["Hint: floats have an exact size of 16/32/64 bits.".into()],
+                            ),
 
-                        bit_array::ErrorType::InvalidEndianness => (
-                            "This option is invalid here",
-                                vec![wrap("Hint: signed and unsigned can only be used with \
-int, float, utf16 and utf32 types.")],
-                        ),
+                            bit_array::ErrorType::InvalidEndianness => (
+                                "This option is invalid here",
+                                    vec![wrap("Hint: signed and unsigned can only be used with \
+    int, float, utf16 and utf32 types.")],
+                            ),
 
-                        bit_array::ErrorType::OptionNotAllowedInValue => (
-                            "This option is only allowed in BitArray patterns",
-                            vec!["Hint: This option has no effect in BitArray values.".into()],
-                        ),
+                            bit_array::ErrorType::OptionNotAllowedInValue => (
+                                "This option is only allowed in BitArray patterns",
+                                vec!["Hint: This option has no effect in BitArray values.".into()],
+                            ),
 
-                        bit_array::ErrorType::SignednessUsedOnNonInt { typ } => (
-                            "Signedness is only valid with int types",
-                            vec![format!("Hint: This segment has a type of {typ}")],
-                        ),
-                        bit_array::ErrorType::TypeDoesNotAllowSize { typ } => (
-                            "Size cannot be specified here",
-                            vec![format!("Hint: {typ} segments have an automatic size.")],
-                        ),
-                        bit_array::ErrorType::TypeDoesNotAllowUnit { typ } => (
-                            "Unit cannot be specified here",
-                            vec![wrap(&format!("Hint: {typ} segments are sized based on their value \
-and cannot have a unit."))],
-                        ),
-                        bit_array::ErrorType::VariableUtfSegmentInPattern => (
-                            "This cannot be a variable",
-                            vec![wrap("Hint: in patterns utf8, utf16, and utf32  must be an exact string.")],
-                        ),
-                        bit_array::ErrorType::SegmentMustHaveSize => (
-                            "This segment has no size",
-                            vec![wrap("Hint: Bit array segments without a size are only \
-allowed at the end of a bin pattern.")],
-                        ),
-                        bit_array::ErrorType::UnitMustHaveSize => (
-                            "This needs an explicit size",
-                            vec!["Hint: If you specify unit() you must also specify size().".into()],
-                        ),
-                    };
+                            bit_array::ErrorType::SignednessUsedOnNonInt { typ } => (
+                                "Signedness is only valid with int types",
+                                vec![format!("Hint: This segment has a type of {typ}")],
+                            ),
+                            bit_array::ErrorType::TypeDoesNotAllowSize { typ } => (
+                                "Size cannot be specified here",
+                                vec![format!("Hint: {typ} segments have an automatic size.")],
+                            ),
+                            bit_array::ErrorType::TypeDoesNotAllowUnit { typ } => (
+                                "Unit cannot be specified here",
+                                vec![wrap(&format!("Hint: {typ} segments are sized based on their value \
+    and cannot have a unit."))],
+                            ),
+                            bit_array::ErrorType::VariableUtfSegmentInPattern => (
+                                "This cannot be a variable",
+                                vec![wrap("Hint: in patterns utf8, utf16, and utf32  must be an exact string.")],
+                            ),
+                            bit_array::ErrorType::SegmentMustHaveSize => (
+                                "This segment has no size",
+                                vec![wrap("Hint: Bit array segments without a size are only \
+    allowed at the end of a bin pattern.")],
+                            ),
+                            bit_array::ErrorType::UnitMustHaveSize => (
+                                "This needs an explicit size",
+                                vec!["Hint: If you specify unit() you must also specify size().".into()],
+                            ),
+                        };
                     extra.push("See: https://tour.gleam.run/data-types/bit-arrays/".into());
                     let text = extra.join("\n");
                     Diagnostic {
@@ -2308,8 +2346,7 @@ allowed at the end of a bin pattern.")],
 
                 TypeError::UnexpectedTypeHole { location } => Diagnostic {
                     title: "Unexpected type hole".into(),
-                    text: "We need to know the exact type here so type holes cannot be used."
-                        .into(),
+                    text: "We need to know the exact type here so type holes cannot be used.".into(),
                     hint: None,
                     level: Level::Error,
                     location: Some(Location {
@@ -2625,9 +2662,7 @@ The missing patterns are:\n"
                     Diagnostic {
                         title: "Inexhaustive pattern".into(),
                         text,
-                        hint: Some(
-                            "Use a more general pattern or use `let assert` instead.".into(),
-                        ),
+                        hint: Some("Use a more general pattern or use `let assert` instead.".into()),
                         level: Level::Error,
                         location: Some(Location {
                             src: src.clone(),
@@ -2773,8 +2808,176 @@ Rename or remove one of them.",
                             extra_labels: vec![],
                         }),
                     }
-                }
-            },
+                },
+
+                TypeError::NotFnInUse { location, typ } => {
+                    let mut printer = Printer::new();
+                    let text = wrap_format!(
+                        "In a use expression, there should be a function on the right hand side \
+of `<-`, but this value has type:
+
+{}
+
+See: https://tour.gleam.run/advanced-features/use/",
+                        printer.pretty_print(typ, 4)
+                    );
+
+                    Diagnostic {
+                        title: "Type mismatch".into(),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: None,
+                                span: *location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![],
+                        }),
+                    }
+                },
+
+                TypeError::UseFnDoesntTakeCallback { location, actual_type: None }
+                | TypeError::UseFnIncorrectArity { location, expected: 0, given: 1 } => {
+                    let text = wrap("The function on the right of `<-` here takes no arguments.
+But it has to take at least one argument, a callback function.
+
+See: https://tour.gleam.run/advanced-features/use/");
+                    Diagnostic {
+                        title: "Incorrect arity".into(),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: Some("Expected no arguments, got 1".into()),
+                                span: *location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![],
+                        }),
+                    }
+                },
+
+                TypeError::UseFnIncorrectArity { location, expected, given } => {
+                    let expected_string = match expected {
+                        0 => "no arguments".into(),
+                        1 => "1 argument".into(),
+                        _ => format!("{expected} arguments"),
+                    };
+                    let supplied_arguments = given - 1;
+                    let supplied_arguments_string = match supplied_arguments {
+                        0 => "no arguments".into(),
+                        1 => "1 argument".into(),
+                        _ => format!("{given} arguments"),
+                    };
+                    let label = format!("Expected {expected_string}, got {given}");
+                    let mut text: String = format!("The function on the right of `<-` \
+here takes {expected_string}.\n");
+
+                    if expected > given {
+                        if supplied_arguments == 0 {
+                            text.push_str("The only argument that was supplied is the `use` callback function.\n")
+                        } else {
+                            text.push_str(&format!("You supplied {supplied_arguments_string} \
+and the final one is the `use` callback function.\n"));
+                        }
+                    } else {
+                        text.push_str("All the arguments have already been supplied, \
+so it cannot take the the `use` callback function as a final argument.\n")
+                    };
+
+                    text.push_str("\nSee: https://tour.gleam.run/advanced-features/use/");
+
+                    Diagnostic {
+                        title: "Incorrect arity".into(),
+                        text: wrap(&text),
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: Some(label),
+                                span: *location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![],
+                        }),
+                    }
+                },
+
+                TypeError::UseFnDoesntTakeCallback { location, actual_type: Some(actual) } => {
+                    let mut printer = Printer::new();
+                    let text = wrap_format!("The function on the right hand side of `<-` \
+has to take a callback function as its last argument. \
+But the last argument of this function has type:
+
+{}
+
+See: https://tour.gleam.run/advanced-features/use/",
+                        printer.pretty_print(actual, 4)
+                    );
+                    Diagnostic {
+                        title: "Type mismatch".into(),
+                        text: wrap(&text),
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: None,
+                                span: *location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![],
+                        }),
+                    }
+                },
+
+                TypeError::UseCallbackIncorrectArity { pattern_location, call_location, expected, given } => {
+                    let expected = match expected {
+                        0 => "no arguments".into(),
+                        1 => "1 argument".into(),
+                        _ => format!("{expected} arguments"),
+                    };
+
+                    let specified = match given {
+                        0 => "none were provided".into(),
+                        1 => "1 was provided".into(),
+                        _ => format!("{given} were provided"),
+                    };
+
+                    let text = wrap_format!("This function takes a callback that expects {expected}. \
+But {specified} on the left hand side of `<-`.
+
+See: https://tour.gleam.run/advanced-features/use/");
+                    Diagnostic {
+                        title: "Incorrect arity".into(),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: None,
+                                span: *call_location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![
+                                Label {
+                                    text: Some(format!("Expected {expected}, got {given}")),
+                                    span: *pattern_location
+                                }
+                            ],
+                        }),
+                    }
+                },
+            }
+                })
+                .collect_vec(),
 
             Error::Parse { path, src, error } => {
                 let (label, extra) = error.details();
@@ -2789,7 +2992,7 @@ Rename or remove one of them.",
                     error.location
                 };
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Syntax error".into(),
                     text,
                     hint: None,
@@ -2803,7 +3006,7 @@ Rename or remove one of them.",
                         src: src.clone(),
                         extra_labels: vec![],
                     }),
-                }
+                }]
             }
 
             Error::ImportCycle { modules } => {
@@ -2815,13 +3018,13 @@ Rename or remove one of them.",
                     "Gleam doesn't support dependency cycles like these, please break the
 cycle to continue.",
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Import cycle".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::PackageCycle { packages } => {
@@ -2833,13 +3036,13 @@ cycle to continue.",
                     "Gleam doesn't support dependency cycles like these, please break the
 cycle to continue.",
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Dependency cycle".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::UnknownImport { import, details } => {
@@ -2854,7 +3057,7 @@ cycle to continue.",
                     "The module `{module}` is trying to import the module `{import}`, \
 but it cannot be found."
                 ));
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Unknown import".into(),
                     text,
                     hint: None,
@@ -2868,7 +3071,7 @@ but it cannot be found."
                         src: src.clone(),
                         extra_labels: vec![],
                     }),
-                }
+                }]
             }
 
             Error::StandardIo { action, err } => {
@@ -2879,7 +3082,7 @@ but it cannot be found."
                     ),
                     None => "".into(),
                 };
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Standard IO failure".into(),
                     text: format!(
                         "An error occurred while trying to {}:
@@ -2891,7 +3094,7 @@ but it cannot be found."
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::Format { problem_files } => {
@@ -2903,13 +3106,13 @@ but it cannot be found."
                     .collect();
                 let mut text = files.iter().join("\n");
                 text.push('\n');
-                Diagnostic {
+                vec![Diagnostic {
                     title: "These files have not been formatted".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::ForbiddenWarnings { count } => {
@@ -2920,17 +3123,17 @@ but it cannot be found."
                 let text = "Your project was compiled with the `--warnings-as-errors` flag.
 Fix the warnings and try again."
                     .into();
-                Diagnostic {
+                vec![Diagnostic {
                     title: format!("{count} {word_warning} generated."),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::JavaScript { src, path, error } => match error {
-                javascript::Error::Unsupported { feature, location } => Diagnostic {
+                javascript::Error::Unsupported { feature, location } => vec![Diagnostic {
                     title: "Unsupported feature for compilation target".into(),
                     text: format!("{feature} is not supported for JavaScript compilation."),
                     hint: None,
@@ -2944,11 +3147,11 @@ Fix the warnings and try again."
                         src: src.clone(),
                         extra_labels: vec![],
                     }),
-                },
+                }],
             },
 
             Error::Nix { src, path, error } => match error {
-                crate::nix::Error::Unsupported { feature, location } => Diagnostic {
+                crate::nix::Error::Unsupported { feature, location } => vec![Diagnostic {
                     title: "Unsupported feature for compilation target".into(),
                     text: format!("{feature} is not supported for Nix compilation."),
                     hint: None,
@@ -2962,7 +3165,7 @@ Fix the warnings and try again."
                         src: src.clone(),
                         extra_labels: vec![],
                     }),
-                },
+                }],
             },
 
             Error::DownloadPackageError {
@@ -2976,13 +3179,13 @@ The error from the package manager client was:
 
     {error}"
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Failed to download package".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::Http(error) => {
@@ -2992,13 +3195,13 @@ The error from the HTTP client was:
 
     {error}"
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "HTTP error".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::InvalidVersionFormat { input, error } => {
@@ -3008,25 +3211,25 @@ The error from the parser was:
 
     {error}"
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Invalid version format".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::DependencyCanonicalizationFailed(package) => {
                 let text = format!("Local package `{package}` has no canonical path");
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Failed to create canonical path".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::DependencyResolutionFailed(error) => {
@@ -3038,22 +3241,22 @@ The error from the version resolver library was:
 {}",
                     wrap(error)
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Dependency resolution failed".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
-            Error::GitDependencyUnsupported => Diagnostic {
+            Error::GitDependencyUnsupported => vec![Diagnostic {
                 title: "Git dependencies are not currently supported".into(),
                 text: "Please remove all git dependencies from the gleam.toml file".into(),
                 hint: None,
                 location: None,
                 level: Level::Error,
-            },
+            }],
 
             Error::WrongDependencyProvided {
                 path,
@@ -3064,13 +3267,13 @@ The error from the version resolver library was:
                     "Expected package `{expected}` at path `{path}` but found `{found}` instead.",
                 );
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Wrong dependency provided".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::ProvidedDependencyConflict {
@@ -3085,13 +3288,13 @@ adding `local-overrides = [\"{package}\"]` under `[glistix.preview]` to its `gle
 to ensure the root project's dependency overrides that of transitive dependencies.",
                 );
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Conflicting provided dependencies".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::DuplicateDependency(name) => {
@@ -3099,13 +3302,13 @@ to ensure the root project's dependency overrides that of transitive dependencie
                     "The package `{name}` is specified in both the dependencies and
 dev-dependencies sections of the gleam.toml file."
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Dependency duplicated".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::MissingHexPublishFields {
@@ -3130,17 +3333,18 @@ description = """#
 
 licences = ["Apache-2.0"]"#
                 });
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Missing required package fields".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
-            Error::PublishNonHexDependencies { package } => Diagnostic {
-                title: "Unblished dependencies".into(),
+
+            Error::PublishNonHexDependencies { package } => vec![Diagnostic {
+                title: "Unpublished dependencies".into(),
                 text: wrap_format!(
                     "The package cannot be published to Hex \
 because dependency `{package}` is not a Hex dependency.",
@@ -3148,7 +3352,7 @@ because dependency `{package}` is not a Hex dependency.",
                 hint: None,
                 location: None,
                 level: Level::Error,
-            },
+            }],
 
             Error::UnsupportedBuildTool {
                 package,
@@ -3163,13 +3367,13 @@ issue in our tracker: https://github.com/gleam-lang/gleam/issues",
                     package,
                     build_tools
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Unsupported build tool".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::FailedToOpenDocs { path, error } => {
@@ -3180,13 +3384,13 @@ issue in our tracker: https://github.com/gleam-lang/gleam/issues",
     {path}
 {error}",
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Failed to open docs".into(),
                     text,
                     hint: None,
                     level: Level::Error,
                     location: None,
-                }
+                }]
             }
 
             Error::IncompatibleCompilerVersion {
@@ -3198,13 +3402,13 @@ issue in our tracker: https://github.com/gleam-lang/gleam/issues",
                     "The package `{package}` requires a Gleam version satisfying {required_version} \
 but you are using v{gleam_version}.",
                 );
-                Diagnostic {
+                vec![Diagnostic {
                     title: "Incompatible Gleam version".into(),
                     text,
                     hint: None,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
             Error::InvalidRuntime {
@@ -3227,33 +3431,33 @@ but you are using v{gleam_version}.",
                     ),
                 };
 
-                Diagnostic {
+                vec![Diagnostic {
                     title: format!("Invalid runtime for {target}"),
                     text,
                     hint,
                     location: None,
                     level: Level::Error,
-                }
+                }]
             }
 
-            Error::JavaScriptPreludeRequired => Diagnostic {
+            Error::JavaScriptPreludeRequired => vec![Diagnostic {
                 title: "JavaScript prelude required".into(),
                 text: "The --javascript-prelude flag must be given when compiling to JavaScript."
                     .into(),
                 level: Level::Error,
                 location: None,
                 hint: None,
-            },
+            }],
 
-            Error::NixPreludeRequired => Diagnostic {
+            Error::NixPreludeRequired => vec![Diagnostic {
                 title: "Nix prelude required".into(),
                 text: "The --nix-prelude flag must be given when compiling to Nix.".into(),
                 level: Level::Error,
                 location: None,
                 hint: None,
-            },
+            }],
 
-            Error::CannotPatchHexWithHex { name } => Diagnostic {
+            Error::CannotPatchHexWithHex { name } => vec![Diagnostic {
                 title: "Cannot patch a Hex dependency through [glistix.preview.hex-patch]".into(),
                 text: format!(
                     "Your project cannot depend on a Hex version of `{name}` and at the same time \
@@ -3263,7 +3467,39 @@ patch it with another Hex version through [glistix.preview.hex-patch]. You can o
                 level: Level::Error,
                 location: None,
                 hint: None,
-            },
+            }],
+            Error::CorruptManifest => vec![Diagnostic {
+                title: "Corrupt manifest.toml".into(),
+                text: "The `manifest.toml` file is corrupt.".into(),
+                level: Level::Error,
+                location: None,
+                hint: Some("Please run `gleam update` to fix it.".into()),
+            }],
+
+            Error::GleamModuleWouldOverwriteStandardErlangModule { name, path } =>
+vec![Diagnostic {
+                title: "Erlang module name collision".into(),
+                text: wrap_format!("The module `{path}` compiles to an Erlang module \
+named `{name}`.
+
+By default Erlang includes a module with the same name so if we were \
+to compile and load your module it would overwrite the Erlang one, potentially \
+causing confusing errors and crashes.
+"),
+                level: Level::Error,
+                location: None,
+                hint: Some("Rename this module and try again.".into()),
+            }],
+
+            Error::HexPublishReplaceRequired { version } => vec![Diagnostic {
+                title: "Version already published".into(),
+                text: wrap_format!("Version v{version} has already been published.
+This release has been recently published so you can replace it \
+or you can publish it using a different version number"),
+                level: Level::Error,
+                location: None,
+                hint: Some("Please add the --replace flag if you want to replace the release.".into()),
+            }],
         }
     }
 }

@@ -1,6 +1,5 @@
 #![warn(
     clippy::all,
-    clippy::doc_markdown,
     clippy::dbg_macro,
     clippy::todo,
     clippy::mem_forget,
@@ -133,6 +132,7 @@ enum Command {
     ///
     /// - HEXPM_USER: (optional) The Hex username to authenticate with.
     /// - HEXPM_PASS: (optional) The Hex password to authenticate with.
+    /// - HEXPM_API_KEY: (optional) A Hex API key to use instead of authenticating.
     #[command(verbatim_doc_comment)]
     Publish {
         #[arg(long)]
@@ -357,6 +357,7 @@ enum Hex {
     ///
     /// - HEXPM_USER: (optional) The Hex username to authenticate with.
     /// - HEXPM_PASS: (optional) The Hex password to authenticate with.
+    /// - HEXPM_API_KEY: (optional) A Hex API key to use instead of authenticating.
     #[command(verbatim_doc_comment)]
     Retire {
         package: String,
@@ -375,8 +376,24 @@ enum Hex {
     ///
     /// - HEXPM_USER: (optional) The Hex username to authenticate with.
     /// - HEXPM_PASS: (optional) The Hex password to authenticate with.
+    /// - HEXPM_API_KEY: (optional) A Hex API key to use instead of authenticating.
     #[command(verbatim_doc_comment)]
     Unretire { package: String, version: String },
+
+    /// Revert a release from Hex
+    ///
+    /// This command uses this environment variables:
+    ///
+    /// - HEXPM_USER: (optional) The Hex username to authenticate with.
+    /// - HEXPM_PASS: (optional) The Hex password to authenticate with.
+    /// - HEXPM_API_KEY: (optional) A Hex API key to use instead of authenticating.
+    Revert {
+        #[arg(long)]
+        package: Option<String>,
+
+        #[arg(long)]
+        version: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -394,6 +411,7 @@ enum Docs {
     ///
     /// - HEXPM_USER: (optional) The Hex username to authenticate with.
     /// - HEXPM_PASS: (optional) The Hex password to authenticate with.
+    /// - HEXPM_API_KEY: (optional) A Hex API key to use instead of authenticating.
     #[command(verbatim_doc_comment)]
     Publish,
 
@@ -403,6 +421,7 @@ enum Docs {
     ///
     /// - HEXPM_USER: (optional) The Hex username to authenticate with.
     /// - HEXPM_PASS: (optional) The Hex password to authenticate with.
+    /// - HEXPM_API_KEY: (optional) A Hex API key to use instead of authenticating.
     #[command(verbatim_doc_comment)]
     Remove {
         /// The name of the package
@@ -481,6 +500,8 @@ fn main() {
         Command::Hex(Hex::Unretire { package, version }) => {
             hex::UnretireCommand::new(package, version).run()
         }
+
+        Command::Hex(Hex::Revert { package, version }) => hex::revertcommand(package, version),
 
         Command::Add { packages, dev } => add::command(packages, dev),
 

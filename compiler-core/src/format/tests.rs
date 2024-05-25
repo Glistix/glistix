@@ -11,6 +11,7 @@ mod external_types;
 mod function;
 mod guards;
 mod imports;
+mod pipeline;
 mod record_update;
 mod tuple;
 mod use_;
@@ -27,11 +28,11 @@ macro_rules! assert_format {
 
 #[macro_export]
 macro_rules! assert_format_rewrite {
-    ($src:expr, $output:expr  $(,)?) => {
+    ($src:expr, $expected:expr  $(,)?) => {
         let mut writer = String::new();
         $crate::format::pretty(&mut writer, &$src.into(), camino::Utf8Path::new("<stdin>"))
             .unwrap();
-        assert_eq!(writer, $output);
+        assert_eq!(writer, $expected);
     };
 }
 
@@ -4499,7 +4500,9 @@ fn empty_lines_work_with_trailing_space() {
   2
 }
 ";
-    assert_format!(expected); // Sanity check
+    // We first make extra sure we've not messed up the expected output and
+    // check it's well formatted.
+    assert_format!(expected);
 
     assert_format_rewrite!(src, expected);
 }
@@ -4539,7 +4542,10 @@ fn empty_lines_work_with_eol_normalisation() {
   2
 }
 ";
-    assert_format!(expected); // Sanity check
+
+    // We first make extra sure we've not messed up the expected output and
+    // check it's well formatted.
+    assert_format!(expected);
 
     assert_format_rewrite!(&src.replace('\n', "\r\n"), expected);
     assert_format_rewrite!(&src.replace('\n', "\r"), expected);
@@ -4580,9 +4586,12 @@ fn empty_lines_work_with_trailing_space_and_eol_normalisation() {
   2
 }
 ";
-    assert_format!(expected); // Sanity check
 
-    assert_format_rewrite!(&src.replace('\n', "\r\n"), expected);
+    // We first make extra sure we've not messed up the expected output and
+    // check it's well formatted.
+    assert_format!(expected);
+
+    assert_format_rewrite!(src.replace('\n', "\r\n"), expected);
     assert_format_rewrite!(&src.replace('\n', "\r"), expected);
 }
 #[test]
@@ -5946,6 +5955,172 @@ fn internal_attribute_on_const() {
     assert_format!(
         r#"@internal
 pub const wibble = 1
+"#
+    );
+}
+
+#[test]
+fn comments_inside_contant_list() {
+    assert_format!(
+        r#"const wibble = [
+  // A comment
+  1, 2,
+  // Another comment
+  3,
+  // One last comment
+]
+"#
+    );
+}
+
+#[test]
+fn comments_inside_contant_empty_list() {
+    assert_format!(
+        r#"const wibble = [
+  // A comment
+]
+"#
+    );
+}
+
+#[test]
+fn comments_inside_contant_tuple() {
+    assert_format!(
+        r#"const wibble = #(
+  // A comment
+  1,
+  2,
+  // Another comment
+  3,
+  // One last comment
+)
+"#
+    );
+}
+
+#[test]
+fn comments_inside_contant_empty_tuple() {
+    assert_format!(
+        r#"const wibble = #(
+  // A comment
+)
+"#
+    );
+}
+
+#[test]
+fn comments_inside_empty_tuple() {
+    assert_format!(
+        r#"pub fn main() {
+  #(
+    // A comment!
+  )
+}
+"#
+    );
+}
+
+#[test]
+fn comments_at_the_end_of_anonymous_function() {
+    assert_format!(
+        r#"pub fn main() {
+  fn() {
+    1
+    // a final comment
+
+    // another final comment
+    // at the end of the block
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn comments_in_anonymous_function_args() {
+    assert_format!(
+        r#"pub fn main() {
+  fn(
+    // A comment 1
+    // A comment 2
+  ) {
+    1
+  }
+}
+"#
+    );
+    assert_format!(
+        r#"pub fn main() {
+  fn(
+    // A comment 1
+    a,
+    // A comment 2
+  ) {
+    1
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn comments_after_last_argument_of_record_constructor() {
+    assert_format!(
+        r#"type Record {
+  Record(
+    field: String,
+    // comment_line_1: String,
+    // comment_line_2: String,
+  )
+}
+"#
+    );
+}
+
+#[test]
+fn only_comments_in_record_constructor() {
+    assert_format!(
+        r#"type Record {
+  Record(
+    // comment_line_1: String,
+    // comment_line_2: String,
+  )
+}
+"#
+    );
+}
+#[test]
+fn comment_after_spread_operator() {
+    assert_format!(
+        "type Triple {
+  Triple(a: Int, b: Int, c: Int)
+}
+
+fn main() {
+  let triple = Triple(1, 2, 3)
+  let Triple(
+    really_really_long_variable_name_a,
+    c: really_really_long_variable_name_c,
+    ..,
+    // comment
+  ) = triple
+  really_really_long_variable_name_c
+}
+"
+    );
+}
+
+#[test]
+fn multiline_comment_in_case_block() {
+    assert_format!(
+        r#"pub fn do_len(list, acc) {
+  case list {
+    [] -> acc
+    [_, ..rest] -> rest |> do_len(acc + 1)
+    // Even the opposite wouldn't be optimised:
+    // { acc + 1 } |> do_len(rest, _)
+  }
+}
 "#
     );
 }

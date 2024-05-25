@@ -2,8 +2,11 @@ use crate::ast::SrcSpan;
 use crate::parse::error::{
     InvalidUnicodeEscapeError, LexicalError, LexicalErrorType, ParseError, ParseErrorType,
 };
+use crate::parse::lexer::make_tokenizer;
+use crate::parse::token::Token;
 use camino::Utf8PathBuf;
 
+use itertools::Itertools;
 use pretty_assertions::assert_eq;
 
 macro_rules! assert_error {
@@ -355,6 +358,36 @@ fn name2() {
     );
 }
 
+// https://github.com/gleam-lang/gleam/issues/3125
+#[test]
+fn triple_equals() {
+    assert_error!(
+        "let bar:Int = 32
+        bar === 42",
+        ParseError {
+            error: ParseErrorType::LexError {
+                error: LexicalError {
+                    error: LexicalErrorType::InvalidTripleEqual,
+                    location: SrcSpan { start: 29, end: 32 },
+                }
+            },
+            location: SrcSpan { start: 29, end: 32 },
+        }
+    );
+}
+
+#[test]
+fn triple_equals_with_whitespace() {
+    assert_error!(
+        "let bar:Int = 32
+        bar ==     = 42",
+        ParseError {
+            error: ParseErrorType::NoLetBinding,
+            location: SrcSpan { start: 36, end: 37 },
+        }
+    );
+}
+
 // https://github.com/gleam-lang/gleam/issues/1231
 #[test]
 fn pointless_spread() {
@@ -655,6 +688,26 @@ fn attributes_with_improper_definition() {
 }
 
 #[test]
+fn const_with_function_call() {
+    assert_module_error!(
+        r#"
+pub fn wibble() { 123 }
+const wib: Int = wibble()
+"#
+    );
+}
+
+#[test]
+fn const_with_function_call_with_args() {
+    assert_module_error!(
+        r#"
+pub fn wibble() { 123 }
+const wib: Int = wibble(1, "wobble")
+"#
+    );
+}
+
+#[test]
 fn import_type() {
     assert_parse_module!(r#"import wibble.{type Wobble, Wobble, type Wabble}"#);
 }
@@ -941,7 +994,7 @@ fn main() {
 fn type_invalid_constructor() {
     assert_module_error!(
         "
-type A { 
+type A {
     A(String)
     type
 }
@@ -953,7 +1006,7 @@ type A {
 fn type_invalid_type_name() {
     assert_module_error!(
         "
-type A(a, type) { 
+type A(a, type) {
     A
 }
 "
@@ -964,7 +1017,7 @@ type A(a, type) {
 fn type_invalid_constructor_arg() {
     assert_module_error!(
         "
-type A { 
+type A {
     A(type: String)
 }
 "
@@ -1018,5 +1071,19 @@ type A {
 }
 const a = A(\"a\", let)
 "
+    );
+}
+
+#[test]
+fn newline_tokens() {
+    assert_eq!(
+        make_tokenizer("1\n\n2\n").collect_vec(),
+        [
+            Ok((0, Token::Int { value: "1".into() }, 1)),
+            Ok((1, Token::NewLine, 2)),
+            Ok((2, Token::NewLine, 3)),
+            Ok((3, Token::Int { value: "2".into() }, 4)),
+            Ok((4, Token::NewLine, 5))
+        ]
     );
 }

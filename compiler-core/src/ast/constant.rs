@@ -54,21 +54,29 @@ pub enum Constant<T, RecordTag> {
         constructor: Option<Box<ValueConstructor>>,
         typ: T,
     },
+
+    /// A placeholder constant used to allow module analysis to continue
+    /// even when there are type errors. Should never end up in generated code.
+    Invalid {
+        location: SrcSpan,
+        typ: T,
+    },
 }
 
 impl TypedConstant {
     pub fn type_(&self) -> Arc<Type> {
         match self {
-            Constant::Int { .. } => crate::type_::int(),
-            Constant::Float { .. } => crate::type_::float(),
-            Constant::String { .. } => crate::type_::string(),
-            Constant::BitArray { .. } => crate::type_::bits(),
+            Constant::Int { .. } => type_::int(),
+            Constant::Float { .. } => type_::float(),
+            Constant::String { .. } => type_::string(),
+            Constant::BitArray { .. } => type_::bits(),
             Constant::Tuple { elements, .. } => {
-                crate::type_::tuple(elements.iter().map(|e| e.type_()).collect())
+                type_::tuple(elements.iter().map(|e| e.type_()).collect())
             }
             Constant::List { typ, .. }
             | Constant::Record { typ, .. }
-            | Constant::Var { typ, .. } => typ.clone(),
+            | Constant::Var { typ, .. }
+            | Constant::Invalid { typ, .. } => typ.clone(),
         }
     }
 }
@@ -89,7 +97,8 @@ impl<A, B> Constant<A, B> {
             | Constant::String { location, .. }
             | Constant::Record { location, .. }
             | Constant::BitArray { location, .. }
-            | Constant::Var { location, .. } => *location,
+            | Constant::Var { location, .. }
+            | Constant::Invalid { location, .. } => *location,
         }
     }
 

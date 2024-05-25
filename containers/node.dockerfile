@@ -1,3 +1,6 @@
 FROM node:latest
-COPY glistix /bin
+
+ARG TARGETARCH
+COPY glistix-${TARGETARCH} /bin/glistix
+
 CMD ["glistix"]

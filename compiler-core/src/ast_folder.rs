@@ -15,6 +15,7 @@ use crate::{
     build::Target,
 };
 
+#[allow(dead_code)]
 pub trait UntypedModuleFolder: TypeAstFolder + UntypedExprFolder {
     /// You probably don't want to override this method.
     fn fold_module(&mut self, mut m: UntypedModule) -> UntypedModule {
@@ -150,6 +151,7 @@ pub trait UntypedModuleFolder: TypeAstFolder + UntypedExprFolder {
     }
 }
 
+#[allow(dead_code)]
 pub trait TypeAstFolder {
     /// Visit a node and potentially replace it with another node using the
     /// `fold_*` methods. Afterwards, the `walk` method is called on the new
@@ -221,6 +223,7 @@ pub trait TypeAstFolder {
     }
 }
 
+#[allow(dead_code)]
 pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFolder {
     /// Visit a node and potentially replace it with another node using the
     /// `fold_*` methods. Afterwards, the `walk` method is called on the new
@@ -247,11 +250,19 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
 
             UntypedExpr::Fn {
                 location,
+                end_of_head_byte_index,
                 is_capture,
                 arguments,
                 body,
                 return_annotation,
-            } => self.fold_fn(location, is_capture, arguments, body, return_annotation),
+            } => self.fold_fn(
+                location,
+                end_of_head_byte_index,
+                is_capture,
+                arguments,
+                body,
+                return_annotation,
+            ),
 
             UntypedExpr::List {
                 location,
@@ -359,6 +370,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
 
             UntypedExpr::Fn {
                 location,
+                end_of_head_byte_index,
                 is_capture,
                 arguments,
                 body,
@@ -369,6 +381,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
                 let body = body.mapped(|s| self.fold_statement(s));
                 UntypedExpr::Fn {
                     location,
+                    end_of_head_byte_index,
                     is_capture,
                     arguments,
                     body,
@@ -587,6 +600,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
 
             Statement::Use(Use {
                 location,
+                assignments_location,
                 call,
                 assignments,
             }) => {
@@ -601,6 +615,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
                 let call = Box::new(self.fold_expr(*call));
                 Statement::Use(Use {
                     location,
+                    assignments_location,
                     call,
                     assignments,
                 })
@@ -649,6 +664,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
     fn fold_fn(
         &mut self,
         location: SrcSpan,
+        end_of_head_byte_index: u32,
         is_capture: bool,
         arguments: Vec<UntypedArg>,
         body: Vec1<UntypedStatement>,
@@ -656,6 +672,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
     ) -> UntypedExpr {
         UntypedExpr::Fn {
             location,
+            end_of_head_byte_index,
             is_capture,
             arguments,
             body,
@@ -814,6 +831,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
     }
 }
 
+#[allow(dead_code)]
 pub trait UntypedConstantFolder {
     /// You probably don't want to override this method.
     fn fold_constant(&mut self, m: UntypedConstant) -> UntypedConstant {
@@ -859,6 +877,8 @@ pub trait UntypedConstantFolder {
                 constructor: _,
                 typ: (),
             } => self.fold_constant_var(location, module, name),
+
+            Constant::Invalid { location, typ: () } => self.fold_constant_invalid(location),
         }
     }
 
@@ -935,6 +955,10 @@ pub trait UntypedConstantFolder {
         }
     }
 
+    fn fold_constant_invalid(&mut self, location: SrcSpan) -> UntypedConstant {
+        Constant::Invalid { location, typ: () }
+    }
+
     /// You probably don't want to override this method.
     fn walk_constant(&mut self, m: UntypedConstant) -> UntypedConstant {
         match m {
@@ -942,7 +966,8 @@ pub trait UntypedConstantFolder {
             | Constant::Int { .. }
             | Constant::Float { .. }
             | Constant::String { .. }
-            | Constant::Tuple { .. } => m,
+            | Constant::Tuple { .. }
+            | Constant::Invalid { .. } => m,
 
             Constant::List {
                 location,
@@ -1001,6 +1026,7 @@ pub trait UntypedConstantFolder {
     }
 }
 
+#[allow(dead_code)]
 pub trait PatternFolder {
     /// You probably don't want to override this method.
     fn fold_pattern(&mut self, m: UntypedPattern) -> UntypedPattern {

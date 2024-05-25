@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::time::SystemTime;
+use std::{collections::HashSet, time::SystemTime};
 
 use camino::{Utf8Path, Utf8PathBuf};
 
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     package_compiler::{module_name, CacheMetadata, CachedModule, Input, UncompiledModule},
     package_loader::CodegenRequired,
-    Mode, Origin, Target,
+    Mode, Origin, SourceFingerprint, Target,
 };
 use crate::{
     error::{FileIoAction, FileKind},
@@ -19,15 +19,6 @@ use crate::{
     warning::WarningEmitter,
     Error, Result,
 };
-
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub(crate) struct SourceFingerprint(u64);
-
-impl SourceFingerprint {
-    pub(crate) fn new(source: &str) -> Self {
-        SourceFingerprint(xxhash_rust::xxh3::xxh3_64(source.as_bytes()))
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct ModuleLoader<'a, IO> {
@@ -40,6 +31,9 @@ pub(crate) struct ModuleLoader<'a, IO> {
     pub source_directory: &'a Utf8Path,
     pub artefact_directory: &'a Utf8Path,
     pub origin: Origin,
+    /// The set of modules that have had partial compilation done since the last
+    /// successful compilation.
+    pub incomplete_modules: &'a HashSet<EcoString>,
 }
 
 impl<'a, IO> ModuleLoader<'a, IO>
@@ -81,6 +75,11 @@ where
             let source_module = read_source(name.clone())?;
             if meta.fingerprint != SourceFingerprint::new(&source_module.code) {
                 tracing::debug!(?name, "cache_stale");
+                return Ok(Input::New(source_module));
+            } else if self.mode == Mode::Lsp && self.incomplete_modules.contains(&name) {
+                // Since the lsp can have valid but incorrect intermediate code states between
+                // successful compilations, we need to invalidate the cache even if the fingerprint matches
+                tracing::debug!(?name, "cache_stale for lsp");
                 return Ok(Input::New(source_module));
             }
         }

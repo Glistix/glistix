@@ -33,15 +33,9 @@ fn(Int) -> Int
                 .to_string()
             )),
             range: Some(Range {
-                start: Position {
-                    line: 1,
-                    character: 0,
-                },
-                end: Position {
-                    line: 1,
-                    character: 11,
-                },
-            },),
+                start: Position::new(1, 0),
+                end: Position::new(1, 11)
+            }),
         })
     );
 }
@@ -593,6 +587,283 @@ fn do_stuff() {
                 "```gleam\nString\n```\nA locally defined variable.".to_string()
             )),
             range: Some(Range::new(Position::new(9, 2), Position::new(9, 3))),
+        })
+    );
+}
+
+#[test]
+fn hover_function_arg_annotation() {
+    let code = "
+/// Exciting documentation
+/// Maybe even multiple lines
+fn append(x: String, y: String) -> String {
+  x <> y
+}
+";
+
+    assert_eq!(
+        hover(TestProject::for_source(code), Position::new(3, 17)),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nString\n```\n".to_string()
+            )),
+            range: Some(Range::new(Position::new(3, 13), Position::new(3, 19))),
+        })
+    );
+}
+
+#[test]
+fn hover_function_return_annotation() {
+    let code = "
+/// Exciting documentation
+/// Maybe even multiple lines
+fn append(x: String, y: String) -> String {
+  x <> y
+}
+";
+
+    assert_eq!(
+        hover(TestProject::for_source(code), Position::new(3, 39)),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nString\n```\n".to_string()
+            )),
+            range: Some(Range::new(Position::new(3, 35), Position::new(3, 41))),
+        })
+    );
+}
+
+#[test]
+fn hover_function_return_annotation_with_tuple() {
+    let code = "
+/// Exciting documentation
+/// Maybe even multiple lines
+fn append(x: String, y: String) -> #(String, String) {
+  #(x, y)
+}
+";
+
+    assert_eq!(
+        hover(TestProject::for_source(code), Position::new(3, 39)),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nString\n```\n".to_string()
+            )),
+            range: Some(Range::new(Position::new(3, 37), Position::new(3, 43))),
+        })
+    );
+}
+
+#[test]
+fn hover_module_constant_annotation() {
+    let code = "
+/// Exciting documentation
+/// Maybe even multiple lines
+const one: Int = 1
+";
+
+    assert_eq!(
+        hover(TestProject::for_source(code), Position::new(3, 13)),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nInt\n```\n".to_string()
+            )),
+            range: Some(Range::new(Position::new(3, 11), Position::new(3, 14))),
+        })
+    );
+}
+
+#[test]
+fn hover_type_constructor_annotation() {
+    let code = "
+type Wibble {
+    Wibble(arg: String)
+}
+";
+
+    assert_eq!(
+        hover(TestProject::for_source(code), Position::new(2, 20)),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nString\n```\n".to_string()
+            )),
+            range: Some(Range::new(Position::new(2, 16), Position::new(2, 22))),
+        })
+    );
+}
+
+#[test]
+fn hover_type_alias_annotation() {
+    let code = "
+type Wibble = Int
+";
+
+    assert_eq!(
+        hover(TestProject::for_source(code), Position::new(1, 15)),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nInt\n```\n".to_string()
+            )),
+            range: Some(Range::new(Position::new(1, 14), Position::new(1, 17))),
+        })
+    );
+}
+
+#[test]
+fn hover_assignment_annotation() {
+    let code = "
+fn wibble() {
+    let wobble: Int = 7
+    wobble
+}
+";
+
+    assert_eq!(
+        hover(TestProject::for_source(code), Position::new(2, 18)),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nInt\n```\n".to_string()
+            )),
+            range: Some(Range::new(Position::new(2, 16), Position::new(2, 19))),
+        })
+    );
+}
+
+#[test]
+fn hover_function_arg_annotation_with_documentation() {
+    let code = "
+/// Exciting documentation
+/// Maybe even multiple lines
+type Wibble {
+    Wibble(arg: String)
+}
+
+fn identity(x: Wibble) -> Wibble {
+  x
+}
+";
+
+    assert_eq!(
+        hover(TestProject::for_source(code), Position::new(7, 20)),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nWibble\n```\n Exciting documentation\n Maybe even multiple lines\n"
+                    .to_string()
+            )),
+            range: Some(Range::new(Position::new(7, 15), Position::new(7, 21))),
+        })
+    );
+}
+
+#[test]
+fn hover_import_unqualified_value() {
+    let code = "
+import example_module.{my_num}
+fn main() {
+  my_num
+}
+";
+
+    assert_eq!(
+        hover(
+            TestProject::for_source(code).add_module(
+                "example_module",
+                "
+/// Exciting documentation
+/// Maybe even multiple lines
+pub const my_num = 1"
+            ),
+            Position::new(1, 26)
+        ),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nInt\n```\n Exciting documentation\n Maybe even multiple lines\n"
+                    .to_string()
+            )),
+            range: Some(Range::new(Position::new(1, 23), Position::new(1, 29))),
+        })
+    )
+}
+
+#[test]
+fn hover_import_unqualified_value_from_hex() {
+    let code = "
+import example_module.{my_num}
+fn main() {
+  my_num
+}
+";
+
+    assert_eq!(
+        hover(
+            TestProject::for_source(code).add_hex_module(
+                "example_module",
+                "
+/// Exciting documentation
+/// Maybe even multiple lines
+pub const my_num = 1"
+            ),
+            Position::new(1, 26)
+        ),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nInt\n```\n Exciting documentation\n Maybe even multiple lines\n\nView on [HexDocs](https://hexdocs.pm/hex/example_module.html#my_num)"
+                    .to_string()
+            )),
+            range: Some(Range::new(Position::new(1, 23), Position::new(1, 29))),
+        })
+    )
+}
+
+#[test]
+fn hover_import_unqualified_type() {
+    let code = "
+import example_module.{type MyType, MyType}
+fn main() -> MyType {
+  MyType
+}
+";
+
+    assert_eq!(
+        hover(
+            TestProject::for_source(code).add_module(
+                "example_module",
+                "
+/// Exciting documentation
+/// Maybe even multiple lines
+pub type MyType {
+    MyType
+}"
+            ),
+            Position::new(1, 33)
+        ),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nMyType\n```\n Exciting documentation\n Maybe even multiple lines\n"
+                    .to_string()
+            )),
+            range: Some(Range::new(Position::new(1, 23), Position::new(1, 34))),
+        })
+    )
+}
+
+#[test]
+fn hover_works_even_for_invalid_code() {
+    let code = "
+fn invalid() { 1 + Nil }
+fn valid() { Nil }
+";
+
+    assert_eq!(
+        hover(TestProject::for_source(code), Position::new(2, 3)),
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::String(
+                "```gleam\nfn() -> Nil\n```\n".to_string()
+            )),
+            range: Some(Range {
+                start: Position::new(2, 0),
+                end: Position::new(2, 10)
+            }),
         })
     );
 }
