@@ -617,14 +617,14 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         function_name: &EcoString,
         external_nix: Option<&(EcoString, EcoString)>,
         location: SrcSpan,
-    ) -> Result<(), Error> {
+    ) {
         use regex::Regex;
 
         static MODULE: OnceLock<Regex> = OnceLock::new();
         static FUNCTION: OnceLock<Regex> = OnceLock::new();
 
         let (module, function) = match external_nix {
-            None => return Ok(()),
+            None => return,
             Some(external) => external,
         };
         // TODO(NIX): Consider allowing arbitrary paths, incl. <...> notation
@@ -652,7 +652,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                 name: function_name.clone(),
             });
         }
-        Ok(())
     }
 
     fn ensure_annotations_present(
