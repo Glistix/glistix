@@ -1,8 +1,8 @@
-use crate::analyse::Inferred;
 use ecow::EcoString;
 use itertools::Itertools;
 use std::sync::OnceLock;
 
+use crate::analyse::Inferred;
 use crate::ast::{AssignName, ClauseGuard, Pattern, TypedClauseGuard, TypedExpr, TypedPattern};
 use crate::docvec;
 use crate::nix::{
@@ -10,6 +10,7 @@ use crate::nix::{
     UsageTracker,
 };
 use crate::pretty::{nil, Document, Documentable};
+use crate::strings::convert_string_escape_chars;
 use crate::type_::{FieldMap, PatternConstructor};
 
 pub static ASSIGNMENT_VAR: &str = "_pat'";
@@ -1060,58 +1061,5 @@ pub(crate) fn assign_subjects<'a>(
 
 /// Calculates the length of str as UTF-8 bytes without escape characters.
 fn no_escape_bytes_len(str: &EcoString) -> usize {
-    let mut filtered_str = String::new();
-    let mut str_iter = str.chars().peekable();
-    loop {
-        match str_iter.next() {
-            Some('\\') => match str_iter.next() {
-                // Check for Unicode escape sequence, e.g. \u{00012FF}
-                Some('u') => {
-                    if str_iter.peek() != Some(&'{') {
-                        // Invalid Unicode escape sequence
-                        filtered_str.push('u');
-                        continue;
-                    }
-
-                    // Consume the left brace after peeking
-                    let _ = str_iter.next();
-
-                    let codepoint_str = str_iter
-                        .peeking_take_while(char::is_ascii_hexdigit)
-                        .collect::<String>();
-
-                    if codepoint_str.is_empty() || str_iter.peek() != Some(&'}') {
-                        // Invalid Unicode escape sequence
-                        filtered_str.push_str("u{");
-                        filtered_str.push_str(&codepoint_str);
-                        continue;
-                    }
-
-                    let codepoint = u32::from_str_radix(&codepoint_str, 16)
-                        .ok()
-                        .and_then(char::from_u32);
-
-                    if let Some(codepoint) = codepoint {
-                        // Consume the right brace after peeking
-                        let _ = str_iter.next();
-
-                        // Consider this codepoint's length instead of
-                        // that of the Unicode escape sequence itself
-                        filtered_str.push(codepoint);
-                    } else {
-                        // Invalid Unicode escape sequence
-                        // (codepoint value not in base 16 or too large)
-                        filtered_str.push_str("u{");
-                        filtered_str.push_str(&codepoint_str);
-                    }
-                }
-                Some(c) => filtered_str.push(c),
-                None => break,
-            },
-            Some(c) => filtered_str.push(c),
-            None => break,
-        }
-    }
-
-    filtered_str.len()
+    convert_string_escape_chars(str).len()
 }
