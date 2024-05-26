@@ -347,9 +347,11 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
             }
 
             ClauseGuard::ModuleSelect {
-                module_name, label, ..
+                module_alias,
+                label,
+                ..
             } => docvec!(
-                module_var_name_doc(module_name),
+                module_var_name_doc(module_alias),
                 ".",
                 maybe_escape_identifier_doc(label)
             ),
