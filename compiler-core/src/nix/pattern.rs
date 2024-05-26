@@ -28,12 +28,6 @@ enum Index<'a> {
     StringPrefixSlice(usize),
 }
 
-#[derive(Debug)]
-pub struct Subjects<'a> {
-    pub values: Vec<Document<'a>>,
-    pub assignments: Vec<(Document<'a>, Document<'a>)>,
-}
-
 /// Compiles clauses with patterns into individual checks.
 #[derive(Debug)]
 pub(crate) struct Generator<'module_ctx, 'expression_gen, 'a> {
