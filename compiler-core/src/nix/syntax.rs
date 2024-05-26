@@ -47,7 +47,7 @@ pub fn path(value: &str) -> Cow<'_, str> {
                 current_prefix = "/";
             } else if value.starts_with("./") || value.starts_with("~/") {
                 new_prefix = "";
-                current_prefix = &value.get(0..2).expect("string should have two characters");
+                current_prefix = value.get(0..2).expect("string should have two characters");
             } else {
                 // Assume a relative path when the prefix is valid
                 new_prefix = "./";
