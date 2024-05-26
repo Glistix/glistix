@@ -1,6 +1,0 @@
-name = "importy"
-version = "0.1.0"
-target = "javascript"
-
-[javascript]
-typescript_declarations = true

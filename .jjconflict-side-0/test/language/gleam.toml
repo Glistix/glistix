@@ -1,7 +1,0 @@
-name = "language"
-version = "1.0.0"
-
-[javascript.deno]
-allow_read = [
-  "./build"
-]

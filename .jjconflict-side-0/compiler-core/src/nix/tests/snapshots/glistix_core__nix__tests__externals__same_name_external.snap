@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/externals.rs
-expression: "\n@external(nix, \"./thingy\", \"fetch\")\npub fn fetch(request: Nil) -> Nil"
----
-let inherit (builtins.import ./thingy) fetch; in { inherit fetch; }

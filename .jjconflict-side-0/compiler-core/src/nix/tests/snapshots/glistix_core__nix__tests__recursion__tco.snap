@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/recursion.rs
-expression: "\npub fn main(x) {\n  case x {\n    0 -> Nil\n    _ -> main(x - 1)\n  }\n}\n"
----
-let main = x: if x == 0 then null else main (x - 1); in { inherit main; }

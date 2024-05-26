@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/case_clause_guards.rs
-expression: "pub fn main(x, xs: #(Bool, Bool, Bool)) {\n  case x {\n    _ if xs.2 -> 1\n    _ -> 0\n  }\n}\n"
----
-let main = x: xs: if builtins.elemAt xs 2 then 1 else 0; in { inherit main; }

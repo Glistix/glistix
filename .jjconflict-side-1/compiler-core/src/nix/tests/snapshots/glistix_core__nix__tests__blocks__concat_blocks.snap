@@ -1,8 +1,0 @@
----
-source: compiler-core/src/nix/tests/blocks.rs
-expression: "\nfn main(f, a, b) {\n  {\n    a\n    |> f\n  } <> {\n    b\n    |> f\n  }\n}\n"
----
-let
-  main = f: a: b: (let _pipe = a; in f _pipe) + (let _pipe = b; in f _pipe);
-in
-{ }

@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/tuples.rs
-expression: "\nfn go() {\n  #(1, 2).0\n}\n"
----
-let go = { }: builtins.elemAt [ 1 2 ] 0; in { }

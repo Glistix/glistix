@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/type_alias.rs
-expression: "\npub type Headers = List(#(String, String))\n"
----
-{ }

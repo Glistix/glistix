@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/blocks.rs
-expression: "\nfn b() {\n  {\n    1 + 2\n  }\n}\n"
----
-let b = { }: 1 + 2; in { }

@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/assignments.rs
-expression: "pub fn main(x) {\n  let x = False\n  x\n}\n"
----
-let main = x: let x'1 = false; in x'1; in { inherit main; }

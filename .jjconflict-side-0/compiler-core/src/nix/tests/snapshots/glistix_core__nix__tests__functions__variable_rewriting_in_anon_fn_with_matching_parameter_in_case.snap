@@ -1,8 +1,0 @@
----
-source: compiler-core/src/nix/tests/functions.rs
-expression: "pub fn bad() {\n  fn(state) {\n    let state = case Nil {\n      _ -> state\n    }\n    state\n  }\n}\n"
----
-let
-  bad = { }: state: let state'1 = let _pat' = null; in state; in state'1;
-in
-{ inherit bad; }

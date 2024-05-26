@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/prelude.rs
-expression: "import gleam\npub fn go() { gleam.Nil }\n"
----
-let gleam' = builtins.import ./../gleam.nix; go = { }: null; in { inherit go; }

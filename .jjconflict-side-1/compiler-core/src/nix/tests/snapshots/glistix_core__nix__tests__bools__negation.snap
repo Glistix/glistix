@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/bools.rs
-expression: "pub fn negate(x) {\n    !x\n}"
----
-let negate = x: !x; in { inherit negate; }

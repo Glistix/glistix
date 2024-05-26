@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/case_clause_guards.rs
-expression: "pub fn main(x, y) {\n  case x {\n    _ if !y && !x -> 0\n    _ -> 1\n  }\n}\n"
----
-let main = x: y: if !y && !x then 0 else 1; in { inherit main; }

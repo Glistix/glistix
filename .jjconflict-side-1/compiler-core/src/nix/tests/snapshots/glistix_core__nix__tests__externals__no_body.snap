@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/externals.rs
-expression: "\n@external(nix, \"./one\", \"one\")\npub fn one(x: Int) -> Int\n"
----
-let inherit (builtins.import ./one) one; in { inherit one; }

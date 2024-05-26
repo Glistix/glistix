@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/functions.rs
-expression: "const in = 1\n\npub fn rec() {\n  in\n}\n"
----
-let in' = 1; rec' = { }: in'; in { inherit rec'; }

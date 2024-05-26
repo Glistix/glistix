@@ -1,8 +1,0 @@
----
-source: compiler-core/src/nix/tests/custom_types.rs
-expression: "pub type Thing {\n  Thing(in: Int, class: Nil)\n}\n"
----
-let
-  Thing = in': class: { __gleamTag = "Thing"; inherit class; "in" = in'; };
-in
-{ inherit Thing; }

@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/blocks.rs
-expression: "\nfn go() {\n  1 == {\n    1\n    2\n  }\n}\n"
----
-let go = { }: 1 == (let _' = 1; in builtins.seq _' 2); in { }

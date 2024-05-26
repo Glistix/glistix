@@ -1,8 +1,0 @@
----
-source: compiler-core/src/nix/tests/functions.rs
-expression: "pub fn main(f, _) {\n  f()\n  main(f, 1)\n}\n"
----
-let
-  main = f: _: let _' = f { }; in builtins.seq _' (main f 1);
-in
-{ inherit main; }

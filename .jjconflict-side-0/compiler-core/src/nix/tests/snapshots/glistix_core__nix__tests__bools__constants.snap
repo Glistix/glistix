@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/bools.rs
-expression: "\nconst a = True\nconst b = False\nconst c = Nil\n"
----
-let a = true; b = false; c = null; in { }

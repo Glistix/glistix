@@ -1,5 +1,0 @@
----
-source: compiler-core/src/nix/tests/strings.rs
-expression: "\nfn go() {\n  \"Hello, Gleam!\"\n}\n"
----
-let go = { }: "Hello, Gleam!"; in { }
