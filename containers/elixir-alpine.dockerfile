@@ -1,6 +1,3 @@
 FROM elixir:alpine
-
-ARG TARGETARCH
-COPY glistix-${TARGETARCH} /bin/glistix
-
+COPY glistix /bin
 CMD ["glistix"]
