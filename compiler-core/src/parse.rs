@@ -508,7 +508,6 @@ where
                 if let Some(location) = self.maybe_one(&Token::DotDot) {
                     dot_dot_location = Some(location);
                     tail = self.parse_expression()?.map(Box::new);
-
                     if self.maybe_one(&Token::Comma).is_some() {
                         // See if there's a list of items after the tail,
                         // like `[..wibble, wobble, wabble]`
@@ -535,7 +534,10 @@ where
                     }
                     _ => {}
                 }
-                if tail.is_some() && elements.is_empty() {
+                if tail.is_some()
+                    && elements.is_empty()
+                    && elements_after_tail.as_ref().map_or(true, |e| e.is_empty())
+                {
                     return parse_error(
                         ParseErrorType::ListSpreadWithoutElements,
                         SrcSpan { start, end },
