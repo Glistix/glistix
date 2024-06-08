@@ -216,17 +216,6 @@ where
                 continue;
             }
 
-            // If we are compiling for Erlang then modules all live in a single
-            // namespace. If we were to name a module the same as a module that
-            // is included in the standard Erlang distribution then this new
-            // Gleam module would overwrite the existing Erlang one, likely
-            // resulting in cryptic errors.
-            // This would most commonly happen for modules like "user" and
-            // "code". Emit an error so this never happens.
-            if self.target.is_erlang() {
-                ensure_gleam_module_does_not_overwrite_standard_erlang_module(&path)?;
-            }
-
             let input = loader.load(path)?;
             inputs.insert(input)?;
         }
@@ -247,6 +236,19 @@ where
             }
         }
 
+        // If we are compiling for Erlang then modules all live in a single
+        // namespace. If we were to name a module the same as a module that
+        // is included in the standard Erlang distribution then this new
+        // Gleam module would overwrite the existing Erlang one, likely
+        // resulting in cryptic errors.
+        // This would most commonly happen for modules like "user" and
+        // "code". Emit an error so this never happens.
+        if self.target.is_erlang() {
+            for input in inputs.collection.values() {
+                ensure_gleam_module_does_not_overwrite_standard_erlang_module(&input)?;
+            }
+        }
+
         Ok(inputs.collection)
     }
 
@@ -264,37 +266,20 @@ where
     }
 }
 
-fn ensure_gleam_module_does_not_overwrite_standard_erlang_module(path: &Utf8Path) -> Result<()> {
-    let mut segments = path.iter();
-    // Remove the first segement, which will be either `src/` or `test/`
-    let _ = segments.next();
-
-    let name = segments
-        .next()
-        .expect("There must always be a file name for a Gleam module");
-
-    // If there are remaining segments it means that this is a nested module and
-    // such cannot collide with a built-in Erlang module.
-    //
-    // For example, it could be the module `src/user/code.gleam` but could not
-    // be the module `src/code.gleam`.
-    if segments.next().is_some() {
+fn ensure_gleam_module_does_not_overwrite_standard_erlang_module(input: &Input) -> Result<()> {
+    // We only need to check uncached modules as it's not possible for these
+    // to have compiled successfully.
+    let Input::New(input) = input else {
         return Ok(());
-    }
+    };
 
-    // Remove the .gleam extension, as this isn't part of the module name.
-    let name = name.trim_end_matches(".gleam");
-
-    // If we got get here then it's not nested. Let's check if the name
-    // collides or not.
-    //
     // These names were got with this Erlang
     //
     // ```erl
     // file:write_file("names.txt", lists:join("\n",lists:map(fun(T) -> erlang:element(1, T) end, code:all_available()))).
     // ```
     //
-    match name {
+    match input.name.as_str() {
         "alarm_handler"
         | "application"
         | "application_controller"
@@ -1557,8 +1542,8 @@ fn ensure_gleam_module_does_not_overwrite_standard_erlang_module(path: &Utf8Path
     }
 
     Err(Error::GleamModuleWouldOverwriteStandardErlangModule {
-        name: name.into(),
-        path: path.to_owned(),
+        name: input.name.clone(),
+        path: input.path.to_owned(),
     })
 }
 
