@@ -16,7 +16,7 @@ use glistix_core::{
     warning::WarningEmitter,
     Error, Result,
 };
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 pub fn command(options: CompilePackage) -> Result<()> {
     let ids = UniqueIdGenerator::new();
@@ -56,15 +56,17 @@ pub fn command(options: CompilePackage) -> Result<()> {
     compiler.write_entrypoint = false;
     compiler.write_metadata = true;
     compiler.compile_beam_bytecode = !options.skip_beam_compilation;
-    let _ = compiler.compile(
-        &warnings,
-        &mut type_manifests,
-        &mut defined_modules,
-        &mut StaleTracker::default(),
-        &NullTelemetry,
-    )?;
-
-    Ok(())
+    compiler
+        .compile(
+            &warnings,
+            &mut type_manifests,
+            &mut defined_modules,
+            &mut StaleTracker::default(),
+            &mut HashSet::new(),
+            &NullTelemetry,
+        )
+        .into_result()
+        .map(|_| ())
 }
 
 fn load_libraries(

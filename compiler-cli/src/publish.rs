@@ -4,8 +4,9 @@ use glistix_core::{
     analyse::TargetSupport,
     build::{Codegen, Mode, Options, Package, Target},
     config::{PackageConfig, SpdxLicense},
-    hex, paths,
-    paths::ProjectPaths,
+    docs::DocContext,
+    hex,
+    paths::{self, ProjectPaths},
     requirement::Requirement,
     Error, Result,
 };
@@ -56,8 +57,11 @@ impl PublishCommand {
         check_for_name_squatting(&compile_result)?;
 
         // Build HTML documentation
-        let docs_tarball =
-            fs::create_tar_archive(docs::build_documentation(&config, &mut compile_result)?)?;
+        let docs_tarball = fs::create_tar_archive(docs::build_documentation(
+            &config,
+            &mut compile_result,
+            DocContext::HexPublish,
+        )?)?;
 
         // Ask user if this is correct
         if !generated_files_added.is_empty() {
@@ -189,6 +193,7 @@ impl ApiKeyCommand for PublishCommand {
 
         runtime.block_on(hex::publish_package(
             std::mem::take(&mut self.package_tarball),
+            self.config.version.to_string(),
             api_key,
             hex_config,
             self.replace,
@@ -544,7 +549,7 @@ impl<'a> ReleaseMetadata<'a> {
             r#"{{<<"name">>, <<"{name}">>}}.
 {{<<"app">>, <<"{name}">>}}.
 {{<<"version">>, <<"{version}">>}}.
-{{<<"description">>, <<"{description}">>}}.
+{{<<"description">>, <<"{description}"/utf8>>}}.
 {{<<"licenses">>, [{licenses}]}}.
 {{<<"build_tools">>, [{build_tools}]}}.
 {{<<"links">>, [{links}
@@ -617,7 +622,7 @@ fn release_metadata_as_erlang() {
     let meta = ReleaseMetadata {
         name: "myapp",
         version: &version,
-        description: "description goes here",
+        description: "description goes here 🌈",
         source_files: &[
             Utf8PathBuf::from("gleam.toml"),
             Utf8PathBuf::from("src/thingy.gleam"),
@@ -647,7 +652,7 @@ fn release_metadata_as_erlang() {
         r#"{<<"name">>, <<"myapp">>}.
 {<<"app">>, <<"myapp">>}.
 {<<"version">>, <<"1.2.3">>}.
-{<<"description">>, <<"description goes here">>}.
+{<<"description">>, <<"description goes here 🌈"/utf8>>}.
 {<<"licenses">>, [<<"MIT">>, <<"MPL-2.0">>]}.
 {<<"build_tools">>, [<<"gleam">>, <<"rebar3">>]}.
 {<<"links">>, [

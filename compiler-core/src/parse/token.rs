@@ -62,7 +62,7 @@ pub enum Token {
     // Extra
     CommentNormal,
     CommentModule,
-    EmptyLine,
+    NewLine,
     // Keywords (alphabetically):
     As,
     Assert,
@@ -139,7 +139,7 @@ impl fmt::Display for Token {
             Token::DotDot => "..",
             Token::Echo => "echo",
             Token::Else => "else",
-            Token::EmptyLine => "EMPTYLINE",
+            Token::NewLine => "NEWLINE",
             Token::EndOfFile => "EOF",
             Token::Equal => "=",
             Token::EqualEqual => "==",

@@ -134,6 +134,33 @@ impl Type {
         }
     }
 
+    /// Gets the types inside of a tuple. Returns `None` if the type is not a tuple.
+    pub fn tuple_types(&self) -> Option<Vec<Arc<Self>>> {
+        match self {
+            Self::Tuple { elems } => Some(elems.clone()),
+            _ => None,
+        }
+    }
+
+    /// Gets the argument types for a type constructor. Returns `None` if the type
+    /// does not lead to a type constructor.
+    pub fn constructor_types(&self) -> Option<Vec<Arc<Self>>> {
+        match self {
+            Self::Named { args, .. } => Some(args.clone()),
+            Self::Var { type_, .. } => type_.borrow().constructor_types(),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    fn is_fun(&self) -> bool {
+        match self {
+            Self::Fn { .. } => true,
+            Type::Var { type_ } => type_.borrow().is_fun(),
+            _ => false,
+        }
+    }
+
     pub fn is_nil(&self) -> bool {
         match self {
             Self::Named { module, name, .. } if "Nil" == name && is_prelude_module(module) => true,
@@ -795,6 +822,13 @@ impl TypeVar {
         }
     }
 
+    pub fn constructor_types(&self) -> Option<Vec<Arc<Type>>> {
+        match self {
+            Self::Link { type_ } => type_.constructor_types(),
+            Self::Unbound { .. } | Self::Generic { .. } => None,
+        }
+    }
+
     pub fn is_result(&self) -> bool {
         match self {
             Self::Link { type_ } => type_.is_result(),
@@ -806,6 +840,14 @@ impl TypeVar {
         match self {
             Self::Link { type_ } => type_.fn_types(),
             Self::Unbound { .. } | Self::Generic { .. } => None,
+        }
+    }
+
+    #[must_use]
+    pub fn is_fun(&self) -> bool {
+        match self {
+            TypeVar::Link { type_ } => type_.is_fun(),
+            TypeVar::Unbound { .. } | TypeVar::Generic { .. } => false,
         }
     }
 
@@ -860,6 +902,7 @@ pub struct TypeConstructor {
     pub parameters: Vec<Arc<Type>>,
     pub typ: Arc<Type>,
     pub deprecation: Deprecation,
+    pub documentation: Option<EcoString>,
 }
 impl TypeConstructor {
     pub(crate) fn with_location(mut self, location: SrcSpan) -> Self {

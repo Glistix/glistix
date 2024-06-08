@@ -67,7 +67,7 @@ pub fn confirm(question: &str) -> Result<bool, Error> {
 
 pub fn ask_password(question: &str) -> Result<String, Error> {
     let prompt = format!("{question} (will not be printed as you type): ");
-    rpassword::read_password_from_tty(Some(&prompt))
+    rpassword::prompt_password(prompt)
         .map_err(|e| Error::StandardIo {
             action: StandardIoAction::Read,
             err: Some(e.kind()),
@@ -176,12 +176,12 @@ pub fn print_colourful_prefix(prefix: &str, text: &str) {
 
 pub fn stderr_buffer_writer() -> BufferWriter {
     // Don't add color codes to the output if standard error isn't connected to a terminal
-    termcolor::BufferWriter::stderr(color_choice())
+    BufferWriter::stderr(color_choice())
 }
 
 pub fn stdout_buffer_writer() -> BufferWriter {
     // Don't add color codes to the output if standard error isn't connected to a terminal
-    termcolor::BufferWriter::stdout(color_choice())
+    BufferWriter::stdout(color_choice())
 }
 
 fn colour_forced() -> bool {
@@ -194,10 +194,10 @@ fn colour_forced() -> bool {
 
 fn color_choice() -> ColorChoice {
     if colour_forced() {
-        termcolor::ColorChoice::Always
+        ColorChoice::Always
     } else if std::io::stderr().is_terminal() {
-        termcolor::ColorChoice::Auto
+        ColorChoice::Auto
     } else {
-        termcolor::ColorChoice::Never
+        ColorChoice::Never
     }
 }

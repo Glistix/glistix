@@ -166,7 +166,7 @@ where
             .workspace
             .as_ref()
             .and_then(|w| w.did_change_watched_files)
-            .map(|wf| wf.dynamic_registration == Some(true))
+            .map(|wf| wf.dynamic_registration.unwrap_or(false))
             .unwrap_or(false);
 
         if !supports_watch_files {
@@ -377,7 +377,7 @@ fn initialisation_handshake(connection: &lsp_server::Connection) -> InitializePa
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         completion_provider: Some(lsp::CompletionOptions {
             resolve_provider: None,
-            trigger_characters: None,
+            trigger_characters: Some(vec![".".into()]),
             all_commit_characters: None,
             work_done_progress_options: lsp::WorkDoneProgressOptions {
                 work_done_progress: None,

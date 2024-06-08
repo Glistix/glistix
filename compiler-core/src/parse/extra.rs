@@ -8,11 +8,26 @@ pub struct ModuleExtra {
     pub doc_comments: Vec<SrcSpan>,
     pub comments: Vec<SrcSpan>,
     pub empty_lines: Vec<u32>,
+    pub new_lines: Vec<u32>,
 }
 
 impl ModuleExtra {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn is_within_comment(&self, byte_index: u32) -> bool {
+        self.comments
+            .binary_search_by(|span| span.cmp_byte_index(byte_index))
+            .is_ok()
+            || self
+                .doc_comments
+                .binary_search_by(|span| span.cmp_byte_index(byte_index))
+                .is_ok()
+            || self
+                .module_comments
+                .binary_search_by(|span| span.cmp_byte_index(byte_index))
+                .is_ok()
     }
 }
 

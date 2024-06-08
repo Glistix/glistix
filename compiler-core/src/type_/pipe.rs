@@ -1,3 +1,5 @@
+use self::expression::CallKind;
+
 use super::*;
 use crate::ast::{Assignment, AssignmentKind, TypedAssignment, UntypedExpr, PIPE_VARIABLE};
 use vec1::Vec1;
@@ -50,6 +52,7 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
             },
             assignments: Vec::with_capacity(size),
         };
+
         // No need to update self.argument_* as we set it above
         typer.push_assignment_no_update(first);
 
@@ -65,9 +68,10 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
 
         // Return any errors after clean-up
         let finally = finally?;
+        let assignments = std::mem::take(&mut self.assignments);
 
         Ok(TypedExpr::Pipeline {
-            assignments: std::mem::take(&mut self.assignments),
+            assignments,
             location: self.location,
             finally: Box::new(finally),
         })
@@ -78,7 +82,14 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
         expressions: impl IntoIterator<Item = UntypedExpr>,
     ) -> Result<TypedExpr, Error> {
         let mut finally = None;
+        let expressions = expressions.into_iter().collect_vec();
+
         for (i, call) in expressions.into_iter().enumerate() {
+            if self.expr_typer.previous_panics {
+                self.expr_typer
+                    .warn_for_unreachable_code(call.location(), PanicPosition::PreviousExpression);
+            }
+
             let call = match call {
                 // left |> right(..args)
                 UntypedExpr::Call {
@@ -102,6 +113,7 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
                 // right(left)
                 call => self.infer_apply_pipe(call)?,
             };
+
             if i + 2 == self.size {
                 finally = Some(call);
             } else {
@@ -200,9 +212,12 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
         args: Vec<CallArg<UntypedExpr>>,
         location: SrcSpan,
     ) -> Result<TypedExpr, Error> {
-        let (function, args, typ) = self
-            .expr_typer
-            .do_infer_call_with_known_fun(function, args, location)?;
+        let (function, args, typ) = self.expr_typer.do_infer_call_with_known_fun(
+            function,
+            args,
+            location,
+            CallKind::Function,
+        )?;
         let function = TypedExpr::Call {
             location,
             typ,
@@ -215,9 +230,12 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
         // the function below. If it is not we don't know if the error comes
         // from incorrect usage of the pipe or if it originates from the
         // argument expressions.
-        let (function, args, typ) = self
-            .expr_typer
-            .do_infer_call_with_known_fun(function, args, location)?;
+        let (function, args, typ) = self.expr_typer.do_infer_call_with_known_fun(
+            function,
+            args,
+            location,
+            CallKind::Function,
+        )?;
         Ok(TypedExpr::Call {
             location,
             typ,
@@ -239,9 +257,12 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
         // the function below. If it is not we don't know if the error comes
         // from incorrect usage of the pipe or if it originates from the
         // argument expressions.
-        let (fun, args, typ) = self
-            .expr_typer
-            .do_infer_call_with_known_fun(function, arguments, location)?;
+        let (fun, args, typ) = self.expr_typer.do_infer_call_with_known_fun(
+            function,
+            arguments,
+            location,
+            CallKind::Function,
+        )?;
         Ok(TypedExpr::Call {
             location,
             typ,

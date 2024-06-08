@@ -272,7 +272,7 @@ fn remove_extra_packages<Telem: Telemetry>(
 fn read_manifest_from_disc(paths: &ProjectPaths) -> Result<Manifest> {
     tracing::debug!("reading_manifest_toml");
     let manifest_path = paths.manifest();
-    let toml = crate::fs::read(&manifest_path)?;
+    let toml = fs::read(&manifest_path)?;
     let manifest = toml::from_str(&toml).map_err(|e| Error::FileIo {
         action: FileIoAction::Parse,
         kind: FileKind::File,
@@ -334,7 +334,7 @@ impl LocalPackages {
                 packages: HashMap::new(),
             });
         }
-        let toml = crate::fs::read(&path)?;
+        let toml = fs::read(&path)?;
         toml::from_str(&toml).map_err(|e| Error::FileIo {
             action: FileIoAction::Parse,
             kind: FileKind::File,
@@ -548,22 +548,12 @@ fn same_requirements(
 ) -> Result<bool> {
     let (left, right) = match (requirement1, requirement2) {
         (Requirement::Path { path: path1 }, Some(Requirement::Path { path: path2 })) => {
-            (path1, path2)
+            let left = fs::canonicalise(&root_path.join(path1))?;
+            let right = fs::canonicalise(&root_path.join(path2))?;
+            (left, right)
         }
         (_, Some(requirement2)) => return Ok(requirement1 == requirement2),
         (_, None) => return Ok(false),
-    };
-
-    let left = if left.is_absolute() {
-        left.to_owned()
-    } else {
-        fs::canonicalise(&root_path.join(left))?
-    };
-
-    let right = if right.is_absolute() {
-        right.to_owned()
-    } else {
-        fs::canonicalise(&root_path.join(right))?
     };
 
     Ok(left == right)
@@ -1206,7 +1196,7 @@ impl dependency::PackageFetcher for PackageFetcher {
 #[test]
 fn provided_local_to_hex() {
     let provided_package = ProvidedPackage {
-        version: hexpm::version::Version::new(1, 0, 0),
+        version: Version::new(1, 0, 0),
         source: ProvidedPackageSource::Local {
             path: "canonical/path/to/package".into(),
         },
@@ -1227,7 +1217,7 @@ fn provided_local_to_hex() {
         name: "package".into(),
         repository: "local".into(),
         releases: vec![hexpm::Release {
-            version: hexpm::version::Version::new(1, 0, 0),
+            version: Version::new(1, 0, 0),
             retirement_status: None,
             outer_checksum: vec![],
             meta: (),
@@ -1264,7 +1254,7 @@ fn provided_local_to_hex() {
 #[test]
 fn provided_git_to_hex() {
     let provided_package = ProvidedPackage {
-        version: hexpm::version::Version::new(1, 0, 0),
+        version: Version::new(1, 0, 0),
         source: ProvidedPackageSource::Git {
             repo: "https://github.com/gleam-lang/gleam.git".into(),
             commit: "bd9fe02f72250e6a136967917bcb1bdccaffa3c8".into(),
@@ -1286,7 +1276,7 @@ fn provided_git_to_hex() {
         name: "package".into(),
         repository: "local".into(),
         releases: vec![hexpm::Release {
-            version: hexpm::version::Version::new(1, 0, 0),
+            version: Version::new(1, 0, 0),
             retirement_status: None,
             outer_checksum: vec![],
             meta: (),
@@ -1323,7 +1313,7 @@ fn provided_git_to_hex() {
 #[test]
 fn provided_local_to_manifest() {
     let provided_package = ProvidedPackage {
-        version: hexpm::version::Version::new(1, 0, 0),
+        version: Version::new(1, 0, 0),
         source: ProvidedPackageSource::Local {
             path: "canonical/path/to/package".into(),
         },
@@ -1342,7 +1332,7 @@ fn provided_local_to_manifest() {
 
     let manifest_package = ManifestPackage {
         name: "package".into(),
-        version: hexpm::version::Version::new(1, 0, 0),
+        version: Version::new(1, 0, 0),
         otp_app: None,
         build_tools: vec!["gleam".into()],
         requirements: vec!["req_1".into(), "req_2".into()],
@@ -1360,7 +1350,7 @@ fn provided_local_to_manifest() {
 #[test]
 fn provided_git_to_manifest() {
     let provided_package = ProvidedPackage {
-        version: hexpm::version::Version::new(1, 0, 0),
+        version: Version::new(1, 0, 0),
         source: ProvidedPackageSource::Git {
             repo: "https://github.com/gleam-lang/gleam.git".into(),
             commit: "bd9fe02f72250e6a136967917bcb1bdccaffa3c8".into(),
@@ -1380,7 +1370,7 @@ fn provided_git_to_manifest() {
 
     let manifest_package = ManifestPackage {
         name: "package".into(),
-        version: hexpm::version::Version::new(1, 0, 0),
+        version: Version::new(1, 0, 0),
         otp_app: None,
         build_tools: vec!["gleam".into()],
         requirements: vec!["req_1".into(), "req_2".into()],
@@ -1393,5 +1383,39 @@ fn provided_git_to_manifest() {
     assert_eq!(
         provided_package.to_manifest_package("package"),
         manifest_package
+    );
+}
+
+#[test]
+fn verified_requirements_equality_with_canonicalized_paths() {
+    let temp_dir = tempfile::tempdir().expect("Failed to create a temp directory");
+    let temp_path = Utf8PathBuf::from_path_buf(temp_dir.path().to_path_buf())
+        .expect("Path should be valid UTF-8");
+
+    let sub_dir = temp_path.join("subdir");
+    std::fs::create_dir(&sub_dir).expect("Failed to create a subdir");
+    let file_path = sub_dir.join("file.txt");
+    fs::write(&file_path, "content").expect("Failed to write to file");
+
+    let canonical_path = std::fs::canonicalize(&file_path).expect("Failed to canonicalize path");
+    let relative_path = temp_path.join("./subdir/../subdir/./file.txt");
+
+    let requirements1 = HashMap::from([(
+        EcoString::from("dep1"),
+        Requirement::Path {
+            path: Utf8PathBuf::from(canonical_path.to_str().expect("Path should be valid UTF-8")),
+        },
+    )]);
+
+    let requirements2 = HashMap::from([(
+        EcoString::from("dep1"),
+        Requirement::Path {
+            path: Utf8PathBuf::from(relative_path.to_string()),
+        },
+    )]);
+
+    assert!(
+        is_same_requirements(&requirements1, &requirements2, &temp_path)
+            .expect("Requirements should be the same")
     );
 }

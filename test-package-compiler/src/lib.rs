@@ -9,7 +9,7 @@ mod generated_tests;
 
 use glistix_core::{
     build::{
-        ErlangAppCodegenConfiguration, Mode, NullTelemetry, StaleTracker, Target,
+        ErlangAppCodegenConfiguration, Mode, NullTelemetry, Outcome, StaleTracker, Target,
         TargetCodegenConfiguration,
     },
     config::PackageConfig,
@@ -18,7 +18,11 @@ use glistix_core::{
 };
 use itertools::Itertools;
 use regex::Regex;
-use std::{collections::HashMap, fmt::Write, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write,
+    sync::Arc,
+};
 
 use camino::{Utf8Path, Utf8PathBuf};
 
@@ -72,10 +76,11 @@ pub fn prepare(path: &str) -> String {
         &mut modules,
         &mut im::HashMap::new(),
         &mut StaleTracker::default(),
+        &mut HashSet::new(),
         &NullTelemetry,
     );
     match result {
-        Ok(_) => {
+        Outcome::Ok(_) => {
             for path in initial_files {
                 filesystem.delete_file(&path).unwrap();
             }
@@ -83,7 +88,9 @@ pub fn prepare(path: &str) -> String {
             let warnings = warnings.take();
             TestCompileOutput { files, warnings }.as_overview_text()
         }
-        Err(error) => normalise_diagnostic(&error.pretty_string()),
+        Outcome::TotalFailure(error) | Outcome::PartialFailure(_, error) => {
+            normalise_diagnostic(&error.pretty_string())
+        }
     }
 }
 

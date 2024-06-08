@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 
 use super::*;
-use crate::type_::{bool, HasType, Type};
+use crate::type_::{bool, HasType, Type, ValueConstructorVariant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedExpr {
@@ -50,7 +50,7 @@ pub enum TypedExpr {
         typ: Arc<Type>,
         is_capture: bool,
         args: Vec<Arg<Arc<Type>>>,
-        body: Vec1<Statement<Arc<Type>, Self>>,
+        body: Vec1<TypedStatement>,
         return_annotation: Option<TypeAst>,
     },
 
@@ -164,8 +164,6 @@ impl TypedExpr {
         }
     }
 
-    // This could be optimised in places to exit early if the first of a series
-    // of expressions is after the byte index.
     pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
         match self {
             Self::Var { .. }
@@ -185,20 +183,44 @@ impl TypedExpr {
                 .find_map(|e| e.find_node(byte_index))
                 .or_else(|| finally.find_node(byte_index)),
 
+            // Exit the search and return None if during iteration a statement
+            // is found with a start index beyond the index under search.
             Self::Block { statements, .. } => {
-                statements.iter().find_map(|e| e.find_node(byte_index))
+                for statement in statements {
+                    if statement.location().start > byte_index {
+                        break;
+                    }
+
+                    if let Some(located) = statement.find_node(byte_index) {
+                        return Some(located);
+                    }
+                }
+
+                None
             }
 
+            // Exit the search and return the encompassing type (e.g., list or tuple)
+            // if during iteration, an element is encountered with a start index
+            // beyond the index under search.
             Self::Tuple {
                 elems: expressions, ..
             }
             | Self::List {
                 elements: expressions,
                 ..
-            } => expressions
-                .iter()
-                .find_map(|e| e.find_node(byte_index))
-                .or_else(|| self.self_if_contains_location(byte_index)),
+            } => {
+                for expression in expressions {
+                    if expression.location().start > byte_index {
+                        break;
+                    }
+
+                    if let Some(located) = expression.find_node(byte_index) {
+                        return Some(located);
+                    }
+                }
+
+                self.self_if_contains_location(byte_index)
+            }
 
             Self::NegateBool { value, .. } | Self::NegateInt { value, .. } => value
                 .find_node(byte_index)
@@ -506,6 +528,32 @@ impl TypedExpr {
         match self {
             TypedExpr::Call { fun, .. } => fun.is_record_builder(),
             TypedExpr::Var { constructor, .. } => constructor.variant.is_record(),
+            _ => false,
+        }
+    }
+
+    /// If `self` is a record constructor, returns the nuber of arguments it
+    /// needs to be called. Otherwise, returns `None`.
+    ///
+    pub fn record_constructor_arity(&self) -> Option<u16> {
+        match self {
+            TypedExpr::Call { fun, .. } => fun.record_constructor_arity(),
+            TypedExpr::Var {
+                constructor:
+                    ValueConstructor {
+                        variant: ValueConstructorVariant::Record { arity, .. },
+                        ..
+                    },
+                ..
+            } => Some(*arity),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn is_panic(&self) -> bool {
+        match self {
+            TypedExpr::Panic { .. } => true,
             _ => false,
         }
     }

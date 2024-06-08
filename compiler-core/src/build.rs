@@ -17,7 +17,7 @@ pub use self::project_compiler::{Built, Options, ProjectCompiler};
 pub use self::telemetry::{NullTelemetry, Telemetry};
 
 use crate::ast::{
-    CustomType, DefinitionLocation, TypedArg, TypedDefinition, TypedExpr, TypedFunction,
+    CustomType, DefinitionLocation, TypeAst, TypedArg, TypedDefinition, TypedExpr, TypedFunction,
     TypedPattern, TypedStatement,
 };
 use crate::{
@@ -33,9 +33,11 @@ use camino::Utf8PathBuf;
 use ecow::EcoString;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 use std::time::SystemTime;
 use std::{collections::HashMap, ffi::OsString, fs::DirEntry, iter::Peekable, process};
 use strum::{Display, EnumIter, EnumString, EnumVariantNames, VariantNames};
+use vec1::Vec1;
 
 #[derive(
     Debug,
@@ -304,6 +306,14 @@ impl Module {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct UnqualifiedImport<'a> {
+    pub name: &'a EcoString,
+    pub module: &'a EcoString,
+    pub is_type: bool,
+    pub location: &'a SrcSpan,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Located<'a> {
     Pattern(&'a TypedPattern),
     Statement(&'a TypedStatement),
@@ -311,21 +321,75 @@ pub enum Located<'a> {
     ModuleStatement(&'a TypedDefinition),
     FunctionBody(&'a TypedFunction),
     Arg(&'a TypedArg),
+    Annotation(SrcSpan, std::sync::Arc<type_::Type>),
+    UnqualifiedImport(UnqualifiedImport<'a>),
 }
 
 impl<'a> Located<'a> {
-    pub fn definition_location(&self) -> Option<DefinitionLocation<'_>> {
+    // Looks up the type constructor for the given type and then create the location.
+    fn type_location(
+        &self,
+        importable_modules: &'a im::HashMap<EcoString, type_::ModuleInterface>,
+        type_: std::sync::Arc<type_::Type>,
+    ) -> Option<DefinitionLocation<'_>> {
+        type_constructor_from_modules(importable_modules, type_).map(|t| DefinitionLocation {
+            module: Some(&t.module),
+            span: t.origin,
+        })
+    }
+
+    pub fn definition_location(
+        &self,
+        importable_modules: &'a im::HashMap<EcoString, type_::ModuleInterface>,
+    ) -> Option<DefinitionLocation<'_>> {
         match self {
             Self::Pattern(pattern) => pattern.definition_location(),
             Self::Statement(statement) => statement.definition_location(),
             Self::FunctionBody(statement) => None,
             Self::Expression(expression) => expression.definition_location(),
+            Self::ModuleStatement(Definition::Import(import)) => Some(DefinitionLocation {
+                module: Some(import.module.as_str()),
+                span: SrcSpan { start: 0, end: 0 },
+            }),
             Self::ModuleStatement(statement) => Some(DefinitionLocation {
                 module: None,
                 span: statement.location(),
             }),
+            Self::UnqualifiedImport(UnqualifiedImport {
+                module,
+                name,
+                is_type,
+                ..
+            }) => importable_modules.get(*module).and_then(|m| {
+                if *is_type {
+                    m.types.get(*name).map(|t| DefinitionLocation {
+                        module: Some(&module),
+                        span: t.origin,
+                    })
+                } else {
+                    m.values.get(*name).map(|v| DefinitionLocation {
+                        module: Some(&module),
+                        span: v.definition_location().span,
+                    })
+                }
+            }),
             Self::Arg(_) => None,
+            Self::Annotation(_, type_) => self.type_location(importable_modules, type_.clone()),
         }
+    }
+}
+
+// Looks up the type constructor for the given type
+pub fn type_constructor_from_modules(
+    importable_modules: &im::HashMap<EcoString, type_::ModuleInterface>,
+    type_: std::sync::Arc<type_::Type>,
+) -> Option<&type_::TypeConstructor> {
+    let type_ = type_::collapse_links(type_);
+    match type_.as_ref() {
+        type_::Type::Named { name, module, .. } => importable_modules
+            .get(module)
+            .and_then(|i| i.types.get(name)),
+        _ => None,
     }
 }
 
@@ -362,4 +426,66 @@ fn comments_before<'a>(
         }
     }
     comments
+}
+
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub(crate) struct SourceFingerprint(u64);
+
+impl SourceFingerprint {
+    pub(crate) fn new(source: &str) -> Self {
+        SourceFingerprint(xxhash_rust::xxh3::xxh3_64(source.as_bytes()))
+    }
+}
+
+/// Like a `Result`, but the operation can partially succeed or fail.
+///
+#[derive(Debug)]
+pub enum Outcome<T, E> {
+    /// The operation was totally succesful.
+    Ok(T),
+
+    /// The operation was partially successful but there were problems.
+    PartialFailure(T, E),
+
+    /// The operation was entirely unsuccessful.
+    TotalFailure(E),
+}
+
+impl<T, E> Outcome<T, E>
+where
+    E: Debug,
+{
+    #[cfg(test)]
+    /// Panic if there's any errors
+    pub fn unwrap(self) -> T {
+        match self {
+            Outcome::Ok(t) => t,
+            Outcome::PartialFailure(_, errors) => panic!("Error: {:?}", errors),
+            Outcome::TotalFailure(error) => panic!("Error: {:?}", error),
+        }
+    }
+
+    /// Panic if there's any errors
+    pub fn expect(self, e: &'static str) -> T {
+        match self {
+            Outcome::Ok(t) => t,
+            Outcome::PartialFailure(_, errors) => panic!("{e}: {:?}", errors),
+            Outcome::TotalFailure(error) => panic!("{e}: {:?}", error),
+        }
+    }
+
+    pub fn into_result(self) -> Result<T, E> {
+        match self {
+            Outcome::Ok(t) => Ok(t),
+            Outcome::PartialFailure(_, e) | Outcome::TotalFailure(e) => Err(e),
+        }
+    }
+
+    pub fn map<T2>(self, f: impl FnOnce(T) -> T2) -> Outcome<T2, E> {
+        match self {
+            Outcome::Ok(t) => Outcome::Ok(f(t)),
+            Outcome::PartialFailure(t, e) => Outcome::PartialFailure(f(t), e),
+            Outcome::TotalFailure(e) => Outcome::TotalFailure(e),
+        }
+    }
 }

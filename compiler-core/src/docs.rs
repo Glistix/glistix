@@ -29,6 +29,12 @@ use serde_json::to_string as serde_to_string;
 
 const MAX_COLUMNS: isize = 65;
 
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub enum DocContext {
+    HexPublish,
+    Build,
+}
+
 pub fn generate_html<IO: FileSystemReader>(
     paths: &ProjectPaths,
     config: &PackageConfig,
@@ -36,6 +42,7 @@ pub fn generate_html<IO: FileSystemReader>(
     docs_pages: &[DocsPage],
     fs: IO,
     rendering_timestamp: SystemTime,
+    is_hex_publish: DocContext,
 ) -> Vec<OutputFile> {
     let modules = analysed
         .iter()
@@ -67,12 +74,17 @@ pub fn generate_html<IO: FileSystemReader>(
         path,
     });
 
-    let package_link = Link {
-        name: "Hex".into(),
-        path: format!("https://hex.pm/packages/{0}", config.name).to_string(),
+    // https://github.com/gleam-lang/gleam/issues/3020
+    let links: Vec<_> = match is_hex_publish {
+        DocContext::HexPublish => doc_links
+            .chain(repo_link)
+            .chain([Link {
+                name: "Hex".into(),
+                path: format!("https://hex.pm/packages/{0}", config.name).to_string(),
+            }])
+            .collect(),
+        DocContext::Build => doc_links.chain(repo_link).collect(),
     };
-
-    let links: Vec<_> = doc_links.chain(repo_link).chain([package_link]).collect();
 
     let mut files = vec![];
 
@@ -526,7 +538,7 @@ fn function<'a>(
             text_documentation: text_documentation(doc),
             signature: print(
                 formatter
-                    .docs_fn_signature(Publicity::Public, name, args, ret.clone())
+                    .docs_fn_signature(Publicity::Public, name, args, ret.clone(), location)
                     .group(),
             ),
             source_url: source_links.url(*location),
@@ -662,7 +674,7 @@ fn type_<'a>(source_links: &SourceLinker, statement: &'a TypedDefinition) -> Opt
             name,
             definition: print(
                 formatter
-                    .type_alias(Publicity::Public, name, args, typ, deprecation)
+                    .type_alias(Publicity::Public, name, args, typ, deprecation, location)
                     .group(),
             ),
             documentation: markdown_documentation(doc),

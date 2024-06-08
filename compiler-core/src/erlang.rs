@@ -7,6 +7,7 @@ mod pattern;
 mod tests;
 
 use crate::build::Target;
+use crate::strings::convert_string_escape_chars;
 use crate::type_::is_prelude_module;
 use crate::{
     ast::{CustomType, Function, Import, ModuleConstant, TypeAlias, *},
@@ -21,11 +22,12 @@ use crate::{
 };
 use ecow::EcoString;
 use heck::ToSnakeCase;
+use im::HashSet;
 use itertools::Itertools;
 use pattern::{pattern, requires_guard};
 use regex::{Captures, Regex};
 use std::sync::OnceLock;
-use std::{char, collections::HashMap, ops::Deref, str::FromStr, sync::Arc};
+use std::{collections::HashMap, ops::Deref, str::FromStr, sync::Arc};
 use vec1::Vec1;
 
 const INDENT: isize = 4;
@@ -162,6 +164,12 @@ fn module_document<'a>(
         .append(").")
         .append(line());
 
+    // We need to know which private functions are referenced in importable
+    // constants so that we can export them anyway in the generated Erlang.
+    // This is because otherwise when the constant is used in another module it
+    // would result in an error as it tries to reference this private function.
+    let overridden_publicity = find_private_functions_referenced_in_importable_constants(module);
+
     for s in &module.definitions {
         register_imports(
             s,
@@ -169,6 +177,7 @@ fn module_document<'a>(
             &mut type_exports,
             &mut type_defs,
             &module.name,
+            &overridden_publicity,
         );
     }
 
@@ -227,6 +236,7 @@ fn register_imports(
     type_exports: &mut Vec<Document<'_>>,
     type_defs: &mut Vec<Document<'_>>,
     module_name: &str,
+    overridden_publicity: &HashSet<EcoString>,
 ) {
     match s {
         Definition::Function(Function {
@@ -235,7 +245,7 @@ fn register_imports(
             arguments: args,
             implementations,
             ..
-        }) if publicity.is_importable() => {
+        }) if publicity.is_importable() || overridden_publicity.contains(name) => {
             // If the function isn't for this target then don't attempt to export it
             if implementations.supports(Target::Erlang) {
                 exports.push(atom_string(name.to_string()).append("/").append(args.len()))
@@ -491,6 +501,10 @@ fn string(value: &str) -> Document<'_> {
     string_inner(value).surround("<<\"", "\"/utf8>>")
 }
 
+fn string_length_utf8_bytes(str: &EcoString) -> usize {
+    convert_string_escape_chars(str).len()
+}
+
 fn tuple<'a>(elems: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
     join(elems, break_(",", ", "))
         .nest(INDENT)
@@ -602,7 +616,7 @@ fn expr_segment<'a>(
         // Skip the normal <<value/utf8>> surrounds and set the string literal flag
         TypedExpr::String { value, .. } => {
             value_is_a_string_literal = true;
-            value.to_doc().surround("\"", "\"")
+            string_inner(value).surround("\"", "\"")
         }
 
         // As normal
@@ -902,10 +916,14 @@ fn float<'a>(value: &str) -> Document<'a> {
     if value.ends_with('.') {
         value.push('0')
     }
-    if value == "0.0" {
-        return "+0.0".to_doc();
+
+    match value.split('.').collect_vec().as_slice() {
+        ["0", "0"] => "+0.0".to_doc(),
+        [before_dot, after_dot] if after_dot.starts_with('e') => {
+            Document::String(format!("{before_dot}.0{after_dot}"))
+        }
+        _ => Document::String(value),
     }
-    Document::String(value)
 }
 
 fn expr_list<'a>(
@@ -1033,6 +1051,8 @@ fn const_inline<'a>(literal: &'a TypedConstant, env: &mut Env<'a>) -> Document<'
                 .expect("This is guaranteed to hold a value."),
             env,
         ),
+
+        Constant::Invalid { .. } => panic!("invalid constants should not reach code generation"),
     }
 }
 
@@ -1629,7 +1649,7 @@ fn pipeline<'a>(
 fn assignment<'a>(assignment: &'a TypedAssignment, env: &mut Env<'a>) -> Document<'a> {
     match assignment.kind {
         AssignmentKind::Let => let_(&assignment.value, &assignment.pattern, env),
-        AssignmentKind::Assert => let_assert(&assignment.value, &assignment.pattern, env),
+        AssignmentKind::Assert { .. } => let_assert(&assignment.value, &assignment.pattern, env),
     }
 }
 
@@ -1647,7 +1667,7 @@ fn tuple_index<'a>(tuple: &'a TypedExpr, index: u64, env: &mut Env<'a>) -> Docum
 
 fn module_select_fn<'a>(typ: Arc<Type>, module_name: &'a str, label: &'a str) -> Document<'a> {
     match crate::type_::collapse_links(typ).as_ref() {
-        crate::type_::Type::Fn { args, .. } => "fun "
+        Type::Fn { args, .. } => "fun "
             .to_doc()
             .append(module_name_to_erlang(module_name))
             .append(":")
@@ -1698,16 +1718,16 @@ fn variable_name(name: &str) -> String {
 fn id_to_type_var(id: u64) -> Document<'static> {
     if id < 26 {
         let mut name = "".to_string();
-        name.push(std::char::from_u32((id % 26 + 65) as u32).expect("id_to_type_var 0"));
+        name.push(char::from_u32((id % 26 + 65) as u32).expect("id_to_type_var 0"));
         return Document::String(name);
     }
     let mut name = vec![];
     let mut last_char = id;
     while last_char >= 26 {
-        name.push(std::char::from_u32((last_char % 26 + 65) as u32).expect("id_to_type_var 1"));
+        name.push(char::from_u32((last_char % 26 + 65) as u32).expect("id_to_type_var 1"));
         last_char /= 26;
     }
-    name.push(std::char::from_u32((last_char % 26 + 64) as u32).expect("id_to_type_var 2"));
+    name.push(char::from_u32((last_char % 26 + 64) as u32).expect("id_to_type_var 2"));
     name.reverse();
     name.into_iter().collect::<EcoString>().to_doc()
 }
@@ -2019,5 +2039,52 @@ impl<'a> TypePrinter<'a> {
     fn var_as_any(mut self) -> Self {
         self.var_as_any = true;
         self
+    }
+}
+
+fn find_private_functions_referenced_in_importable_constants(
+    module: &TypedModule,
+) -> HashSet<EcoString> {
+    let mut overridden_publicity = HashSet::new();
+
+    for def in module.definitions.iter() {
+        if let Definition::ModuleConstant(c) = def {
+            if c.publicity.is_importable() {
+                find_referenced_private_functions(&c.value, &mut overridden_publicity)
+            }
+        }
+    }
+    overridden_publicity
+}
+
+fn find_referenced_private_functions(
+    constant: &TypedConstant,
+    already_found: &mut HashSet<EcoString>,
+) {
+    match constant {
+        Constant::Invalid { .. } => panic!("invalid constants should not reach code generation"),
+
+        Constant::Int { .. }
+        | Constant::Float { .. }
+        | Constant::String { .. }
+        | Constant::BitArray { .. } => (),
+
+        TypedConstant::Var {
+            name, constructor, ..
+        } => {
+            if let Some(ValueConstructor { type_, .. }) = constructor.as_deref() {
+                if let Type::Fn { .. } = **type_ {
+                    let _ = already_found.insert(name.clone());
+                }
+            }
+        }
+
+        TypedConstant::Record { args, .. } => args
+            .iter()
+            .for_each(|arg| find_referenced_private_functions(&arg.value, already_found)),
+
+        Constant::Tuple { elements, .. } | Constant::List { elements, .. } => elements
+            .iter()
+            .for_each(|element| find_referenced_private_functions(element, already_found)),
     }
 }

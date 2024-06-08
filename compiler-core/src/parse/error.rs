@@ -29,6 +29,7 @@ pub enum LexicalErrorType {
     BadName { name: String },
     BadDiscardName { name: String },
     BadUpname { name: String },
+    InvalidTripleEqual,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,10 +111,6 @@ utf16_codepoint, utf32_codepoint, signed, unsigned, big, little, native, size, u
             ),
             ParseErrorType::LexError { error: lex_err } => lex_err.to_parse_error_info(),
             ParseErrorType::NestedBitArrayPattern => ("BitArray patterns cannot be nested", vec![]),
-            ParseErrorType::NoCaseClause => (
-                "This case expression has no clauses",
-                vec!["See: https://tour.gleam.run/flow-control/case-expressions/".into()],
-            ),
             ParseErrorType::NotConstType => (
                 "This type is not allowed in module constants",
                 vec!["See: https://tour.gleam.run/basics/constants/".into()],
@@ -263,7 +260,6 @@ pub enum ParseErrorType {
         error: LexicalError,
     },
     NestedBitArrayPattern,        // <<<<1>>, 2>>, <<1>> is not allowed in there
-    NoCaseClause,                 // a case with no clauses
     NoExpression, // between "{" and "}" in expression position, there must be an expression
     NoLetBinding, // Bindings and rebinds always require let and must always bind to a value.
     NoValueAfterEqual, // = <something other than a value>
@@ -377,6 +373,13 @@ impl LexicalError {
             LexicalErrorType::InvalidUnicodeEscape(InvalidUnicodeEscapeError::InvalidCodepoint) => {
                 ("Invalid Unicode codepoint", vec![])
             }
+            LexicalErrorType::InvalidTripleEqual => (
+                "Did you mean `==`?",
+                vec![
+                    "Gleam uses `==` to check for equality between two values.".into(),
+                    "See: https://tour.gleam.run/basics/equality".into(),
+                ],
+            ),
         }
     }
 }

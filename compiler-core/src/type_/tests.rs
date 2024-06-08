@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     analyse::TargetSupport,
     ast::{TypedModule, TypedStatement, UntypedExpr, UntypedModule},
-    build::{Origin, Target},
+    build::{Origin, Outcome, Target},
     config::PackageConfig,
     error::Error,
     type_::{build_prelude, expression::FunctionDefinition, pretty::Printer},
@@ -133,7 +133,7 @@ macro_rules! assert_error {
         let error = $crate::error::Error::Type {
             src: $src.into(),
             path: camino::Utf8PathBuf::from("/src/one/two.gleam"),
-            error,
+            errors: error,
         };
         let output = error.pretty_string();
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
@@ -259,7 +259,9 @@ macro_rules! assert_no_warnings {
     };
 }
 
-fn compile_statement_sequence(src: &str) -> Result<Vec1<TypedStatement>, crate::type_::Error> {
+fn compile_statement_sequence(
+    src: &str,
+) -> Result<Vec1<TypedStatement>, Vec1<crate::type_::Error>> {
     let ast = crate::parse::parse_statement_sequence(src).expect("syntax error");
     let mut modules = im::HashMap::new();
     let ids = UniqueIdGenerator::new();
@@ -268,8 +270,9 @@ fn compile_statement_sequence(src: &str) -> Result<Vec1<TypedStatement>, crate::
     // to have one place where we create all this required state for use in each
     // place.
     let _ = modules.insert(PRELUDE_MODULE_NAME.into(), build_prelude(&ids));
-    crate::type_::ExprTyper::new(
-        &mut crate::type_::Environment::new(
+    let errors = &mut vec![];
+    let res = ExprTyper::new(
+        &mut Environment::new(
             ids,
             "thepackage".into(),
             "themodule".into(),
@@ -284,12 +287,22 @@ fn compile_statement_sequence(src: &str) -> Result<Vec1<TypedStatement>, crate::
             has_javascript_external: false,
             has_nix_external: false,
         },
+        errors,
     )
-    .infer_statements(ast)
+    .infer_statements(ast);
+    match (res, Vec1::try_from_vec(errors.to_vec())) {
+        (Ok(res), Err(_)) => Ok(res),
+        (Ok(_), Ok(errors)) => Err(errors),
+        (Err(err), Ok(mut errors)) => {
+            errors.push(err);
+            Err(errors)
+        }
+        (Err(err), Err(_)) => Err(Vec1::new(err)),
+    }
 }
 
 fn infer(src: &str) -> String {
-    let mut printer = crate::type_::pretty::Printer::new();
+    let mut printer = Printer::new();
     let result = compile_statement_sequence(src).expect("should successfully infer");
     printer.pretty_print(result.last().type_().as_ref(), 0)
 }
@@ -345,7 +358,7 @@ pub fn compile_module(
     src: &str,
     warnings: Option<Arc<dyn WarningEmitterIO>>,
     dep: Vec<DependencyModule<'_>>,
-) -> Result<TypedModule, crate::type_::Error> {
+) -> Result<TypedModule, Vec<crate::type_::Error>> {
     compile_module_with_opts(
         module_name,
         src,
@@ -363,7 +376,7 @@ pub fn compile_module_with_opts(
     dep: Vec<DependencyModule<'_>>,
     target: Target,
     target_support: TargetSupport,
-) -> Result<TypedModule, crate::type_::Error> {
+) -> Result<TypedModule, Vec<crate::type_::Error>> {
     let ids = UniqueIdGenerator::new();
     let mut modules = im::HashMap::new();
     let warnings = TypeWarningEmitter::new(
@@ -379,28 +392,26 @@ pub fn compile_module_with_opts(
     // to have one place where we create all this required state for use in each
     // place.
     let _ = modules.insert(PRELUDE_MODULE_NAME.into(), build_prelude(&ids));
-    let mut direct_dependencies = std::collections::HashMap::from_iter(vec![]);
+    let mut direct_dependencies = HashMap::from_iter(vec![]);
 
     for (package, name, module_src) in dep {
         let parsed = crate::parse::parse_module(module_src).expect("syntax error");
         let mut ast = parsed.module;
         ast.name = name.into();
         let line_numbers = LineNumbers::new(module_src);
-        let mut config = crate::config::PackageConfig::default();
+        let mut config = PackageConfig::default();
         config.name = package.into();
-        let module = crate::analyse::infer_module::<()>(
+        let module = crate::analyse::ModuleAnalyzerConstructor::<()> {
             target,
-            &ids,
-            ast,
-            Origin::Src,
-            &modules,
-            &warnings,
-            &std::collections::HashMap::from_iter(vec![]),
+            ids: &ids,
+            origin: Origin::Src,
+            importable_modules: &modules,
+            warnings: &TypeWarningEmitter::null(),
+            direct_dependencies: &HashMap::new(),
             target_support,
-            line_numbers,
-            &config,
-            "".into(),
-        )
+            package_config: &config,
+        }
+        .infer_module(ast, line_numbers, "".into())
         .expect("should successfully infer");
         let _ = modules.insert(name.into(), module.type_info);
 
@@ -412,21 +423,25 @@ pub fn compile_module_with_opts(
     let parsed = crate::parse::parse_module(src).expect("syntax error");
     let mut ast = parsed.module;
     ast.name = module_name.into();
-    let mut config = crate::config::PackageConfig::default();
+    let mut config = PackageConfig::default();
     config.name = "thepackage".into();
-    crate::analyse::infer_module(
+    let inference_result = crate::analyse::ModuleAnalyzerConstructor::<()> {
         target,
-        &ids,
-        ast,
-        Origin::Src,
-        &modules,
-        &warnings,
-        &direct_dependencies,
-        TargetSupport::Enforced,
-        LineNumbers::new(src),
-        &config,
-        "".into(),
-    )
+        ids: &ids,
+        origin: Origin::Src,
+        importable_modules: &modules,
+        warnings: &warnings,
+        direct_dependencies: &direct_dependencies,
+        target_support: TargetSupport::Enforced,
+        package_config: &config,
+    }
+    .infer_module(ast, LineNumbers::new(src), "".into());
+
+    match inference_result {
+        Outcome::Ok(ast) => Ok(ast),
+        Outcome::PartialFailure(_, errors) => Err(errors.into()),
+        Outcome::TotalFailure(error) => Err(error.into()),
+    }
 }
 
 pub fn module_error(src: &str, deps: Vec<DependencyModule<'_>>) -> String {
@@ -450,7 +465,7 @@ pub fn module_error_with_target(
     let error = Error::Type {
         src: src.into(),
         path: Utf8PathBuf::from("/src/one/two.gleam"),
-        error,
+        errors: Vec1::try_from_vec(error).expect("should have at least one error"),
     };
     error.pretty_string()
 }
@@ -605,7 +620,7 @@ fn infer_module_type_retention_test() {
         definitions: vec![],
         type_info: (),
     };
-    let direct_dependencies = std::collections::HashMap::from_iter(vec![]);
+    let direct_dependencies = HashMap::from_iter(vec![]);
     let ids = UniqueIdGenerator::new();
     let mut modules = im::HashMap::new();
     // DUPE: preludeinsertion
@@ -615,19 +630,18 @@ fn infer_module_type_retention_test() {
     let _ = modules.insert(PRELUDE_MODULE_NAME.into(), build_prelude(&ids));
     let mut config = PackageConfig::default();
     config.name = "thepackage".into();
-    let module = crate::analyse::infer_module::<()>(
-        Target::Erlang,
-        &ids,
-        module,
-        Origin::Src,
-        &modules,
-        &TypeWarningEmitter::null(),
-        &direct_dependencies,
-        TargetSupport::Enforced,
-        LineNumbers::new(""),
-        &config,
-        "".into(),
-    )
+
+    let module = crate::analyse::ModuleAnalyzerConstructor::<()> {
+        target: Target::Erlang,
+        ids: &ids,
+        origin: Origin::Src,
+        importable_modules: &modules,
+        warnings: &TypeWarningEmitter::null(),
+        direct_dependencies: &direct_dependencies,
+        target_support: TargetSupport::Enforced,
+        package_config: &config,
+    }
+    .infer_module(module, LineNumbers::new(""), "".into())
     .expect("Should infer OK");
 
     assert_eq!(

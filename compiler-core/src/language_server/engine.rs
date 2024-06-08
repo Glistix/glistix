@@ -1,9 +1,9 @@
 use crate::{
     ast::{
-        Arg, Definition, Function, Import, ModuleConstant, Publicity, TypedDefinition, TypedExpr,
-        TypedPattern,
+        Arg, Definition, Import, ModuleConstant, Publicity, SrcSpan, TypedDefinition, TypedExpr,
+        TypedFunction, TypedModule, TypedPattern,
     },
-    build::{Located, Module},
+    build::{type_constructor_from_modules, Located, Module, UnqualifiedImport},
     config::PackageConfig,
     io::{CommandExecutor, FileSystemReader, FileSystemWriter},
     language_server::{
@@ -11,7 +11,10 @@ use crate::{
     },
     line_numbers::LineNumbers,
     paths::ProjectPaths,
-    type_::{pretty::Printer, PreludeType, Type, ValueConstructorVariant},
+    type_::{
+        pretty::Printer, ModuleInterface, PreludeType, Type, TypeConstructor,
+        ValueConstructorVariant,
+    },
     Error, Result, Warning,
 };
 use camino::Utf8PathBuf;
@@ -22,7 +25,8 @@ use std::sync::Arc;
 use strum::IntoEnumIterator;
 
 use super::{
-    code_action::CodeActionBuilder, src_span_to_lsp_range, DownloadDependencies, MakeLocker,
+    code_action::{CodeActionBuilder, RedundantTupleInCaseSubject},
+    src_span_to_lsp_range, DownloadDependencies, MakeLocker,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -126,13 +130,14 @@ where
         self.compiled_since_last_feedback = true;
 
         self.progress_reporter.compilation_started();
-        let result = self.compiler.compile();
+        let outcome = self.compiler.compile();
         self.progress_reporter.compilation_finished();
 
-        let modules = result?;
-        self.modules_compiled_since_last_feedback.extend(modules);
-
-        Ok(())
+        outcome
+            // Register which modules have changed
+            .map(|modules| self.modules_compiled_since_last_feedback.extend(modules))
+            // Return the error, if present
+            .into_result()
     }
 
     fn take_warnings(&mut self) -> Vec<Warning> {
@@ -154,7 +159,9 @@ where
                 None => return Ok(None),
             };
 
-            let location = match node.definition_location() {
+            let location = match node
+                .definition_location(this.compiler.project_compiler.get_importable_modules())
+            {
                 Some(location) => location,
                 None => return Ok(None),
             };
@@ -220,11 +227,22 @@ where
                     Some(this.completion_types(module))
                 }
 
-                Located::ModuleStatement(Definition::Import(_) | Definition::ModuleConstant(_)) => {
-                    None
-                }
+                // If the import completions returned no results and we are in an import then
+                // we should try to provide completions for unqualified values
+                Located::ModuleStatement(Definition::Import(import)) => this
+                    .compiler
+                    .get_module_inferface(import.module.as_str())
+                    .map(|importing_module| {
+                        this.unqualified_completions_from_module(importing_module, module, true)
+                    }),
+
+                Located::ModuleStatement(Definition::ModuleConstant(_)) => None,
+
+                Located::UnqualifiedImport(_) => None,
 
                 Located::Arg(_) => None,
+
+                Located::Annotation(_, _) => Some(this.completion_types(module)),
             };
 
             Ok(completions)
@@ -239,6 +257,7 @@ where
             };
 
             code_action_unused_imports(module, &params, &mut actions);
+            actions.extend(RedundantTupleInCaseSubject::new(module, &params).code_actions());
 
             Ok(if actions.is_empty() {
                 None
@@ -284,6 +303,30 @@ where
                     Some(hover_for_module_constant(constant, lines))
                 }
                 Located::ModuleStatement(_) => None,
+                Located::UnqualifiedImport(UnqualifiedImport {
+                    name,
+                    module,
+                    is_type,
+                    location,
+                }) => this
+                    .compiler
+                    .get_module_inferface(module.as_str())
+                    .and_then(|module| {
+                        if is_type {
+                            module.types.get(name).map(|t| {
+                                hover_for_annotation(*location, t.typ.as_ref(), Some(t), lines)
+                            })
+                        } else {
+                            module.values.get(name).map(|v| {
+                                let m = if this.hex_deps.contains(&module.package) {
+                                    Some(module)
+                                } else {
+                                    None
+                                };
+                                hover_for_imported_value(v, location, lines, m, name)
+                            })
+                        }
+                    }),
                 Located::Pattern(pattern) => Some(hover_for_pattern(pattern, lines)),
                 Located::Expression(expression) => {
                     let module = this.module_for_uri(&params.text_document.uri);
@@ -297,6 +340,18 @@ where
                 }
                 Located::Arg(arg) => Some(hover_for_function_argument(arg, lines)),
                 Located::FunctionBody(_) => None,
+                Located::Annotation(annotation, type_) => {
+                    let type_constructor = type_constructor_from_modules(
+                        this.compiler.project_compiler.get_importable_modules(),
+                        type_.clone(),
+                    );
+                    Some(hover_for_annotation(
+                        annotation,
+                        &type_,
+                        type_constructor,
+                        lines,
+                    ))
+                }
             })
         })
     }
@@ -345,6 +400,21 @@ where
         self.compiler.modules.get(&module_name)
     }
 
+    /// checks based on the publicity if something should be suggested for import from root package
+    fn is_suggestable_import(&self, publicity: &Publicity, package: &str) -> bool {
+        match publicity {
+            // We skip private types as we never want those to appear in
+            // completions.
+            Publicity::Private => false,
+            // We only skip internal types if those are not defined in
+            // the root package.
+            Publicity::Internal if package != self.root_package_name() => false,
+            Publicity::Internal => true,
+            // We never skip public types.
+            Publicity::Public => true,
+        }
+    }
+
     fn completion_types<'b>(&'b self, module: &'b Module) -> Vec<lsp::CompletionItem> {
         let mut completions = vec![];
 
@@ -374,16 +444,8 @@ where
 
             // Qualified types
             for (name, type_) in &module.types {
-                match type_.publicity {
-                    // We skip private types as we never want those to appear in
-                    // completions.
-                    Publicity::Private => continue,
-                    // We only skip internal types if those are not defined in
-                    // the root package.
-                    Publicity::Internal if module.package != self.root_package_name() => continue,
-                    Publicity::Internal => {}
-                    // We never skip public types.
-                    Publicity::Public => {}
+                if !self.is_suggestable_import(&type_.publicity, module.package.as_str()) {
+                    continue;
                 }
 
                 let module = import.used_name();
@@ -428,16 +490,8 @@ where
 
             // Qualified values
             for (name, value) in &module.values {
-                match value.publicity {
-                    // We skip private values as we never want those to appear in
-                    // completions.
-                    Publicity::Private => continue,
-                    // We only skip internal values if those are not defined in
-                    // the root package.
-                    Publicity::Internal if module.package != self.root_package_name() => continue,
-                    Publicity::Internal => {}
-                    // We never skip public values.
-                    Publicity::Public => {}
+                if !self.is_suggestable_import(&value.publicity, module.package.as_str()) {
+                    continue;
                 }
 
                 let module = import.used_name();
@@ -460,6 +514,76 @@ where
         completions
     }
 
+    fn unqualified_completions_from_module<'b>(
+        &'b self,
+        importing_module: &'b ModuleInterface,
+        module: &'b Module,
+        // should type completions include the word "type" in the completion
+        include_type_in_completion: bool,
+    ) -> Vec<lsp::CompletionItem> {
+        let mut completions = vec![];
+
+        // Find values and type that have already previously been imported
+        let mut already_imported_types = std::collections::HashSet::new();
+        let mut already_imported_values = std::collections::HashSet::new();
+
+        // Search the ast for import statements
+        for import in module.ast.definitions.iter().filter_map(get_import) {
+            // Find the import that matches the module being imported from
+            if import.module == importing_module.name {
+                // Add the values and types that have already been imported
+                for unqualified in &import.unqualified_types {
+                    let _ = already_imported_types.insert(&unqualified.name);
+                }
+
+                for unqualified in &import.unqualified_values {
+                    let _ = already_imported_values.insert(&unqualified.name);
+                }
+            }
+        }
+
+        // Get completable types
+        for (name, type_) in &importing_module.types {
+            // Skip types that should not be suggested
+            if !self.is_suggestable_import(&type_.publicity, importing_module.package.as_str()) {
+                continue;
+            }
+
+            // Skip type that are already imported
+            if already_imported_types.contains(name) {
+                continue;
+            }
+
+            let completion: lsp::CompletionItem = if !include_type_in_completion {
+                type_completion(None, name, type_)
+            } else {
+                let completion = type_completion(None, name, type_);
+                lsp::CompletionItem {
+                    // Add type prior to unqualified import for types
+                    insert_text: Some("type ".to_string() + &completion.label),
+                    ..completion
+                }
+            };
+            completions.push(completion);
+        }
+
+        // Get completable values
+        for (name, value) in &importing_module.values {
+            // Skip values that should not be suggested
+            if !self.is_suggestable_import(&value.publicity, importing_module.package.as_str()) {
+                continue;
+            }
+
+            // Skip values that are already imported
+            if already_imported_values.contains(name) {
+                continue;
+            }
+            completions.push(value_completion(None, name, value));
+        }
+
+        completions
+    }
+
     fn import_completions<'b>(
         &'b self,
         src: EcoString,
@@ -470,22 +594,40 @@ where
         let start_of_line = line_num.byte_index(params.position.line, 0);
         let end_of_line = line_num.byte_index(params.position.line + 1, 0);
 
-        // Drop all lines before the line the cursor is on
-        let src = &src.get(start_of_line as usize..)?;
+        // Drop all lines except the line the cursor is on
+        let src = &src.get(start_of_line as usize..end_of_line as usize)?;
 
         // If this isn't an import line then we don't offer import completions
         if !src.trim_start().starts_with("import") {
             return None;
         }
 
-        // Find where to start and end the import completion
-        let start = line_num.line_and_column_number(start_of_line);
-        let end = line_num.line_and_column_number(end_of_line - 1);
-        let start = lsp::Position::new(start.line - 1, start.column + 6);
-        let end = lsp::Position::new(end.line - 1, end.column);
-        let completions = self.complete_modules_for_import(module, start, end);
+        // Check if we are completing an unqualified import
+        if let Some(dot_index) = src.find('.') {
+            // Find the module that is being imported from
+            let importing_module_name = src.get(6..dot_index)?.trim();
+            let importing_module: &ModuleInterface =
+                self.compiler.get_module_inferface(importing_module_name)?;
 
-        Some(Ok(Some(completions)))
+            // Check if the cursor is proceeded by the word "type".
+            // We want to make sure suggestions don't include the word "type"
+            // if the cursor is proceeded by it.
+            let cursor = src.get(..params.position.character as usize)?;
+            Some(Ok(Some(self.unqualified_completions_from_module(
+                importing_module,
+                module,
+                !cursor.trim().ends_with("type"),
+            ))))
+        } else {
+            // Find where to start and end the import completion
+            let start = line_num.line_and_column_number(start_of_line);
+            let end = line_num.line_and_column_number(end_of_line - 1);
+            let start = lsp::Position::new(start.line - 1, start.column + 6);
+            let end = lsp::Position::new(end.line - 1, end.column - 1);
+            let completions = self.complete_modules_for_import(module, start, end);
+
+            Some(Ok(Some(completions)))
+        }
     }
 
     fn complete_modules_for_import<'b>(
@@ -541,12 +683,10 @@ where
             .map(|(name, _)| lsp::CompletionItem {
                 label: name.to_string(),
                 kind: Some(lsp::CompletionItemKind::MODULE),
-                text_edit: {
-                    Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                        range: lsp::Range { start, end },
-                        new_text: name.to_string(),
-                    }))
-                },
+                text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                    range: lsp::Range { start, end },
+                    new_text: name.to_string(),
+                })),
                 ..Default::default()
             })
             .collect()
@@ -560,7 +700,7 @@ where
 fn type_completion(
     module: Option<&EcoString>,
     name: &str,
-    type_: &crate::type_::TypeConstructor,
+    type_: &TypeConstructor,
 ) -> lsp::CompletionItem {
     let label = match module {
         Some(module) => format!("{module}.{name}"),
@@ -642,10 +782,7 @@ fn hover_for_pattern(pattern: &TypedPattern, line_numbers: LineNumbers) -> Hover
     }
 }
 
-fn hover_for_function_head(
-    fun: &Function<Arc<Type>, TypedExpr>,
-    line_numbers: LineNumbers,
-) -> Hover {
+fn hover_for_function_head(fun: &TypedFunction, line_numbers: LineNumbers) -> Hover {
     let empty_str = EcoString::from("");
     let documentation = fun.documentation.as_ref().unwrap_or(&empty_str);
     let function_type = Type::Fn {
@@ -671,6 +808,29 @@ fn hover_for_function_argument(argument: &Arg<Arc<Type>>, line_numbers: LineNumb
     Hover {
         contents: HoverContents::Scalar(MarkedString::String(contents)),
         range: Some(src_span_to_lsp_range(argument.location, &line_numbers)),
+    }
+}
+
+fn hover_for_annotation(
+    location: SrcSpan,
+    annotation_type: &Type,
+    type_constructor: Option<&TypeConstructor>,
+    line_numbers: LineNumbers,
+) -> Hover {
+    let empty_str = EcoString::from("");
+    let documentation = type_constructor
+        .and_then(|t| t.documentation.as_ref())
+        .unwrap_or(&empty_str);
+    let type_ = Printer::new().pretty_print(annotation_type, 0);
+    let contents = format!(
+        "```gleam
+{type_}
+```
+{documentation}"
+    );
+    Hover {
+        contents: HoverContents::Scalar(MarkedString::String(contents)),
+        range: Some(src_span_to_lsp_range(location, &line_numbers)),
     }
 }
 
@@ -717,10 +877,41 @@ fn hover_for_expression(
     }
 }
 
-// Check if the inner range is included in the outer range.
-fn range_includes(outer: &lsp_types::Range, inner: &lsp_types::Range) -> bool {
-    (outer.start >= inner.start && outer.start <= inner.end)
-        || (outer.end >= inner.start && outer.end <= inner.end)
+fn hover_for_imported_value(
+    value: &crate::type_::ValueConstructor,
+    location: &SrcSpan,
+    line_numbers: LineNumbers,
+    hex_module_imported_from: Option<&ModuleInterface>,
+    name: &EcoString,
+) -> Hover {
+    let documentation = value.get_documentation().unwrap_or_default();
+
+    let link_section = hex_module_imported_from.map_or("".to_string(), |m| {
+        format_hexdocs_link_section(m.package.as_str(), m.name.as_str(), name)
+    });
+
+    // Show the type of the hovered node to the user
+    let type_ = Printer::new().pretty_print(value.type_.as_ref(), 0);
+    let contents = format!(
+        "```gleam
+{type_}
+```
+{documentation}{link_section}"
+    );
+    Hover {
+        contents: HoverContents::Scalar(MarkedString::String(contents)),
+        range: Some(src_span_to_lsp_range(*location, &line_numbers)),
+    }
+}
+
+// Returns true if any part of either range overlaps with the other.
+pub fn overlaps(a: lsp_types::Range, b: lsp_types::Range) -> bool {
+    within(a.start, b) || within(a.end, b) || within(b.start, a) || within(b.end, a)
+}
+
+// Returns true if a position is within a range
+fn within(position: lsp_types::Position, range: lsp_types::Range) -> bool {
+    position >= range.start && position < range.end
 }
 
 fn code_action_unused_imports(
@@ -741,9 +932,19 @@ fn code_action_unused_imports(
     let mut edits = Vec::with_capacity(unused.len());
 
     for unused in unused {
-        let range = src_span_to_lsp_range(*unused, &line_numbers);
+        let SrcSpan { start, end } = *unused;
+
+        // If removing an unused alias or at the beginning of the file, don't backspace
+        // Otherwise, adjust the end position by 1 to ensure the entire line is deleted with the import.
+        let adjusted_end = if delete_line(unused, &line_numbers) {
+            end + 1
+        } else {
+            end
+        };
+
+        let range = src_span_to_lsp_range(SrcSpan::new(start, adjusted_end), &line_numbers);
         // Keep track of whether any unused import has is where the cursor is
-        hovered = hovered || range_includes(&params.range, &range);
+        hovered = hovered || overlaps(params.range, range);
 
         edits.push(lsp_types::TextEdit {
             range,
@@ -762,6 +963,13 @@ fn code_action_unused_imports(
         .changes(uri.clone(), edits)
         .preferred(true)
         .push_to(actions);
+}
+
+// Check if the edit empties a whole line; if so, delete the line.
+fn delete_line(span: &SrcSpan, line_numbers: &LineNumbers) -> bool {
+    line_numbers.line_starts.iter().any(|&line_start| {
+        line_start == span.start && line_numbers.line_starts.contains(&(span.end + 1))
+    })
 }
 
 fn get_expr_qualified_name(expression: &TypedExpr) -> Option<(&EcoString, &EcoString)> {
@@ -790,10 +998,15 @@ fn get_expr_qualified_name(expression: &TypedExpr) -> Option<(&EcoString, &EcoSt
     }
 }
 
+fn format_hexdocs_link_section(package_name: &str, module_name: &str, name: &str) -> String {
+    let link = format!("https://hexdocs.pm/{package_name}/{module_name}.html#{name}");
+    format!("\nView on [HexDocs]({link})")
+}
+
 fn get_hexdocs_link_section(
     module_name: &str,
     name: &str,
-    ast: &crate::ast::TypedModule,
+    ast: &TypedModule,
     hex_deps: &std::collections::HashSet<EcoString>,
 ) -> Option<String> {
     let package_name = ast.definitions.iter().find_map(|def| match def {
@@ -803,6 +1016,5 @@ fn get_hexdocs_link_section(
         _ => None,
     })?;
 
-    let link = format!("https://hexdocs.pm/{package_name}/{module_name}.html#{name}");
-    Some(format!("\nView on [HexDocs]({link})"))
+    Some(format_hexdocs_link_section(package_name, module_name, name))
 }

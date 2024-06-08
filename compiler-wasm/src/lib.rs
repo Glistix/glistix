@@ -16,7 +16,7 @@ use glistix_core::{
 };
 use hexpm::version::Version;
 use im::HashMap;
-use std::{cell::RefCell, sync::Arc};
+use std::{cell::RefCell, collections::HashSet, sync::Arc};
 use wasm_filesystem::WasmFileSystem;
 
 use wasm_bindgen::prelude::*;
@@ -206,13 +206,15 @@ fn do_compile_package(project: Project, target: Target) -> Result<(), Error> {
     compiler.write_entrypoint = false;
     compiler.write_metadata = false;
     compiler.compile_beam_bytecode = true;
-    _ = compiler.compile(
-        &warning_emitter,
-        &mut type_manifests,
-        &mut defined_modules,
-        &mut StaleTracker::default(),
-        &NullTelemetry,
-    )?;
-
-    Ok(())
+    compiler
+        .compile(
+            &warning_emitter,
+            &mut type_manifests,
+            &mut defined_modules,
+            &mut StaleTracker::default(),
+            &mut HashSet::new(),
+            &NullTelemetry,
+        )
+        .into_result()
+        .map(|_| ())
 }
