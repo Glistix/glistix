@@ -21,7 +21,7 @@ For more information on Gleam, including tutorials, please check [the Gleam lang
 
 **NOTE:** Glistix is **beta software**, and **may have breaking changes**. You shouldn't rely on it on production just yet, but **feel free to give it a shot on personal or smaller projects** and **report any issues and bugs you find**. It should be functional, but we still need people to try it out and report any bugs.
 
-**NOTE:** Glistix's latest stable version currently tracks **Gleam v1.1.0,** meaning features and fixes from up to that Gleam version are available.
+**NOTE:** Glistix's latest stable version currently tracks **Gleam v1.2.1,** meaning features and fixes from up to that Gleam version are available.
 
 **NOTE:** Glistix is **an unofficial project** and is therefore **not affiliated with the Gleam project**.
 
@@ -43,22 +43,22 @@ You can install Glistix in one of the following ways.
 
 1. **From GitHub Releases (non-NixOS):** If you're using Linux (not NixOS), MacOS or Windows, you can install Glistix by downloading the latest precompiled binary for your platform at [https://github.com/glistix/glistix/releases](https://github.com/glistix/glistix/releases).
 
-2. **With Nix flakes (NixOS):** Invoke the command below in the command line to download, compile and run a specific release of Glistix - here the latest at the time of writing (v0.1.0).
+2. **With Nix flakes (NixOS):** Invoke the command below in the command line to download, compile and run a specific release of Glistix - here the latest at the time of writing (v0.2.0).
 
     ```sh
-    nix run 'github:Glistix/glistix/v0.1.0' -- --help
+    nix run 'github:Glistix/glistix/v0.2.0' -- --help
     ```
 
-    To install permanently, you can either add `github:Glistix/glistix/v0.1.0` as an input to your system/Home Manager configuration, or use `nix profile`:
+    To install permanently, you can either add `github:Glistix/glistix/v0.2.0` as an input to your system/Home Manager configuration, or use `nix profile`:
 
     ```sh
-    nix profile install 'github:Glistix/glistix/v0.1.0'
+    nix profile install 'github:Glistix/glistix/v0.2.0'
     ```
 
-3. **With Cargo:** You can use Cargo to compile and install Glistix's latest release (v0.1.0 at the time of writing):
+3. **With Cargo:** You can use Cargo to compile and install Glistix's latest release (v0.2.0 at the time of writing):
 
     ```sh
-    cargo install --git https://github.com/glistix/glistix --tag v0.1.0 --locked
+    cargo install --git https://github.com/glistix/glistix --tag v0.2.0 --locked
     ```
 
 ## Table of Contents
