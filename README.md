@@ -21,7 +21,7 @@ For more information on Gleam, including tutorials, please check [the Gleam lang
 
 **NOTE:** Glistix is **beta software**, and **may have breaking changes**. You shouldn't rely on it on production just yet, but **feel free to give it a shot on personal or smaller projects** and **report any issues and bugs you find**. It should be functional, but we still need people to try it out and report any bugs.
 
-**NOTE:** Glistix's latest stable version currently tracks **Gleam v1.1.0,** meaning features and fixes from up to that Gleam version are available.
+**NOTE:** Glistix's latest stable version currently tracks **Gleam v1.2.1,** meaning features and fixes from up to that Gleam version are available.
 
 **NOTE:** Glistix is **an unofficial project** and is therefore **not affiliated with the Gleam project**.
 
