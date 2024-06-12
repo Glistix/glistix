@@ -277,7 +277,7 @@ jobs:
     }};
 
     # Pick your Glistix version here.
-    glistix.url = "github:glistix/glistix/v0.1.0";
+    glistix.url = "github:glistix/glistix/v0.2.0";
 
     # Submodules
     # Add any submodules which you use as dependencies here,
