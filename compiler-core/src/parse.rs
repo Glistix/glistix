@@ -3148,13 +3148,19 @@ where
         let (_, name, _) = self.expect_name()?;
 
         match name.as_str() {
+            "erlang" | "javascript" | "nix" => {}
+            _ => return parse_error(ParseErrorType::UnknownAttribute, SrcSpan::new(start, end)),
+        };
+
+        let _ = self.expect_one(&Token::Comma)?;
+        let (_, module, _) = self.expect_string()?;
+        let _ = self.expect_one(&Token::Comma)?;
+        let (_, function, _) = self.expect_string()?;
+        let _ = self.maybe_one(&Token::Comma);
+        let (_, end) = self.expect_one(&Token::RightParen)?;
+
+        match name.as_str() {
             "erlang" => {
-                let _ = self.expect_one(&Token::Comma)?;
-                let (_, module, _) = self.expect_string()?;
-                let _ = self.expect_one(&Token::Comma)?;
-                let (_, function, _) = self.expect_string()?;
-                let _ = self.maybe_one(&Token::Comma);
-                let (_, end) = self.expect_one(&Token::RightParen)?;
                 if attributes.external_erlang.is_some() {
                     return parse_error(ParseErrorType::DuplicateAttribute, SrcSpan { start, end });
                 }
@@ -3163,12 +3169,6 @@ where
             }
 
             "javascript" => {
-                let _ = self.expect_one(&Token::Comma)?;
-                let (_, module, _) = self.expect_string()?;
-                let _ = self.expect_one(&Token::Comma)?;
-                let (_, function, _) = self.expect_string()?;
-                let _ = self.maybe_one(&Token::Comma);
-                let _ = self.expect_one(&Token::RightParen)?;
                 if attributes.external_javascript.is_some() {
                     return parse_error(ParseErrorType::DuplicateAttribute, SrcSpan { start, end });
                 }
@@ -3177,12 +3177,6 @@ where
             }
 
             "nix" => {
-                let _ = self.expect_one(&Token::Comma)?;
-                let (_, module, _) = self.expect_string()?;
-                let _ = self.expect_one(&Token::Comma)?;
-                let (_, function, _) = self.expect_string()?;
-                let _ = self.maybe_one(&Token::Comma);
-                let _ = self.expect_one(&Token::RightParen)?;
                 if attributes.external_nix.is_some() {
                     return parse_error(ParseErrorType::DuplicateAttribute, SrcSpan { start, end });
                 }
