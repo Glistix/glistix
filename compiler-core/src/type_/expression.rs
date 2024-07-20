@@ -2112,10 +2112,23 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 .environment
                 .imported_modules
                 .get(module_alias)
-                .ok_or_else(|| Error::UnknownModule {
-                    name: module_alias.clone(),
-                    location: *module_location,
-                    imported_modules: self.environment.imported_modules.keys().cloned().collect(),
+                .ok_or_else(|| {
+                    suggest_imports(
+                        module_alias,
+                        *module_location,
+                        &self.environment.importable_modules.keys().collect_vec(),
+                        &mut self.environment.import_suggestions,
+                    );
+                    Error::UnknownModule {
+                        name: module_alias.clone(),
+                        location: *module_location,
+                        imported_modules: self
+                            .environment
+                            .imported_modules
+                            .keys()
+                            .cloned()
+                            .collect(),
+                    }
                 })?;
 
             let constructor =
@@ -2295,7 +2308,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
         let value_constructor = self
             .environment
-            .get_value_constructor(module.as_ref(), &name)
+            .get_value_constructor(module.as_ref(), &name, location)
             .map_err(|e| convert_get_value_constructor_error(e, location))?
             .clone();
 
@@ -2422,15 +2435,23 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     .environment
                     .imported_modules
                     .get(module_name)
-                    .ok_or_else(|| Error::UnknownModule {
-                        location: *location,
-                        name: module_name.clone(),
-                        imported_modules: self
-                            .environment
-                            .imported_modules
-                            .keys()
-                            .cloned()
-                            .collect(),
+                    .ok_or_else(|| {
+                        suggest_imports(
+                            module_name,
+                            *location,
+                            &self.environment.importable_modules.keys().collect_vec(),
+                            &mut self.environment.import_suggestions,
+                        );
+                        Error::UnknownModule {
+                            location: *location,
+                            name: module_name.clone(),
+                            imported_modules: self
+                                .environment
+                                .imported_modules
+                                .keys()
+                                .cloned()
+                                .collect(),
+                        }
                     })?;
                 module
                     .values
@@ -2875,7 +2896,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
         Ok(self
             .environment
-            .get_value_constructor(module.as_ref(), name)?
+            .get_value_constructor(module.as_ref(), name, constructor.location())?
             .field_map())
     }
 
