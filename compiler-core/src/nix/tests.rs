@@ -6,9 +6,9 @@ use crate::{
     build::{Origin, Target},
     nix::*,
     uid::UniqueIdGenerator,
-    warning::TypeWarningEmitter,
+    warning::{TypeWarningEmitter, WarningEmitter},
 };
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 
 mod assignments;
 mod basic;
@@ -86,7 +86,12 @@ pub fn compile(src: &str, deps: Vec<(&str, &str, &str)>) -> TypedModule {
     deps.iter().for_each(|(dep_package, dep_name, dep_src)| {
         let mut dep_config = PackageConfig::default();
         dep_config.name = (*dep_package).into();
-        let parsed = crate::parse::parse_module(dep_src).expect("dep syntax error");
+        let parsed = crate::parse::parse_module(
+            Utf8PathBuf::from("test/path"),
+            dep_src,
+            &WarningEmitter::null(),
+        )
+        .expect("dep syntax error");
         let mut ast = parsed.module;
         ast.name = (*dep_name).into();
         let line_numbers = LineNumbers::new(dep_src);
@@ -107,7 +112,9 @@ pub fn compile(src: &str, deps: Vec<(&str, &str, &str)>) -> TypedModule {
         let _ = direct_dependencies.insert((*dep_package).into(), ());
     });
 
-    let parsed = crate::parse::parse_module(src).expect("syntax error");
+    let parsed =
+        crate::parse::parse_module(Utf8PathBuf::from("test/path"), src, &WarningEmitter::null())
+            .expect("syntax error");
     let mut ast = parsed.module;
     ast.name = "my/mod".into();
     let line_numbers = LineNumbers::new(src);
