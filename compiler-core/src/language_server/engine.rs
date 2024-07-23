@@ -203,11 +203,17 @@ where
                 .module_line_numbers
                 .byte_index(params.position.line, params.position.character);
 
+            // If in comment context, do not provide completions
+            if module.extra.is_within_comment(byte_index) {
+                return Ok(None);
+            }
+
             let Some(found) = module.find_node(byte_index) else {
                 return Ok(None);
             };
 
             let completions = match found {
+                Located::PatternSpread { .. } => None,
                 Located::Pattern(_pattern) => None,
 
                 Located::Statement(_) | Located::Expression(_) => {
@@ -228,7 +234,7 @@ where
                 // we should try to provide completions for unqualified values
                 Located::ModuleStatement(Definition::Import(import)) => this
                     .compiler
-                    .get_module_inferface(import.module.as_str())
+                    .get_module_interface(import.module.as_str())
                     .map(|importing_module| {
                         completer.unqualified_completions_from_module(importing_module)
                     }),
@@ -246,7 +252,10 @@ where
         })
     }
 
-    pub fn action(&mut self, params: lsp::CodeActionParams) -> Response<Option<Vec<CodeAction>>> {
+    pub fn code_actions(
+        &mut self,
+        params: lsp::CodeActionParams,
+    ) -> Response<Option<Vec<CodeAction>>> {
         self.respond(|this| {
             let mut actions = vec![];
             let Some(module) = this.module_for_uri(&params.text_document.uri) else {
@@ -307,7 +316,7 @@ where
                     location,
                 }) => this
                     .compiler
-                    .get_module_inferface(module.as_str())
+                    .get_module_interface(module.as_str())
                     .and_then(|module| {
                         if is_type {
                             module.types.get(name).map(|t| {
@@ -325,6 +334,48 @@ where
                         }
                     }),
                 Located::Pattern(pattern) => Some(hover_for_pattern(pattern, lines)),
+                Located::PatternSpread {
+                    spread_location,
+                    arguments,
+                } => {
+                    let range = Some(src_span_to_lsp_range(spread_location, &lines));
+
+                    let mut positional = vec![];
+                    let mut labelled = vec![];
+                    for argument in arguments {
+                        // We only want to display the arguments that were ignored using `..`.
+                        // Any argument ignored that way is marked as implicit, so if it is
+                        // not implicit we just ignore it.
+                        if !argument.implicit {
+                            continue;
+                        }
+
+                        let type_ = Printer::new().pretty_print(argument.value.type_().as_ref(), 0);
+                        match &argument.label {
+                            Some(label) => labelled.push(format!("- `{}: {}`", label, type_)),
+                            None => positional.push(format!("- `{}`", type_)),
+                        }
+                    }
+
+                    let positional = positional.join("\n");
+                    let labelled = labelled.join("\n");
+                    let content = match (positional.is_empty(), labelled.is_empty()) {
+                        (true, false) => format!("Unused labelled fields:\n{labelled}"),
+                        (false, true) => format!("Unused positional fields:\n{positional}"),
+                        (_, _) => format!(
+                            "Unused positional fields:
+{positional}
+
+Unused labelled fields:
+{labelled}"
+                        ),
+                    };
+
+                    Some(Hover {
+                        contents: HoverContents::Scalar(MarkedString::from_markdown(content)),
+                        range,
+                    })
+                }
                 Located::Expression(expression) => {
                     let module = this.module_for_uri(&params.text_document.uri);
 

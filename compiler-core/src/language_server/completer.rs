@@ -162,7 +162,7 @@ where
             // Find the module that is being imported from
             let importing_module_name = src.get(6..dot_index)?.trim();
             let importing_module: &ModuleInterface =
-                self.compiler.get_module_inferface(importing_module_name)?;
+                self.compiler.get_module_interface(importing_module_name)?;
 
             Some(Ok(Some(
                 self.unqualified_completions_from_module(importing_module),
@@ -276,7 +276,9 @@ where
         }
 
         let already_imported: std::collections::HashSet<EcoString> =
-            std::collections::HashSet::from_iter(self.module.dependencies_list());
+            std::collections::HashSet::from_iter(
+                self.module.dependencies.iter().map(|d| d.0.clone()),
+            );
         self.compiler
             .project_compiler
             .get_importable_modules()
@@ -366,7 +368,7 @@ where
         for import in self.module.ast.definitions.iter().filter_map(get_import) {
             // The module may not be known of yet if it has not previously
             // compiled yet in this editor session.
-            let Some(module) = self.compiler.get_module_inferface(&import.module) else {
+            let Some(module) = self.compiler.get_module_interface(&import.module) else {
                 continue;
             };
 
@@ -479,7 +481,7 @@ where
         for import in self.module.ast.definitions.iter().filter_map(get_import) {
             // The module may not be known of yet if it has not previously
             // compiled yet in this editor session.
-            let Some(module) = self.compiler.get_module_inferface(&import.module) else {
+            let Some(module) = self.compiler.get_module_interface(&import.module) else {
                 continue;
             };
 

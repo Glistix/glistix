@@ -280,7 +280,7 @@ where
             let info = CacheMetadata {
                 mtime: module.mtime,
                 codegen_performed: self.perform_codegen,
-                dependencies: module.dependencies_list(),
+                dependencies: module.dependencies.clone(),
                 fingerprint: SourceFingerprint::new(&module.code),
                 line_numbers: module.ast.type_info.line_numbers.clone(),
             };
@@ -579,7 +579,7 @@ impl Input {
     pub fn dependencies(&self) -> Vec<EcoString> {
         match self {
             Input::New(m) => m.dependencies.iter().map(|(n, _)| n.clone()).collect(),
-            Input::Cached(m) => m.dependencies.clone(),
+            Input::Cached(m) => m.dependencies.iter().map(|(n, _)| n.clone()).collect(),
         }
     }
 
@@ -604,7 +604,7 @@ impl Input {
 pub(crate) struct CachedModule {
     pub name: EcoString,
     pub origin: Origin,
-    pub dependencies: Vec<EcoString>,
+    pub dependencies: Vec<(EcoString, SrcSpan)>,
     pub source_path: Utf8PathBuf,
     pub line_numbers: LineNumbers,
 }
@@ -613,7 +613,7 @@ pub(crate) struct CachedModule {
 pub(crate) struct CacheMetadata {
     pub mtime: SystemTime,
     pub codegen_performed: bool,
-    pub dependencies: Vec<EcoString>,
+    pub dependencies: Vec<(EcoString, SrcSpan)>,
     pub fingerprint: SourceFingerprint,
     pub line_numbers: LineNumbers,
 }

@@ -1080,10 +1080,10 @@ pub trait PatternFolder {
                 name,
                 arguments,
                 module,
-                with_spread,
+                spread,
                 constructor: _,
                 type_: (),
-            } => self.fold_pattern_constructor(location, name, arguments, module, with_spread),
+            } => self.fold_pattern_constructor(location, name, arguments, module, spread),
 
             Pattern::Tuple { location, elems } => self.fold_pattern_tuple(location, elems),
 
@@ -1106,6 +1106,8 @@ pub trait PatternFolder {
                 left_side_string,
                 right_side_assignment,
             ),
+
+            Pattern::Invalid { location, .. } => self.fold_pattern_invalid(location),
         }
     }
 
@@ -1179,7 +1181,7 @@ pub trait PatternFolder {
         name: EcoString,
         arguments: Vec<CallArg<UntypedPattern>>,
         module: Option<EcoString>,
-        with_spread: bool,
+        spread: Option<SrcSpan>,
     ) -> UntypedPattern {
         Pattern::Constructor {
             location,
@@ -1187,7 +1189,7 @@ pub trait PatternFolder {
             arguments,
             module,
             constructor: Inferred::Unknown,
-            with_spread,
+            spread,
             type_: (),
         }
     }
@@ -1227,6 +1229,13 @@ pub trait PatternFolder {
         }
     }
 
+    fn fold_pattern_invalid(&mut self, location: SrcSpan) -> UntypedPattern {
+        Pattern::Invalid {
+            location,
+            type_: (),
+        }
+    }
+
     /// You probably don't want to override this method.
     fn walk_pattern(&mut self, m: UntypedPattern) -> UntypedPattern {
         match m {
@@ -1236,7 +1245,8 @@ pub trait PatternFolder {
             | Pattern::String { .. }
             | Pattern::Discard { .. }
             | Pattern::VarUsage { .. }
-            | Pattern::StringPrefix { .. } => m,
+            | Pattern::StringPrefix { .. }
+            | Pattern::Invalid { .. } => m,
 
             Pattern::Assign {
                 name,
@@ -1273,7 +1283,7 @@ pub trait PatternFolder {
                 arguments,
                 module,
                 constructor,
-                with_spread,
+                spread,
                 type_,
             } => {
                 let arguments = arguments
@@ -1289,7 +1299,7 @@ pub trait PatternFolder {
                     arguments,
                     module,
                     constructor,
-                    with_spread,
+                    spread,
                     type_,
                 }
             }

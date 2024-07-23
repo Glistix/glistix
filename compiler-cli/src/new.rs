@@ -96,7 +96,7 @@ impl FileToCreate {
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/{project_name}/)
 
 ```sh
-glistix add {project_name}
+glistix add {project_name}@1
 ```
 ```gleam
 import {project_name}
@@ -184,8 +184,8 @@ target = "nix"
 #
 # description = ""
 # licences = ["Apache-2.0"]
-# repository = {{ type = "github", user = "username", repo = "project" }}
-# links = [{{ title = "Website", href = "https://gleam.run" }}]
+# repository = {{ type = "github", user = "", repo = "" }}
+# links = [{{ title = "Website", href = "" }}]
 #
 # For a full reference of all the available options, you can have a look at
 # https://gleam.run/writing-gleam/gleam-toml/.

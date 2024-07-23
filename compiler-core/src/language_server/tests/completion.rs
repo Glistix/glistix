@@ -670,8 +670,8 @@ fn internal_values_from_root_package_are_in_the_completions() {
 @external(erlang, "rand", "uniform")
 @internal pub fn random_float() -> Float
 @internal pub fn main() { 0 }
-@internal pub type Foo { Bar }
-@internal pub const foo = 1
+@internal pub type Wibble { Wobble }
+@internal pub const wibble = 1
 "#;
 
     assert_debug_snapshot!(completion_at_default_position(
@@ -705,8 +705,8 @@ fn internal_values_from_the_same_module_are_in_the_completions() {
 @external(erlang, "rand", "uniform")
 @internal pub fn random_float() -> Float
 @internal pub fn main() { 0 }
-@internal pub type Foo { Bar }
-@internal pub const foo = 1
+@internal pub type Wibble { Wobble }
+@internal pub const wibble = 1
 "#;
 
     assert_debug_snapshot!(completion_at_default_position(TestProject::for_source(
@@ -719,7 +719,7 @@ fn internal_types_from_the_same_module_are_in_the_completions() {
     let code = "
 @internal pub type Alias = Result(Int, String)
 @internal pub type AnotherType {
-  Bar
+  Wibble
 }
 ";
 
@@ -756,8 +756,8 @@ fn internal_values_from_a_dependency_are_ignored() {
 @external(erlang, "rand", "uniform")
 @internal pub fn random_float() -> Float
 @internal pub fn main() { 0 }
-@internal pub type Foo { Bar }
-@internal pub const foo = 1
+@internal pub type Wibble { Wobble }
+@internal pub const wibble = 1
 "#;
 
     assert_debug_snapshot!(completion_at_default_position(
@@ -1144,4 +1144,61 @@ pub fn main() {
         TestProject::for_source(code),
         Position::new(2, 16)
     ),);
+}
+
+#[test]
+fn ignore_completions_in_empty_comment() {
+    // Reproducing issue #2161
+    let code = "
+pub fn main() {
+  case 0 {
+    //
+    _ -> 1
+  }
+}
+";
+
+    // End of the comment (right after the last `/`)
+    assert_eq!(
+        completion(TestProject::for_source(code), Position::new(3, 6)),
+        vec![],
+    );
+}
+
+#[test]
+fn ignore_completions_in_middle_of_comment() {
+    // Reproducing issue #2161
+    let code = "
+pub fn main() {
+  case 0 {
+    // comment
+    _ -> 1
+  }
+}
+";
+
+    // At `c`
+    assert_eq!(
+        completion(TestProject::for_source(code), Position::new(3, 7)),
+        vec![],
+    );
+}
+
+#[test]
+fn ignore_completions_in_end_of_comment() {
+    // Reproducing issue #2161
+    let code = "
+pub fn main() {
+  case 0 {
+    // comment
+    _ -> 1
+  }
+}
+";
+
+    // End of the comment (after `t`)
+    assert_eq!(
+        completion(TestProject::for_source(code), Position::new(3, 14)),
+        vec![],
+    );
 }
