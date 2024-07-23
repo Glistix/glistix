@@ -106,7 +106,7 @@ pub enum Error {
     UnknownModule {
         location: SrcSpan,
         name: EcoString,
-        imported_modules: Vec<EcoString>,
+        importable_modules: Vec<EcoString>,
     },
 
     UnknownModuleType {
@@ -942,7 +942,7 @@ pub enum UnknownValueConstructorError {
 
     Module {
         name: EcoString,
-        imported_modules: Vec<EcoString>,
+        importable_modules: Vec<EcoString>,
     },
 
     ModuleValue {
@@ -971,11 +971,11 @@ pub fn convert_get_value_constructor_error(
 
         UnknownValueConstructorError::Module {
             name,
-            imported_modules,
+            importable_modules,
         } => Error::UnknownModule {
             location,
             name,
-            imported_modules,
+            importable_modules,
         },
 
         UnknownValueConstructorError::ModuleValue {
@@ -1008,7 +1008,7 @@ pub enum UnknownTypeConstructorError {
 
     Module {
         name: EcoString,
-        imported_modules: Vec<EcoString>,
+        importable_modules: Vec<EcoString>,
     },
 
     ModuleType {
@@ -1032,11 +1032,11 @@ pub fn convert_get_type_constructor_error(
 
         UnknownTypeConstructorError::Module {
             name,
-            imported_modules,
+            importable_modules,
         } => Error::UnknownModule {
             location: *location,
             name,
-            imported_modules,
+            importable_modules,
         },
 
         UnknownTypeConstructorError::ModuleType {
