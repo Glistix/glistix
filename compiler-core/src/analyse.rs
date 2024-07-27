@@ -1024,6 +1024,12 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                 value_constructor_publicity,
                 deprecation.clone(),
             );
+
+            environment.value_names.named_constructor_in_scope(
+                environment.current_module.clone(),
+                constructor.name.clone(),
+                constructor.name.clone(),
+            );
         }
 
         // Now record the constructors for the type.
