@@ -1789,7 +1789,6 @@ fn typescript_file_included_tests() {
 
 @target(nix)
 fn typescript_file_included_tests() {
-  // Relative to current file
   let path = "./build/dev/nix/language/ffi_typescript.ts"
   [
     path
