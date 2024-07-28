@@ -224,7 +224,7 @@ jobs:
           # Workaround for lack of --target option for docs build
           # TODO: Remove this workaround after Gleam 1.4
           # (See https://github.com/gleam-lang/gleam/pull/3333)
-          sed -i 's/target = "nix"/target = "erlang"/' gleam.toml
+          sed -i -e 's/target = "nix"/target = "erlang"/' gleam.toml
           glistix docs build
 
           # Assert that module metadata has been written
