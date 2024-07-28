@@ -117,6 +117,89 @@ fn not_eq_scalar() {
 }
 
 #[test]
+fn addition() {
+    assert_nix!(
+        r#"pub fn main(x, y) {
+  case 1 {
+    _ if 1 + x == 2 -> 0
+    _ if 1.0 +. y == 2.0 -> 0
+    _ -> 1
+  }
+}
+"#,
+    );
+}
+
+#[test]
+fn subtraction() {
+    assert_nix!(
+        r#"pub fn main(x, y) {
+  case 1 {
+    _ if 1 - x == 2 -> 0
+    _ if 1.0 -. y == 2.0 -> 0
+    _ -> 1
+  }
+}
+"#,
+    );
+}
+
+#[test]
+fn division() {
+    assert_nix!(
+        r#"pub fn main(x, y) {
+  case 1 {
+    _ if 1 / x == 2 -> 0
+    _ if 1.0 /. y == 2.0 -> 0
+    _ -> 1
+  }
+}
+"#,
+    );
+}
+
+#[test]
+fn multiplication() {
+    assert_nix!(
+        r#"pub fn main(x, y) {
+  case 1 {
+    _ if 1 * x == 2 -> 0
+    _ if 1.0 *. y == 2.0 -> 0
+    _ -> 1
+  }
+}
+"#,
+    );
+}
+
+#[test]
+fn remainder() {
+    assert_nix!(
+        r#"pub fn main(x) {
+  case 1 {
+    _ if 1 % x == 2 -> 0
+    _ -> 1
+  }
+}
+"#,
+    );
+}
+
+#[test]
+fn combined_arithmetic() {
+    assert_nix!(
+        r#"pub fn main(x, y) {
+  case 1 {
+    _ if 10 / 2 + 5 % 3 - 1 * x == 2 -> 0
+    _ if 10.5 /. 2.5 +. 5.2 -. 1.3 *. y == 2.0 -> 0
+    _ -> 1
+  }
+}
+"#,
+    );
+}
+
+#[test]
 fn tuple_index() {
     assert_nix!(
         r#"pub fn main(x, xs: #(Bool, Bool, Bool)) {

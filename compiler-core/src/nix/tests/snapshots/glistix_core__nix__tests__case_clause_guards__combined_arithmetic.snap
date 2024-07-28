@@ -1,0 +1,17 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "pub fn main(x, y) {\n  case 1 {\n    _ if 10 / 2 + 5 % 3 - 1 * x == 2 -> 0\n    _ if 10.5 /. 2.5 +. 5.2 -. 1.3 *. y == 2.0 -> 0\n    _ -> 1\n  }\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) remainderInt divideFloat divideInt;
+  
+  main =
+    x: y:
+    let
+      _pat' = 1;
+    in
+    if (((divideInt 10 2) + (remainderInt 5 3)) - (1 * x)) == 2 then 0
+    else if (((divideFloat 10.5 2.5) + 5.2) - (1.3 * y)) == 2.0 then 0
+    else 1;
+in
+{ inherit main; }

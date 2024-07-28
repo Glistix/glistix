@@ -156,7 +156,6 @@ impl<'a, A> ModuleAnalyzerConstructor<'a, A> {
             line_numbers,
             src_path,
             errors: vec![],
-            type_names: HashMap::with_capacity(module.definitions.len()),
             value_names: HashMap::with_capacity(module.definitions.len()),
             hydrators: HashMap::with_capacity(module.definitions.len()),
             module_name: module.name.clone(),
@@ -177,7 +176,6 @@ struct ModuleAnalyzer<'a, A> {
     line_numbers: LineNumbers,
     src_path: Utf8PathBuf,
     errors: Vec<Error>,
-    type_names: HashMap<EcoString, SrcSpan>,
     value_names: HashMap<EcoString, SrcSpan>,
     hydrators: HashMap<EcoString, Hydrator>,
     module_name: EcoString,
@@ -468,8 +466,9 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             self.ensure_annotations_present(&arguments, return_annotation.as_ref(), location);
         }
 
+        let has_body = !body.first().is_placeholder();
         let definition = FunctionDefinition {
-            has_body: !body.first().is_placeholder(),
+            has_body,
             has_erlang_external: external_erlang.is_some(),
             has_javascript_external: external_javascript.is_some(),
             has_nix_external: external_nix.is_some(),
@@ -533,6 +532,9 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             && publicity.is_importable()
             && environment.target_support.is_enforced()
             && !implementations.supports(target)
+            // We don't emit this error if there is a body
+            // since this would be caught at the statement level
+            && !has_body
         {
             self.errors.push(Error::UnsupportedPublicFunctionTarget {
                 name: name.clone(),
@@ -898,7 +900,13 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                 constructor.arguments.iter().enumerate()
             {
                 // Build a type from the annotation AST
-                let t = hydrator.type_from_ast(ast, environment)?;
+                let t = match hydrator.type_from_ast(ast, environment) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        self.errors.push(e);
+                        continue;
+                    }
+                };
 
                 fields.push(TypeValueConstructorField { type_: t.clone() });
 
@@ -1003,7 +1011,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         // former. I think we want to really keep the former both times.
         // The fact we can't straightforwardly do this indicated to me that we
         // could improve our approach here somewhat.
-        self.assert_unique_type_name(name, *location)?;
+        environment.assert_unique_type_name(name, *location)?;
 
         let mut hydrator = Hydrator::new();
         let parameters = self.make_type_vars(parameters, *location, &mut hydrator, environment);
@@ -1073,7 +1081,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         } = t;
 
         // A type alias must not have the same name as any other type in the module.
-        if let Err(error) = self.assert_unique_type_name(name, *location) {
+        if let Err(error) = environment.assert_unique_type_name(name, *location) {
             self.errors.push(error);
             // A type already exists with the name so we cannot continue and
             // register this new type with the same name.
@@ -1143,21 +1151,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
     fn record_if_error(&mut self, result: Result<(), Error>) {
         if let Err(error) = result {
             self.errors.push(error);
-        }
-    }
-
-    fn assert_unique_type_name(
-        &mut self,
-        name: &EcoString,
-        location: SrcSpan,
-    ) -> Result<(), Error> {
-        match self.type_names.insert(name.clone(), location) {
-            Some(previous_location) => Err(Error::DuplicateTypeName {
-                name: name.clone(),
-                previous_location,
-                location,
-            }),
-            None => Ok(()),
         }
     }
 

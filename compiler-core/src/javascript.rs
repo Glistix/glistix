@@ -17,6 +17,7 @@ use crate::{
 };
 use camino::Utf8Path;
 use ecow::EcoString;
+use expression::Context;
 use itertools::Itertools;
 
 use self::import::{Imports, Member};
@@ -464,11 +465,15 @@ impl<'a> Generator<'a> {
         } else {
             "export const "
         };
+
+        let document =
+            expression::constant_expression(Context::Constant, &mut self.tracker, value)?;
+
         Ok(docvec![
             head,
             maybe_escape_identifier_doc(name),
             " = ",
-            expression::constant_expression(&mut self.tracker, value)?,
+            document,
             ";",
         ])
     }

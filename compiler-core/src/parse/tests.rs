@@ -4,6 +4,7 @@ use crate::parse::error::{
 };
 use crate::parse::lexer::make_tokenizer;
 use crate::parse::token::Token;
+use crate::warning::WarningEmitter;
 use camino::Utf8PathBuf;
 
 use itertools::Itertools;
@@ -29,7 +30,12 @@ macro_rules! assert_module_error {
 
 macro_rules! assert_parse_module {
     ($src:expr) => {
-        let result = crate::parse::parse_module($src).expect("should parse");
+        let result = crate::parse::parse_module(
+            camino::Utf8PathBuf::from("test/path"),
+            $src,
+            &crate::warning::WarningEmitter::null(),
+        )
+        .expect("should parse");
         insta::assert_snapshot!(insta::internals::AutoName, &format!("{:#?}", result), $src);
     };
 }
@@ -42,7 +48,9 @@ macro_rules! assert_parse {
 }
 
 pub fn expect_module_error(src: &str) -> String {
-    let result = crate::parse::parse_module(src).expect_err("should not parse");
+    let result =
+        crate::parse::parse_module(Utf8PathBuf::from("test/path"), src, &WarningEmitter::null())
+            .expect_err("should not parse");
     let error = crate::error::Error::Parse {
         src: src.into(),
         path: Utf8PathBuf::from("/src/parse/error.gleam"),
@@ -362,16 +370,16 @@ fn name2() {
 #[test]
 fn triple_equals() {
     assert_error!(
-        "let bar:Int = 32
-        bar === 42",
+        "let wobble:Int = 32
+        wobble === 42",
         ParseError {
             error: ParseErrorType::LexError {
                 error: LexicalError {
                     error: LexicalErrorType::InvalidTripleEqual,
-                    location: SrcSpan { start: 29, end: 32 },
+                    location: SrcSpan { start: 35, end: 38 },
                 }
             },
-            location: SrcSpan { start: 29, end: 32 },
+            location: SrcSpan { start: 35, end: 38 },
         }
     );
 }
@@ -379,11 +387,11 @@ fn triple_equals() {
 #[test]
 fn triple_equals_with_whitespace() {
     assert_error!(
-        "let bar:Int = 32
-        bar ==     = 42",
+        "let wobble:Int = 32
+        wobble ==     = 42",
         ParseError {
             error: ParseErrorType::NoLetBinding,
-            location: SrcSpan { start: 36, end: 37 },
+            location: SrcSpan { start: 42, end: 43 },
         }
     );
 }
@@ -429,9 +437,9 @@ fn anonymous_function_labeled_arguments() {
 #[test]
 fn no_let_binding() {
     assert_error!(
-        "foo = 32",
+        "wibble = 32",
         ParseError {
-            location: SrcSpan { start: 4, end: 5 },
+            location: SrcSpan { start: 7, end: 8 },
             error: ParseErrorType::NoLetBinding
         }
     );
@@ -440,9 +448,9 @@ fn no_let_binding() {
 #[test]
 fn no_let_binding1() {
     assert_error!(
-        "foo:Int = 32",
+        "wibble:Int = 32",
         ParseError {
-            location: SrcSpan { start: 3, end: 4 },
+            location: SrcSpan { start: 6, end: 7 },
             error: ParseErrorType::NoLetBinding
         }
     );
@@ -451,10 +459,10 @@ fn no_let_binding1() {
 #[test]
 fn no_let_binding2() {
     assert_error!(
-        "let bar:Int = 32
-        bar = 42",
+        "let wobble:Int = 32
+        wobble = 42",
         ParseError {
-            location: SrcSpan { start: 29, end: 30 },
+            location: SrcSpan { start: 35, end: 36 },
             error: ParseErrorType::NoLetBinding
         }
     );
@@ -474,9 +482,9 @@ fn no_let_binding3() {
 #[test]
 fn no_eq_after_binding() {
     assert_error!(
-        "let foo",
+        "let wibble",
         ParseError {
-            location: SrcSpan { start: 4, end: 7 },
+            location: SrcSpan { start: 4, end: 10 },
             error: ParseErrorType::ExpectedEqual
         }
     );
@@ -485,10 +493,10 @@ fn no_eq_after_binding() {
 #[test]
 fn no_eq_after_binding1() {
     assert_error!(
-        "let foo
-        foo = 4",
+        "let wibble
+        wibble = 4",
         ParseError {
-            location: SrcSpan { start: 4, end: 7 },
+            location: SrcSpan { start: 4, end: 10 },
             error: ParseErrorType::ExpectedEqual
         }
     );
@@ -496,31 +504,31 @@ fn no_eq_after_binding1() {
 
 #[test]
 fn no_let_binding_snapshot_1() {
-    assert_error!("foo = 4");
+    assert_error!("wibble = 4");
 }
 
 #[test]
 fn no_let_binding_snapshot_2() {
-    assert_error!("foo:Int = 4");
+    assert_error!("wibble:Int = 4");
 }
 
 #[test]
 fn no_let_binding_snapshot_3() {
     assert_error!(
-        "let bar:Int = 32
-        bar = 42"
+        "let wobble:Int = 32
+        wobble = 42"
     );
 }
 
 #[test]
 fn no_eq_after_binding_snapshot_1() {
-    assert_error!("let foo");
+    assert_error!("let wibble");
 }
 #[test]
 fn no_eq_after_binding_snapshot_2() {
     assert_error!(
-        "let foo
-        foo = 4"
+        "let wibble
+        wibble = 4"
     );
 }
 
@@ -791,6 +799,18 @@ pub fn main() -> Nil {
     );
 }
 
+#[test]
+fn list_spread_as_first_item_followed_by_other_items() {
+    assert_module_error!(
+        r#"
+pub fn main() -> Nil {
+  let xs = [1, 2, 3]
+  [..xs, 3 + 3, 4]
+}
+"#
+    );
+}
+
 // Tests for nested tuples and structs in tuples
 // https://github.com/gleam-lang/gleam/issues/1980
 
@@ -991,6 +1011,20 @@ fn main() {
 }
 
 #[test]
+fn case_list_pattern_after_spread() {
+    assert_module_error!(
+        "
+fn main() {
+    case somelist {
+        [..rest, last] -> 1
+        _ -> 2
+    }
+}
+"
+    );
+}
+
+#[test]
 fn type_invalid_constructor() {
     assert_module_error!(
         "
@@ -1025,6 +1059,19 @@ type A {
 }
 
 #[test]
+fn type_invalid_record() {
+    assert_module_error!(
+        "
+type A {
+    One
+    Two
+    3
+}
+"
+    );
+}
+
+#[test]
 fn function_type_invalid_param_type() {
     assert_module_error!(
         "
@@ -1032,6 +1079,17 @@ fn f(g: fn(Int, 1) -> Int) -> Int {
   g(0, 1)
 }
 "
+    );
+}
+
+#[test]
+fn function_invalid_signature() {
+    assert_module_error!(
+        r#"
+fn f(a, "b") -> String {
+    a <> b
+}
+"#
     );
 }
 
@@ -1085,5 +1143,16 @@ fn newline_tokens() {
             Ok((3, Token::Int { value: "2".into() }, 4)),
             Ok((4, Token::NewLine, 5))
         ]
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/1756
+#[test]
+fn arithmetic_in_guards() {
+    assert_parse!(
+        "
+case 2, 3 {
+    x, y if x + y == 1 -> True
+}"
     );
 }

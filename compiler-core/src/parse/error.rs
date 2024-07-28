@@ -1,5 +1,6 @@
 use crate::ast::SrcSpan;
 use crate::error::wrap;
+use crate::parse::Token;
 use ecow::EcoString;
 use heck::{ToSnakeCase, ToUpperCamelCase};
 
@@ -154,13 +155,22 @@ utf16_codepoint, utf32_codepoint, signed, unsigned, big, little, native, size, u
                 ],
             ),
             ParseErrorType::ListSpreadFollowedByElements => (
-                "I wasn't expecting elements after this spread",
+                "I wasn't expecting elements after this",
                 vec![
-                    "A spread can only be used to prepend elements to lists like this: `[first, ..rest]`.\n"
-                        .into(),
-                    "Hint: If you need to append elements to a list you can use `list.append`."
-                        .into(),
-                    "See: https://hexdocs.pm/gleam_stdlib/gleam/list.html#append".into(),
+                    "Lists are immutable and singly-linked, so to append items to them".into(),
+                    "all the elements of a list would need to be copied into a new list.".into(),
+                    "This would be slow, so there is no built-in syntax for it.".into(),
+                    "".into(),
+                    "Hint: prepend items to the list and then reverse it once you are done.".into(),
+                ],
+            ),
+            ParseErrorType::ListPatternSpreadFollowedByElements => (
+                "I wasn't expecting elements after this",
+                vec![
+                    "Lists are immutable and singly-linked, so to match on the end".into(),
+                    "of a list would require the whole list to be traversed. This".into(),
+                    "would be slow, so there is no built-in syntax for it. Pattern".into(),
+                    "match on the start of the list instead.".into(),
                 ],
             ),
             ParseErrorType::UnexpectedReservedWord => (
@@ -178,9 +188,24 @@ utf16_codepoint, utf32_codepoint, signed, unsigned, big, little, native, size, u
                 "Argument labels are not allowed for anonymous functions",
                 vec!["Please remove the argument label.".into()],
             ),
-            ParseErrorType::UnexpectedToken { expected, hint } => {
-                let messages = std::iter::once("Expected one of: ".to_string())
-                    .chain(expected.iter().map(|s| s.to_string()));
+            ParseErrorType::UnexpectedToken {
+                token,
+                expected,
+                hint,
+            } => {
+                let found = match token {
+                    Token::Int { .. } => "an Int".to_string(),
+                    Token::Float { .. } => "a Float".to_string(),
+                    Token::String { .. } => "a String".to_string(),
+                    Token::CommentDoc { .. } => "a comment".to_string(),
+                    Token::DiscardName { .. } => "a discard name".to_string(),
+                    Token::Name { .. } | Token::UpName { .. } => "a name".to_string(),
+                    _ if token.is_reserved_word() => format!("the keyword {}", token),
+                    _ => token.to_string(),
+                };
+
+                let messages = std::iter::once(format!("Found {found}, expected one of: "))
+                    .chain(expected.iter().map(|s| format!("- {}", s)));
 
                 let messages = match hint {
                     Some(hint_text) => messages
@@ -220,12 +245,16 @@ utf16_codepoint, utf32_codepoint, signed, unsigned, big, little, native, size, u
             ),
             ParseErrorType::UnknownTarget => ("I don't know what this attribute is", vec![]),
             ParseErrorType::ExpectedFunctionBody => ("This function does not have a body", vec![]),
-            ParseErrorType::RedundantInternalAttribute => ("Redundant internal attribute", vec![
-                format!("Only a public definition can be annotated as internal."),
-                "Hint: remove the `@internal` annotation.".into()
-            ]),
+            ParseErrorType::RedundantInternalAttribute => (
+                "Redundant internal attribute",
+                vec![
+                    format!("Only a public definition can be annotated as internal."),
+                    "Hint: remove the `@internal` annotation.".into(),
+                ],
+            ),
             ParseErrorType::InvalidModuleTypePattern => (
-                "Invalid pattern", vec![
+                "Invalid pattern",
+                vec![
                     "I'm expecting a pattern here".into(),
                     "Hint: A pattern can be a constructor name, a literal value".into(),
                     "or a variable to bind a value to, etc.".into(),
@@ -277,6 +306,7 @@ pub enum ParseErrorType {
     UnexpectedEof,
     UnexpectedReservedWord, // reserved word used when a name was expected
     UnexpectedToken {
+        token: Token,
         expected: Vec<EcoString>,
         hint: Option<EcoString>,
     },
@@ -284,10 +314,11 @@ pub enum ParseErrorType {
     UnexpectedFunction, // a function was used called outside of another function
     // A variable was assigned or discarded on the left hand side of a <> pattern
     ConcatPatternVariableLeftHandSide,
-    ListSpreadWithoutTail,      // let x = [1, ..]
-    ExpectedFunctionBody,       // let x = fn()
-    RedundantInternalAttribute, // for a private definition marked as internal
-    InvalidModuleTypePattern,   // for patterns that have a dot like: `name.thing`
+    ListSpreadWithoutTail,               // let x = [1, ..]
+    ExpectedFunctionBody,                // let x = fn()
+    RedundantInternalAttribute,          // for a private definition marked as internal
+    InvalidModuleTypePattern,            // for patterns that have a dot like: `name.thing`
+    ListPatternSpreadFollowedByElements, // When there is a pattern after a spread [..rest, pattern]
 }
 
 impl LexicalError {

@@ -165,6 +165,10 @@ impl<'module> Generator<'module> {
             } => self.case(subjects, clauses),
 
             TypedExpr::BitArray { segments, .. } => self.bit_array(segments),
+
+            TypedExpr::Invalid { .. } => {
+                panic!("invalid expressions should not reach code generation")
+            }
         }
     }
 

@@ -125,7 +125,7 @@ fn string_prefix_utf8() {
     assert_nix!(
         r#"
 pub fn go(x) {
-  case "Θ foo bar" {
+  case "Θ wibble wobble" {
     "Θ" <> rest -> rest
     _ -> ""
   }

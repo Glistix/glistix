@@ -289,6 +289,22 @@ impl<'a> Environment<'a> {
         }
     }
 
+    pub fn assert_unique_type_name(
+        &mut self,
+        name: &EcoString,
+        location: SrcSpan,
+    ) -> Result<(), Error> {
+        match self.module_types.get(name) {
+            None => Ok(()),
+            Some(prelude_type) if is_prelude_module(&prelude_type.module) => Ok(()),
+            Some(previous) => Err(Error::DuplicateTypeName {
+                name: name.clone(),
+                location,
+                previous_location: previous.origin,
+            }),
+        }
+    }
+
     /// Map a type to constructors in the current scope.
     ///
     pub fn insert_type_to_constructors(
@@ -412,6 +428,7 @@ impl<'a> Environment<'a> {
                     }
                 })?;
                 let _ = self.unused_modules.remove(module_name);
+                let _ = self.unused_module_aliases.remove(module_name);
                 module.get_public_value(name).ok_or_else(|| {
                     UnknownValueConstructorError::ModuleValue {
                         name: name.clone(),

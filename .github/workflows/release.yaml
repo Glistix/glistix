@@ -32,10 +32,11 @@ jobs:
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             use-cross: true
-          - os: macos-latest
+          # macos>=14 runs exclusively on aarch64 and will thus fail to execute properly for x64
+          - os: macos-13
             target: x86_64-apple-darwin
             use-cross: false
-          - os: macos-11
+          - os: macos-latest
             target: aarch64-apple-darwin
             use-cross: false
           - os: windows-latest
@@ -97,6 +98,49 @@ jobs:
               tar -xvzf "$ASSET"
               ./glistix --version ;;
           esac
+
+      - name: Upload release archive
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+            ${{ env.ASSET }}.sha512
+
+  build-release-wasm:
+    name: build-release-wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          profile: minimal
+          override: true
+
+      - name: Install wasm-pack
+        run: curl -sSL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      - name: Build wasm
+        run: wasm-pack build --release --target web compiler-wasm
+
+      - name: Build wasm archive
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          ARCHIVE="glistix-$VERSION-browser.tar.gz"
+
+          tar -C compiler-wasm/pkg/ -czvf $ARCHIVE .
+
+          openssl dgst -r -sha256 -out "$ARCHIVE".sha256 "$ARCHIVE"
+          openssl dgst -r -sha512 -out "$ARCHIVE".sha512 "$ARCHIVE"
+          echo "ASSET=$ARCHIVE" >> $GITHUB_ENV
 
       - name: Upload release archive
         uses: softprops/action-gh-release@v2

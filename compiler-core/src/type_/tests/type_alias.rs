@@ -1,4 +1,6 @@
-use crate::{assert_infer_with_module, assert_module_error, assert_module_infer};
+use crate::{
+    assert_infer_with_module, assert_module_error, assert_module_infer, assert_with_module_error,
+};
 
 #[test]
 fn alias_dep() {
@@ -135,5 +137,14 @@ fn example(a: X) {
   todo
 }
 "#
+    );
+}
+
+#[test]
+fn conflict_with_import() {
+    // We cannot declare a type with the same name as an imported type
+    assert_with_module_error!(
+        ("wibble", "pub type Wobble = String"),
+        "import wibble.{type Wobble} type Wobble = Int",
     );
 }

@@ -17,7 +17,6 @@ use crate::type_::expression::Implementations;
 use crate::type_::{
     self, Deprecation, ModuleValueConstructor, PatternConstructor, Type, ValueConstructor,
 };
-use std::cmp::Ordering;
 use std::sync::Arc;
 
 use ecow::EcoString;
@@ -108,6 +107,7 @@ impl UntypedModule {
 #[test]
 fn module_dependencies_test() {
     let parsed = crate::parse::parse_module(
+        camino::Utf8PathBuf::from("test/path"),
         "import one
          @target(erlang)
          import two
@@ -116,6 +116,7 @@ fn module_dependencies_test() {
          import three
 
          import four",
+        &crate::warning::WarningEmitter::null(),
     )
     .expect("syntax error");
     let module = parsed.module;
@@ -153,6 +154,13 @@ impl<A> Arg<A> {
 
     pub fn get_variable_name(&self) -> Option<&EcoString> {
         self.names.get_variable_name()
+    }
+
+    pub fn is_capture_hole(&self) -> bool {
+        match &self.names {
+            ArgNames::Named { name } if name == CAPTURE_VARIABLE => true,
+            _ => false,
+        }
     }
 }
 
@@ -452,9 +460,9 @@ impl Publicity {
 ///
 /// ```gleam
 /// // Public function
-/// pub fn bar() -> String { ... }
+/// pub fn wobble() -> String { ... }
 /// // Private function
-/// fn foo(x: Int) -> Int { ... }
+/// fn wibble(x: Int) -> Int { ... }
 /// ```
 pub struct Function<T, Expr> {
     pub location: SrcSpan,
@@ -1175,6 +1183,60 @@ pub enum ClauseGuard<Type, RecordTag> {
         right: Box<Self>,
     },
 
+    AddInt {
+        location: SrcSpan,
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+
+    AddFloat {
+        location: SrcSpan,
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+
+    SubInt {
+        location: SrcSpan,
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+
+    SubFloat {
+        location: SrcSpan,
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+
+    MultInt {
+        location: SrcSpan,
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+
+    MultFloat {
+        location: SrcSpan,
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+
+    DivInt {
+        location: SrcSpan,
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+
+    DivFloat {
+        location: SrcSpan,
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+
+    RemainderInt {
+        location: SrcSpan,
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+
     Or {
         location: SrcSpan,
         left: Box<Self>,
@@ -1243,6 +1305,15 @@ impl<A, B> ClauseGuard<A, B> {
             | ClauseGuard::GtFloat { location, .. }
             | ClauseGuard::GtEqFloat { location, .. }
             | ClauseGuard::LtFloat { location, .. }
+            | ClauseGuard::AddInt { location, .. }
+            | ClauseGuard::AddFloat { location, .. }
+            | ClauseGuard::SubInt { location, .. }
+            | ClauseGuard::SubFloat { location, .. }
+            | ClauseGuard::MultInt { location, .. }
+            | ClauseGuard::MultFloat { location, .. }
+            | ClauseGuard::DivInt { location, .. }
+            | ClauseGuard::DivFloat { location, .. }
+            | ClauseGuard::RemainderInt { location, .. }
             | ClauseGuard::FieldAccess { location, .. }
             | ClauseGuard::LtEqFloat { location, .. }
             | ClauseGuard::ModuleSelect { location, .. } => *location,
@@ -1271,6 +1342,15 @@ impl<A, B> ClauseGuard<A, B> {
             ClauseGuard::GtEqFloat { .. } => Some(BinOp::GtEqFloat),
             ClauseGuard::LtFloat { .. } => Some(BinOp::LtFloat),
             ClauseGuard::LtEqFloat { .. } => Some(BinOp::LtEqFloat),
+            ClauseGuard::AddInt { .. } => Some(BinOp::AddInt),
+            ClauseGuard::AddFloat { .. } => Some(BinOp::AddFloat),
+            ClauseGuard::SubInt { .. } => Some(BinOp::SubInt),
+            ClauseGuard::SubFloat { .. } => Some(BinOp::SubFloat),
+            ClauseGuard::MultInt { .. } => Some(BinOp::MultInt),
+            ClauseGuard::MultFloat { .. } => Some(BinOp::MultFloat),
+            ClauseGuard::DivInt { .. } => Some(BinOp::DivInt),
+            ClauseGuard::DivFloat { .. } => Some(BinOp::DivFloat),
+            ClauseGuard::RemainderInt { .. } => Some(BinOp::RemainderInt),
 
             ClauseGuard::Constant(_)
             | ClauseGuard::Var { .. }
@@ -1291,6 +1371,17 @@ impl TypedClauseGuard {
             ClauseGuard::ModuleSelect { type_, .. } => type_.clone(),
             ClauseGuard::Constant(constant) => constant.type_(),
 
+            ClauseGuard::AddInt { .. }
+            | ClauseGuard::SubInt { .. }
+            | ClauseGuard::MultInt { .. }
+            | ClauseGuard::DivInt { .. }
+            | ClauseGuard::RemainderInt { .. } => type_::int(),
+
+            ClauseGuard::AddFloat { .. }
+            | ClauseGuard::SubFloat { .. }
+            | ClauseGuard::MultFloat { .. }
+            | ClauseGuard::DivFloat { .. } => type_::float(),
+
             ClauseGuard::Or { .. }
             | ClauseGuard::Not { .. }
             | ClauseGuard::And { .. }
@@ -1308,7 +1399,7 @@ impl TypedClauseGuard {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct SrcSpan {
     pub start: u32,
     pub end: u32,
@@ -1321,16 +1412,6 @@ impl SrcSpan {
 
     pub fn contains(&self, byte_index: u32) -> bool {
         byte_index >= self.start && byte_index < self.end
-    }
-
-    pub fn cmp_byte_index(&self, byte_index: u32) -> Ordering {
-        if byte_index < self.start {
-            Ordering::Less
-        } else if self.end <= byte_index {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
     }
 }
 
@@ -1408,7 +1489,7 @@ pub enum Pattern<Type> {
         arguments: Vec<CallArg<Self>>,
         module: Option<EcoString>,
         constructor: Inferred<PatternConstructor>,
-        with_spread: bool,
+        spread: Option<SrcSpan>,
         type_: Type,
     },
 
@@ -1431,6 +1512,13 @@ pub enum Pattern<Type> {
         left_side_string: EcoString,
         /// The variable on the right hand side of the `<>`.
         right_side_assignment: AssignName,
+    },
+
+    /// A placeholder pattern used to allow module analysis to continue
+    /// even when there are type errors. Should never end up in generated code.
+    Invalid {
+        location: SrcSpan,
+        type_: Type,
     },
 }
 
@@ -1482,7 +1570,8 @@ impl<A> Pattern<A> {
             | Pattern::Tuple { location, .. }
             | Pattern::Constructor { location, .. }
             | Pattern::StringPrefix { location, .. }
-            | Pattern::BitArray { location, .. } => *location,
+            | Pattern::BitArray { location, .. }
+            | Pattern::Invalid { location, .. } => *location,
         }
     }
 
@@ -1507,7 +1596,8 @@ impl TypedPattern {
             | Pattern::List { .. }
             | Pattern::Tuple { .. }
             | Pattern::BitArray { .. }
-            | Pattern::StringPrefix { .. } => None,
+            | Pattern::StringPrefix { .. }
+            | Pattern::Invalid { .. } => None,
 
             Pattern::Constructor { constructor, .. } => constructor.definition_location(),
         }
@@ -1525,7 +1615,8 @@ impl TypedPattern {
             | Pattern::List { .. }
             | Pattern::Tuple { .. }
             | Pattern::BitArray { .. }
-            | Pattern::StringPrefix { .. } => None,
+            | Pattern::StringPrefix { .. }
+            | Pattern::Invalid { .. } => None,
 
             Pattern::Constructor { constructor, .. } => constructor.get_documentation(),
         }
@@ -1542,7 +1633,8 @@ impl TypedPattern {
             Pattern::Variable { type_, .. }
             | Pattern::List { type_, .. }
             | Pattern::VarUsage { type_, .. }
-            | Pattern::Constructor { type_, .. } => type_.clone(),
+            | Pattern::Constructor { type_, .. }
+            | Pattern::Invalid { type_, .. } => type_.clone(),
 
             Pattern::Assign { pattern, .. } => pattern.type_(),
 
@@ -1573,11 +1665,21 @@ impl TypedPattern {
             | Pattern::Assign { .. }
             | Pattern::Discard { .. }
             | Pattern::BitArray { .. }
-            | Pattern::StringPrefix { .. } => Some(Located::Pattern(self)),
+            | Pattern::StringPrefix { .. }
+            | Pattern::Invalid { .. } => Some(Located::Pattern(self)),
 
-            Pattern::Constructor { arguments, .. } => {
-                arguments.iter().find_map(|arg| arg.find_node(byte_index))
-            }
+            Pattern::Constructor {
+                arguments, spread, ..
+            } => match spread {
+                Some(spread_location) if spread_location.contains(byte_index) => {
+                    Some(Located::PatternSpread {
+                        spread_location: *spread_location,
+                        arguments,
+                    })
+                }
+
+                Some(_) | None => arguments.iter().find_map(|arg| arg.find_node(byte_index)),
+            },
             Pattern::List { elements, tail, .. } => elements
                 .iter()
                 .find_map(|p| p.find_node(byte_index))

@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 /// 2. Those starting with `./` (relative paths).
 /// 3. Those starting with `~/` (user home paths).
 /// 4. Those surrounded by `<...>` (Nix store paths - don't support interpolation with ${...}).
+///
 /// Anything not in the four categories above is converted to a relative path.
 pub fn path(value: &str) -> Cow<'_, str> {
     // TODO: Consider introducing fallibility somewhere here.

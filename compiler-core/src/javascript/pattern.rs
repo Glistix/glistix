@@ -183,6 +183,15 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
             | ClauseGuard::GtEqFloat { .. }
             | ClauseGuard::LtFloat { .. }
             | ClauseGuard::LtEqFloat { .. }
+            | ClauseGuard::AddInt { .. }
+            | ClauseGuard::AddFloat { .. }
+            | ClauseGuard::SubInt { .. }
+            | ClauseGuard::SubFloat { .. }
+            | ClauseGuard::MultInt { .. }
+            | ClauseGuard::MultFloat { .. }
+            | ClauseGuard::DivInt { .. }
+            | ClauseGuard::DivFloat { .. }
+            | ClauseGuard::RemainderInt { .. }
             | ClauseGuard::Or { .. }
             | ClauseGuard::And { .. }
             | ClauseGuard::ModuleSelect { .. } => Ok(docvec!("(", self.guard(guard)?, ")")),
@@ -241,6 +250,37 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                 let left = self.wrapped_guard(left)?;
                 let right = self.wrapped_guard(right)?;
                 docvec!(left, " <= ", right)
+            }
+
+            ClauseGuard::AddFloat { left, right, .. } | ClauseGuard::AddInt { left, right, .. } => {
+                let left = self.wrapped_guard(left)?;
+                let right = self.wrapped_guard(right)?;
+                docvec!(left, " + ", right)
+            }
+
+            ClauseGuard::SubFloat { left, right, .. } | ClauseGuard::SubInt { left, right, .. } => {
+                let left = self.wrapped_guard(left)?;
+                let right = self.wrapped_guard(right)?;
+                docvec!(left, " - ", right)
+            }
+
+            ClauseGuard::MultFloat { left, right, .. }
+            | ClauseGuard::MultInt { left, right, .. } => {
+                let left = self.wrapped_guard(left)?;
+                let right = self.wrapped_guard(right)?;
+                docvec!(left, " * ", right)
+            }
+
+            ClauseGuard::DivFloat { left, right, .. } | ClauseGuard::DivInt { left, right, .. } => {
+                let left = self.wrapped_guard(left)?;
+                let right = self.wrapped_guard(right)?;
+                docvec!(left, " / ", right)
+            }
+
+            ClauseGuard::RemainderInt { left, right, .. } => {
+                let left = self.wrapped_guard(left)?;
+                let right = self.wrapped_guard(right)?;
+                docvec!(left, " % ", right)
             }
 
             ClauseGuard::Or { left, right, .. } => {
@@ -408,13 +448,13 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                     self.pop();
                 }
                 if let Some((left, _)) = left_side_assignment {
-                    // "foo" as prefix <> rest
-                    //       ^^^^^^^^^ In case the left prefix of the pattern matching is given an
-                    //                 alias we bind it to a local variable so that it can be
-                    //                 correctly referenced inside the case branch.
-                    // let prefix = "foo";
-                    // ^^^^^^^^^^^^^^^^^^^ we're adding this assignment inside the if clause
-                    //                     the case branch gets translated into.
+                    // "wibble" as prefix <> rest
+                    //          ^^^^^^^^^ In case the left prefix of the pattern matching is given an
+                    //                    alias we bind it to a local variable so that it can be
+                    //                    correctly referenced inside the case branch.
+                    // let prefix = "wibble";
+                    // ^^^^^^^^^^^^^^^^^^^^^ we're adding this assignment inside the if clause
+                    //                       the case branch gets translated into.
                     self.push_assignment(expression::string(left_side_string), left);
                 }
                 Ok(())
@@ -551,6 +591,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                 feature: "Bit array matching".into(),
                 location: *location,
             }),
+            Pattern::Invalid { .. } => panic!("invalid patterns should not reach code generation"),
         }
     }
 

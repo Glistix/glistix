@@ -17,11 +17,11 @@ pub fn sus(x: Int) -> Int {
     5 + 5
 }
 
-fn go(x, foo, boolthing, bmong) {
+fn go(x, wibble, boolthing, bmong) {
   let a = 1
-  foo
+  wibble
   let a = 2
-  let z = [fn(y: Int) { y }, foo(a, a, 50), fn(x: Int) { x }]
+  let z = [fn(y: Int) { y }, wibble(a, a, 50), fn(x: Int) { x }]
   let d = {
     "aaa"
   }
@@ -33,19 +33,19 @@ fn go(x, foo, boolthing, bmong) {
   let remm = 5 % 5
   let g = 0.5
   let b = a
-  foo(a, a, 50)
+  wibble(a, a, 50)
   let c = {
     let a = a
     [a]
   }
-  foo
+  wibble
   let www = a == 5
   let wwww = {a + a} == {10 - 5 * 5}
   let first_list = [1 < 4, 3 >= 5]
   let list_thing = [www, ..first_list]
   let pipes =
     a
-    |> foo(_, a, 50)
+    |> wibble(_, a, 50)
     |> fn(x) { x }
   let pipes2 = a |> fn(i: Int) { i }
   panic as "amongus"

@@ -929,7 +929,7 @@ pub type Returned(a) {
   Returned(List(a))
 }
 
-fn foo(user: Returned(#())) -> Int {
+fn wibble(user: Returned(#())) -> Int {
   let Returned([#()]) = user
   1
 }
@@ -964,5 +964,25 @@ pub fn main(x: something) {
   }
 }
 "#
+    );
+}
+
+#[test]
+fn reference_absent_type() {
+    // This test is here because this code previously caused the compiler
+    // to crash, and we want to make sure that it doesn't break again
+    assert_module_error!(
+        "
+type Wibble {
+    One(Int)
+    Two(Absent)
+}
+
+pub fn main(wibble) {
+    case wibble {
+        One(x) -> x
+    }
+}
+"
     );
 }

@@ -69,6 +69,9 @@ use crate::build::Target;
 use crate::parse::extra::ModuleExtra;
 use crate::type_::expression::Implementations;
 use crate::type_::Deprecation;
+use crate::warning::{DeprecatedSyntaxWarning, WarningEmitter};
+use crate::Warning;
+use camino::Utf8PathBuf;
 use ecow::EcoString;
 use error::{LexicalError, ParseError, ParseErrorType};
 use lexer::{LexResult, Spanned};
@@ -130,11 +133,25 @@ impl Attributes {
 //
 // Public Interface
 //
-pub fn parse_module(src: &str) -> Result<Parsed, ParseError> {
+pub fn parse_module(
+    path: Utf8PathBuf,
+    src: &str,
+    warnings: &WarningEmitter,
+) -> Result<Parsed, ParseError> {
     let lex = lexer::make_tokenizer(src);
     let mut parser = Parser::new(lex);
     let mut parsed = parser.parse_module()?;
     parsed.extra = parser.extra;
+
+    let src = EcoString::from(src);
+    for warning in parser.warnings {
+        warnings.emit(Warning::DeprecatedSyntax {
+            path: path.clone(),
+            src: src.clone(),
+            warning,
+        });
+    }
+
     Ok(parsed)
 }
 
@@ -177,6 +194,7 @@ pub fn parse_const_value(src: &str) -> Result<Constant<(), ()>, ParseError> {
 pub struct Parser<T: Iterator<Item = LexResult>> {
     tokens: T,
     lex_errors: Vec<LexicalError>,
+    warnings: Vec<DeprecatedSyntaxWarning>,
     tok0: Option<Spanned>,
     tok1: Option<Spanned>,
     extra: ModuleExtra,
@@ -190,6 +208,7 @@ where
         let mut parser = Parser {
             tokens: input,
             lex_errors: vec![],
+            warnings: vec![],
             tok0: None,
             tok1: None,
             extra: ModuleExtra::new(),
@@ -225,11 +244,12 @@ where
         parse_result: Result<A, ParseError>,
     ) -> Result<A, ParseError> {
         let parse_result = self.ensure_no_errors(parse_result)?;
-        if let Some((start, _, end)) = self.next_tok() {
+        if let Some((start, token, end)) = self.next_tok() {
             // there are still more tokens
             let expected = vec!["An import, const, type, or function.".into()];
             return parse_error(
                 ParseErrorType::UnexpectedToken {
+                    token,
                     expected,
                     hint: None,
                 },
@@ -498,22 +518,24 @@ where
             // list
             Some((start, Token::LeftSquare, _)) => {
                 self.advance();
-                let elements =
-                    Parser::series_of(self, &Parser::parse_expression, Some(&Token::Comma))?;
+                let (elements, elements_end_with_comma) = self.series_of_has_trailing_separator(
+                    &Parser::parse_expression,
+                    Some(&Token::Comma),
+                )?;
 
                 // Parse an optional tail
                 let mut tail = None;
                 let mut elements_after_tail = None;
                 let mut dot_dot_location = None;
-                if let Some(location) = self.maybe_one(&Token::DotDot) {
-                    dot_dot_location = Some(location);
-                    tail = self.parse_expression()?.map(Box::new);
 
+                if let Some((start, end)) = self.maybe_one(&Token::DotDot) {
+                    dot_dot_location = Some((start, end));
+                    tail = self.parse_expression()?.map(Box::new);
                     if self.maybe_one(&Token::Comma).is_some() {
                         // See if there's a list of items after the tail,
                         // like `[..wibble, wobble, wabble]`
                         let elements =
-                            Parser::series_of(self, &Parser::parse_expression, Some(&Token::Comma));
+                            self.series_of(&Parser::parse_expression, Some(&Token::Comma));
                         match elements {
                             Err(_) => {}
                             Ok(elements) => {
@@ -521,6 +543,13 @@ where
                             }
                         };
                     };
+
+                    if tail.is_some() && !elements_end_with_comma {
+                        self.warnings
+                            .push(DeprecatedSyntaxWarning::DeprecatedListPrepend {
+                                location: SrcSpan { start, end },
+                            });
+                    }
                 }
 
                 let (_, end) = self.expect_one(&Token::RightSquare)?;
@@ -535,7 +564,10 @@ where
                     }
                     _ => {}
                 }
-                if tail.is_some() && elements.is_empty() {
+                if tail.is_some()
+                    && elements.is_empty()
+                    && elements_after_tail.as_ref().map_or(true, |e| e.is_empty())
+                {
                     return parse_error(
                         ParseErrorType::ListSpreadWithoutElements,
                         SrcSpan { start, end },
@@ -1154,18 +1186,60 @@ where
             // List
             Some((start, Token::LeftSquare, _)) => {
                 self.advance();
-                let elements =
-                    Parser::series_of(self, &Parser::parse_pattern, Some(&Token::Comma))?;
-                let tail = if let Some((_, Token::DotDot, _)) = self.tok0 {
+                let (elements, elements_end_with_comma) = self.series_of_has_trailing_separator(
+                    &Parser::parse_pattern,
+                    Some(&Token::Comma),
+                )?;
+
+                let mut elements_after_tail = None;
+                let mut dot_dot_location = None;
+                let tail = if let Some((start, Token::DotDot, end)) = self.tok0 {
+                    dot_dot_location = Some((start, end));
+                    if !elements_end_with_comma {
+                        self.warnings
+                            .push(DeprecatedSyntaxWarning::DeprecatedListPattern {
+                                location: SrcSpan { start, end },
+                            });
+                    }
+
                     self.advance();
                     let pat = self.parse_pattern()?;
-                    let _ = self.maybe_one(&Token::Comma);
+                    if self.maybe_one(&Token::Comma).is_some() {
+                        // See if there's a list of items after the tail,
+                        // like `[..wibble, wobble, wabble]`
+                        let elements =
+                            Parser::series_of(self, &Parser::parse_pattern, Some(&Token::Comma));
+                        match elements {
+                            Err(_) => {}
+                            Ok(elements) => {
+                                elements_after_tail = Some(elements);
+                            }
+                        };
+                    };
                     Some(pat)
                 } else {
                     None
                 };
+
                 let (end, rsqb_e) =
                     self.expect_one_following_series(&Token::RightSquare, "a pattern")?;
+
+                // If there are elements after the tail, return an error
+                match elements_after_tail {
+                    Some(elements) if !elements.is_empty() => {
+                        let (start, end) = match (dot_dot_location, tail) {
+                            (Some((start, _)), Some(Some(tail))) => (start, tail.location().end),
+                            (Some((start, end)), Some(None)) => (start, end),
+                            (_, _) => (start, end),
+                        };
+                        return parse_error(
+                            ParseErrorType::ListPatternSpreadFollowedByElements,
+                            SrcSpan { start, end },
+                        );
+                    }
+                    _ => {}
+                }
+
                 let tail = match tail {
                     // There is a tail and it has a Pattern::Var or Pattern::Discard
                     Some(Some(pat @ (Pattern::Variable { .. } | Pattern::Discard { .. }))) => {
@@ -1435,7 +1509,7 @@ where
         module: Option<(u32, EcoString, u32)>,
     ) -> Result<UntypedPattern, ParseError> {
         let (mut start, name, end) = self.expect_upname()?;
-        let (args, with_spread, end) = self.parse_constructor_pattern_args(end)?;
+        let (args, spread, end) = self.parse_constructor_pattern_args(end)?;
         if let Some((s, _, _)) = module {
             start = s;
         }
@@ -1444,7 +1518,7 @@ where
             arguments: args,
             module: module.map(|(_, n, _)| n),
             name,
-            with_spread,
+            spread,
             constructor: Inferred::Unknown,
             type_: (),
         })
@@ -1452,24 +1526,28 @@ where
 
     // examples:
     //   ( args )
+    #[allow(clippy::type_complexity)]
     fn parse_constructor_pattern_args(
         &mut self,
         upname_end: u32,
-    ) -> Result<(Vec<CallArg<UntypedPattern>>, bool, u32), ParseError> {
+    ) -> Result<(Vec<CallArg<UntypedPattern>>, Option<SrcSpan>, u32), ParseError> {
         if self.maybe_one(&Token::LeftParen).is_some() {
             let args = Parser::series_of(
                 self,
                 &Parser::parse_constructor_pattern_arg,
                 Some(&Token::Comma),
             )?;
-            let with_spread = self.maybe_one(&Token::DotDot).is_some();
-            if with_spread {
+            let spread = self
+                .maybe_one(&Token::DotDot)
+                .map(|(start, end)| SrcSpan { start, end });
+
+            if spread.is_some() {
                 let _ = self.maybe_one(&Token::Comma);
             }
             let (_, end) = self.expect_one(&Token::RightParen)?;
-            Ok((args, with_spread, end))
+            Ok((args, spread, end))
         } else {
-            Ok((vec![], false, upname_end))
+            Ok((vec![], None, upname_end))
         }
     }
 
@@ -2411,8 +2489,9 @@ where
                             })),
                         }
                     }
-                    Some((start, _, end)) => parse_error(
+                    Some((start, token, end)) => parse_error(
                         ParseErrorType::UnexpectedToken {
+                            token,
                             expected: vec!["UpName".into(), "Name".into()],
                             hint: None,
                         },
@@ -2746,7 +2825,7 @@ where
                 Token::UpName { .. } => {
                     parse_error(ParseErrorType::IncorrectName, SrcSpan { start, end })
                 }
-                _ if is_reserved_word(tok) => parse_error(
+                _ if tok.is_reserved_word() => parse_error(
                     ParseErrorType::UnexpectedReservedWord,
                     SrcSpan { start, end },
                 ),
@@ -2825,12 +2904,27 @@ where
         parser: &impl Fn(&mut Self) -> Result<Option<A>, ParseError>,
         sep: Option<&Token>,
     ) -> Result<Vec<A>, ParseError> {
+        let (res, _) = self.series_of_has_trailing_separator(parser, sep)?;
+        Ok(res)
+    }
+
+    /// Parse a series by repeating a parser, and a separator. Returns true if
+    /// the series ends with the trailing separator.
+    fn series_of_has_trailing_separator<A>(
+        &mut self,
+        parser: &impl Fn(&mut Self) -> Result<Option<A>, ParseError>,
+        sep: Option<&Token>,
+    ) -> Result<(Vec<A>, bool), ParseError> {
         let mut results = vec![];
+        let mut ends_with_sep = false;
         while let Some(result) = parser(self)? {
             results.push(result);
             if let Some(sep) = sep {
                 if self.maybe_one(sep).is_none() {
+                    ends_with_sep = false;
                     break;
+                } else {
+                    ends_with_sep = true;
                 }
                 // Helpful error if extra separator
                 if let Some((start, end)) = self.maybe_one(sep) {
@@ -2839,7 +2933,7 @@ where
             }
         }
 
-        Ok(results)
+        Ok((results, ends_with_sep))
     }
 
     // If next token is a Name, consume it and return relevant info, otherwise, return none
@@ -2884,13 +2978,13 @@ where
         }
     }
 
-    // Error on the next token or EOF
+    // Unexpected token error on the next token or EOF
     fn next_tok_unexpected<A>(&mut self, expected: Vec<EcoString>) -> Result<A, ParseError> {
         match self.next_tok() {
             None => parse_error(ParseErrorType::UnexpectedEof, SrcSpan { start: 0, end: 0 }),
-
-            Some((start, _, end)) => parse_error(
+            Some((start, token, end)) => parse_error(
                 ParseErrorType::UnexpectedToken {
+                    token,
                     expected,
                     hint: None,
                 },
@@ -3360,6 +3454,60 @@ fn clause_guard_reduction(
             right,
         },
 
+        Token::Plus => ClauseGuard::AddInt {
+            location,
+            left,
+            right,
+        },
+
+        Token::PlusDot => ClauseGuard::AddFloat {
+            location,
+            left,
+            right,
+        },
+
+        Token::Minus => ClauseGuard::SubInt {
+            location,
+            left,
+            right,
+        },
+
+        Token::MinusDot => ClauseGuard::SubFloat {
+            location,
+            left,
+            right,
+        },
+
+        Token::Star => ClauseGuard::MultInt {
+            location,
+            left,
+            right,
+        },
+
+        Token::StarDot => ClauseGuard::MultFloat {
+            location,
+            left,
+            right,
+        },
+
+        Token::Slash => ClauseGuard::DivInt {
+            location,
+            left,
+            right,
+        },
+
+        Token::SlashDot => ClauseGuard::DivFloat {
+            location,
+            left,
+            right,
+        },
+
+        Token::Percent => ClauseGuard::RemainderInt {
+            location,
+            left,
+            right,
+        },
+
         _ => panic!("Token could not be converted to Guard Op."),
     }
 }
@@ -3422,90 +3570,6 @@ fn parse_error<T>(error: ParseErrorType, location: SrcSpan) -> Result<T, ParseEr
 // Misc Helpers
 //
 
-/// Returns whether the given token is a reserved word.
-///
-/// Useful for checking if a user tried to enter a reserved word as a name.
-fn is_reserved_word(tok: Token) -> bool {
-    match tok {
-        Token::As
-        | Token::Assert
-        | Token::Case
-        | Token::Const
-        | Token::Fn
-        | Token::If
-        | Token::Import
-        | Token::Let
-        | Token::Opaque
-        | Token::Pub
-        | Token::Todo
-        | Token::Type
-        | Token::Use
-        | Token::Auto
-        | Token::Delegate
-        | Token::Derive
-        | Token::Echo
-        | Token::Else
-        | Token::Implement
-        | Token::Macro
-        | Token::Panic
-        | Token::Test => true,
-
-        Token::Name { .. }
-        | Token::UpName { .. }
-        | Token::DiscardName { .. }
-        | Token::Int { .. }
-        | Token::Float { .. }
-        | Token::String { .. }
-        | Token::CommentDoc { .. }
-        | Token::LeftParen
-        | Token::RightParen
-        | Token::LeftSquare
-        | Token::RightSquare
-        | Token::LeftBrace
-        | Token::RightBrace
-        | Token::Plus
-        | Token::Minus
-        | Token::Star
-        | Token::Slash
-        | Token::Less
-        | Token::Greater
-        | Token::LessEqual
-        | Token::GreaterEqual
-        | Token::Percent
-        | Token::PlusDot
-        | Token::MinusDot
-        | Token::StarDot
-        | Token::SlashDot
-        | Token::LessDot
-        | Token::GreaterDot
-        | Token::LessEqualDot
-        | Token::GreaterEqualDot
-        | Token::LtGt
-        | Token::Colon
-        | Token::Comma
-        | Token::Hash
-        | Token::Bang
-        | Token::Equal
-        | Token::EqualEqual
-        | Token::NotEqual
-        | Token::Vbar
-        | Token::VbarVbar
-        | Token::AmperAmper
-        | Token::LtLt
-        | Token::GtGt
-        | Token::Pipe
-        | Token::Dot
-        | Token::RArrow
-        | Token::LArrow
-        | Token::DotDot
-        | Token::At
-        | Token::EndOfFile
-        | Token::CommentNormal
-        | Token::CommentModule
-        | Token::NewLine => false,
-    }
-}
-
 // Parsing a function call into the appropriate structure
 #[derive(Debug)]
 pub enum ParserArg {
@@ -3524,6 +3588,8 @@ pub fn make_call(
     end: u32,
 ) -> Result<UntypedExpr, ParseError> {
     let mut num_holes = 0;
+    let mut hole_location = None;
+
     let args = args
         .into_iter()
         .map(|a| match a {
@@ -3534,10 +3600,12 @@ pub fn make_call(
                 label,
             } => {
                 num_holes += 1;
+                hole_location = Some(location);
 
                 if name != "_" {
                     return parse_error(
                         ParseErrorType::UnexpectedToken {
+                            token: Token::Name { name },
                             expected: vec!["An expression".into(), "An underscore".into()],
                             hint: None,
                         },
@@ -3572,7 +3640,7 @@ pub fn make_call(
             end_of_head_byte_index: call.location().end,
             is_capture: true,
             arguments: vec![Arg {
-                location: SrcSpan { start: 0, end: 0 },
+                location: hole_location.expect("At least a capture hole"),
                 annotation: None,
                 names: ArgNames::Named {
                     name: CAPTURE_VARIABLE.into(),
