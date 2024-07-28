@@ -253,3 +253,37 @@ pub fn main() {
 "#
     )
 }
+
+// https://github.com/gleam-lang/gleam/issues/3379
+#[test]
+fn single_clause_variables() {
+    assert_nix!(
+        r#"
+pub fn main() {
+  let text = "first defined"
+  case "defined again" {
+    text -> Nil
+  }
+  let text = "a third time"
+  Nil
+}
+"#
+    )
+}
+
+// https://github.com/gleam-lang/gleam/issues/3379
+#[test]
+fn single_clause_variables_assigned() {
+    assert_nix!(
+        r#"
+pub fn main() {
+  let text = "first defined"
+  let other = case "defined again" {
+    text -> Nil
+  }
+  let text = "a third time"
+  Nil
+}
+"#
+    )
+}

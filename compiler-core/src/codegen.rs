@@ -282,7 +282,13 @@ impl<'a> Nix<'a> {
             "builtins.import {}\n",
             nix::syntax::path(self.prelude_location.as_str())
         );
-        writer.write(&self.output_directory.join("gleam.nix"), &rexport)?;
+        let prelude_path = &self.output_directory.join("gleam.nix");
+
+        // This check skips unnecessary `gleam.nix` writes which confuse
+        // watchers
+        if !writer.exists(prelude_path) {
+            writer.write(prelude_path, &rexport)?;
+        }
 
         Ok(())
     }
