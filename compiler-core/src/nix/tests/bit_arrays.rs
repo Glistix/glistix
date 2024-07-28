@@ -60,7 +60,7 @@ fn sized() {
     assert_nix!(
         r#"
 fn go() {
-  <<256:4>>
+  <<256:64>>
 }
 "#,
     );
@@ -71,7 +71,7 @@ fn explicit_sized() {
     assert_nix!(
         r#"
 fn go() {
-  <<256:size(4)>>
+  <<256:size(64)>>
 }
 "#,
     );
@@ -244,4 +244,56 @@ fn as_module_const() {
           >>
         "#
     )
+}
+
+#[test]
+fn negative_size() {
+    assert_nix!(
+        r#"
+fn go() {
+  <<1:size(-1)>>
+}
+"#,
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/1591
+#[test]
+fn not_byte_aligned() {
+    assert_nix!(
+        r#"
+fn thing() {
+  4
+}
+fn go() {
+  <<256:4>>
+}
+"#,
+    );
+}
+
+#[test]
+fn not_byte_aligned_explicit_sized() {
+    assert_nix!(
+        r#"
+fn go() {
+  <<256:size(4)>>
+}
+"#,
+    );
+}
+
+// This test would ideally also result in go() being deleted like the previous tests
+// but we can not know for sure what the value of a variable is going to be
+// so right now go() is not deleted.
+#[test]
+fn not_byte_aligned_variable() {
+    assert_nix!(
+        r#"
+fn go() {
+  let x = 4
+  <<256:size(x)>>
+}
+"#,
+    );
 }
