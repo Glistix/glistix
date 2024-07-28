@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/nix/tests/consts.rs
+expression: "import gleam.{Ok as Y}\npub type X {\n  Ok\n}\npub const y = Y\n"
+---
+let
+  gleam' = builtins.import ./../gleam.nix;
+  Y = (builtins.import ./../gleam.nix).Ok;
+  
+  Ok = { __gleamTag = "Ok"; };
+  
+  y = Y;
+in
+{ inherit Ok y; }

@@ -1,0 +1,11 @@
+---
+source: compiler-core/src/nix/tests/consts.rs
+expression: "import other_module.{A as B}\npub const local = B\n"
+---
+let
+  other_module' = builtins.import ./../../package/other_module.nix;
+  B = (builtins.import ./../../package/other_module.nix).A;
+  
+  local = B;
+in
+{ inherit local; }
