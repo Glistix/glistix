@@ -3,4 +3,4 @@
 /// instead build from scratch
 /// Note that this should be updated to correspond to the Gleam version
 /// we are basing Glistix on. This is checked by packages.
-pub const COMPILER_VERSION: &str = "1.2.1";
+pub const COMPILER_VERSION: &str = "1.3.2";
