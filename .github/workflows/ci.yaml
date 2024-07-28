@@ -557,6 +557,10 @@ jobs:
         run: make clean bun
         working-directory: ./test/language
 
+      - name: test/language Nix
+        run: make clean nix
+        working-directory: ./test/language
+
       - name: test/compile_package0
         run: make
         working-directory: ./test/compile_package0
