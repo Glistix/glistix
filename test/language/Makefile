@@ -24,3 +24,8 @@ deno:
 bun:
 	@echo test/languate on JavaScript with Bun
 	cargo run --quiet -- test --target javascript --runtime bun
+
+.phony: nix
+nix:
+	@echo test/language on Nix
+	cargo run --quiet -- test --target nix

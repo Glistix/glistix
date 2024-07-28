@@ -242,10 +242,50 @@ fn assert_tests() -> List(Test) {
   ]
 }
 
+@target(erlang)
 fn tail_call_optimisation_tests() -> List(Test) {
   [
     "10 million recursions doesn't overflow the stack"
     |> example(fn() { assert_equal(Nil, count_down(from: 10_000_000)) }),
+    // https://github.com/gleam-lang/gleam/issues/1214
+    // https://github.com/gleam-lang/gleam/issues/1380
+    "Arguments correctly reassigned"
+    |> example(fn() {
+      assert_equal([1, 2, 3], tail_recursive_accumulate_down(3, []))
+    }),
+    // https://github.com/gleam-lang/gleam/issues/2400
+    "not recursion, the function is shadowed its argument"
+    |> example(fn() {
+      assert_equal(function_shadowed_by_own_argument(fn() { 1 }), 1)
+    }),
+  ]
+}
+
+@target(javascript)
+fn tail_call_optimisation_tests() -> List(Test) {
+  [
+    "10 million recursions doesn't overflow the stack"
+    |> example(fn() { assert_equal(Nil, count_down(from: 10_000_000)) }),
+    // https://github.com/gleam-lang/gleam/issues/1214
+    // https://github.com/gleam-lang/gleam/issues/1380
+    "Arguments correctly reassigned"
+    |> example(fn() {
+      assert_equal([1, 2, 3], tail_recursive_accumulate_down(3, []))
+    }),
+    // https://github.com/gleam-lang/gleam/issues/2400
+    "not recursion, the function is shadowed its argument"
+    |> example(fn() {
+      assert_equal(function_shadowed_by_own_argument(fn() { 1 }), 1)
+    }),
+  ]
+}
+
+@target(nix)
+fn tail_call_optimisation_tests() -> List(Test) {
+  [
+    // TODO: Tail call optimization
+    // "10 million recursions doesn't overflow the stack"
+    // |> example(fn() { assert_equal(Nil, count_down(from: 10_000_000)) }),
     // https://github.com/gleam-lang/gleam/issues/1214
     // https://github.com/gleam-lang/gleam/issues/1380
     "Arguments correctly reassigned"
@@ -951,6 +991,7 @@ fn equality_tests() -> List(Test) {
   ]
 }
 
+@target(erlang)
 fn bit_array_tests() -> List(Test) {
   [
     "<<\"Gleam\":utf8, \"👍\":utf8>> == <<\"Gleam\":utf8, \"👍\":utf8>>"
@@ -977,6 +1018,57 @@ fn bit_array_tests() -> List(Test) {
   ]
 }
 
+@target(javascript)
+fn bit_array_tests() -> List(Test) {
+  [
+    "<<\"Gleam\":utf8, \"👍\":utf8>> == <<\"Gleam\":utf8, \"👍\":utf8>>"
+    |> example(fn() {
+      assert_equal(
+        True,
+        <<"Gleam":utf8, "👍":utf8>> == <<"Gleam":utf8, "👍":utf8>>,
+      )
+    }),
+    "<<\"Gleam\":utf8, \"👍\":utf8>> == <<\"👍\":utf8>>"
+    |> example(fn() {
+      assert_equal(False, <<"Gleam":utf8, "👍":utf8>> == <<"👍":utf8>>)
+    }),
+    "<<\"abc\":utf8>> == <<97, 98, 99>>"
+    |> example(fn() { assert_equal(True, <<"abc":utf8>> == <<97, 98, 99>>) }),
+    "<<<<1>>:bit_array, 2>> == <<1, 2>>"
+    |> example(fn() { assert_equal(True, <<<<1>>:bits, 2>> == <<1, 2>>) }),
+    "<<1>> == <<1:int>>"
+    |> example(fn() { assert_equal(True, <<1>> == <<1:int>>) }),
+    "<<63, 240, 0, 0, 0, 0, 0, 0>> == <<1.0:float>>"
+    |> example(fn() {
+      assert_equal(True, <<63, 240, 0, 0, 0, 0, 0, 0>> == <<1.0:float>>)
+    }),
+  ]
+}
+
+// TODO: impl :float on nix
+@target(nix)
+fn bit_array_tests() -> List(Test) {
+  [
+    "<<\"Gleam\":utf8, \"👍\":utf8>> == <<\"Gleam\":utf8, \"👍\":utf8>>"
+    |> example(fn() {
+      assert_equal(
+        True,
+        <<"Gleam":utf8, "👍":utf8>> == <<"Gleam":utf8, "👍":utf8>>,
+      )
+    }),
+    "<<\"Gleam\":utf8, \"👍\":utf8>> == <<\"👍\":utf8>>"
+    |> example(fn() {
+      assert_equal(False, <<"Gleam":utf8, "👍":utf8>> == <<"👍":utf8>>)
+    }),
+    "<<\"abc\":utf8>> == <<97, 98, 99>>"
+    |> example(fn() { assert_equal(True, <<"abc":utf8>> == <<97, 98, 99>>) }),
+    "<<<<1>>:bit_array, 2>> == <<1, 2>>"
+    |> example(fn() { assert_equal(True, <<<<1>>:bits, 2>> == <<1, 2>>) }),
+    "<<1>> == <<1:int>>"
+    |> example(fn() { assert_equal(True, <<1>> == <<1:int>>) }),
+  ]
+}
+
 @target(erlang)
 fn bit_array_target_tests() -> List(Test) {
   [
@@ -992,6 +1084,11 @@ fn bit_array_target_tests() -> List(Test) {
 }
 
 @target(javascript)
+fn bit_array_target_tests() -> List(Test) {
+  []
+}
+
+@target(nix)
 fn bit_array_target_tests() -> List(Test) {
   []
 }
@@ -1319,6 +1416,7 @@ fn int_negation_tests() {
   ]
 }
 
+@target(erlang)
 fn bit_array_match_tests() {
   [
     "let <<1, x>> = <<1, 2>>"
@@ -1403,6 +1501,190 @@ fn bit_array_match_tests() {
           0x4:size(32),
           "Gleam":utf8,
           4.2:float,
+          <<<<1, 2, 3>>:bits, "Gleam":utf8, 1024>>:bits,
+        >> == importable.data,
+      )
+    }),
+    "<<71, 108, 101, 97, 109>> == <<\"Gleam\":utf8>>"
+    |> example(fn() {
+      assert_equal(True, <<71, 108, 101, 97, 109>> == <<"Gleam":utf8>>)
+    }),
+  ]
+}
+
+@target(javascript)
+fn bit_array_match_tests() {
+  [
+    "let <<1, x>> = <<1, 2>>"
+    |> example(fn() {
+      assert_equal(2, {
+        let assert <<1, x>> = <<1, 2>>
+        x
+      })
+    }),
+    "let <<a:8>> = <<1>>"
+    |> example(fn() {
+      assert_equal(1, {
+        let assert <<a:8>> = <<1>>
+        a
+      })
+    }),
+    "let <<a:16, b:8>> = <<1, 2, 3>>"
+    |> example(fn() {
+      assert_equal(#(258, 3), {
+        let assert <<a:16, b:8>> = <<1, 2, 3>>
+        #(a, b)
+      })
+    }),
+    "let <<a:float, b:int>> = <<63,240,0,0,0,0,0,0,1>>"
+    |> example(fn() {
+      assert_equal(#(1.0, 1), {
+        let assert <<a:float, b:int>> = <<63, 240, 0, 0, 0, 0, 0, 0, 1>>
+        #(a, b)
+      })
+    }),
+    "let <<a:float>> = <<1.23:float>>"
+    |> example(fn() {
+      assert_equal(1.23, {
+        let assert <<a:float>> = <<1.23:float>>
+        a
+      })
+    }),
+    "let <<_, rest:binary>> = <<1>>"
+    |> example(fn() {
+      assert_equal(<<>>, {
+        let assert <<_, rest:bytes>> = <<1>>
+        rest
+      })
+    }),
+    "let <<_, rest:binary>> = <<1,2,3>>"
+    |> example(fn() {
+      assert_equal(<<2, 3>>, {
+        let assert <<_, rest:bytes>> = <<1, 2, 3>>
+        rest
+      })
+    }),
+    "let <<x:2-binary, rest:binary>> = <<1,2,3>>"
+    |> example(fn() {
+      assert_equal(<<1, 2>>, {
+        let assert <<x:2-bytes, _:bytes>> = <<1, 2, 3>>
+        x
+      })
+    }),
+    "bit_array from function"
+    |> example(fn() {
+      assert_equal(
+        True,
+        <<
+          0x1,
+          2,
+          2:size(16),
+          0x4:size(32),
+          "Gleam":utf8,
+          4.2:float,
+          <<<<1, 2, 3>>:bits, "Gleam":utf8, 1024>>:bits,
+        >> == importable.get_bit_array(),
+      )
+    }),
+    "bit_array module const"
+    |> example(fn() {
+      assert_equal(
+        True,
+        <<
+          0x1,
+          2,
+          2:size(16),
+          0x4:size(32),
+          "Gleam":utf8,
+          4.2:float,
+          <<<<1, 2, 3>>:bits, "Gleam":utf8, 1024>>:bits,
+        >> == importable.data,
+      )
+    }),
+    "<<71, 108, 101, 97, 109>> == <<\"Gleam\":utf8>>"
+    |> example(fn() {
+      assert_equal(True, <<71, 108, 101, 97, 109>> == <<"Gleam":utf8>>)
+    }),
+  ]
+}
+
+// TODO: impl :float on bitarrays so we can keep one test for all targets
+@target(nix)
+fn bit_array_match_tests() {
+  [
+    "let <<1, x>> = <<1, 2>>"
+    |> example(fn() {
+      assert_equal(2, {
+        let assert <<1, x>> = <<1, 2>>
+        x
+      })
+    }),
+    "let <<a:8>> = <<1>>"
+    |> example(fn() {
+      assert_equal(1, {
+        let assert <<a:8>> = <<1>>
+        a
+      })
+    }),
+    "let <<a:16, b:8>> = <<1, 2, 3>>"
+    |> example(fn() {
+      assert_equal(#(258, 3), {
+        let assert <<a:16, b:8>> = <<1, 2, 3>>
+        #(a, b)
+      })
+    }),
+    "let <<b:int>> = <<1>>"
+    |> example(fn() {
+      assert_equal(1, {
+        let assert <<b:int>> = <<1>>
+        b
+      })
+    }),
+    "let <<_, rest:binary>> = <<1>>"
+    |> example(fn() {
+      assert_equal(<<>>, {
+        let assert <<_, rest:bytes>> = <<1>>
+        rest
+      })
+    }),
+    "let <<_, rest:binary>> = <<1,2,3>>"
+    |> example(fn() {
+      assert_equal(<<2, 3>>, {
+        let assert <<_, rest:bytes>> = <<1, 2, 3>>
+        rest
+      })
+    }),
+    "let <<x:2-binary, rest:binary>> = <<1,2,3>>"
+    |> example(fn() {
+      assert_equal(<<1, 2>>, {
+        let assert <<x:2-bytes, _:bytes>> = <<1, 2, 3>>
+        x
+      })
+    }),
+    "bit_array from function"
+    |> example(fn() {
+      assert_equal(
+        True,
+        <<
+          0x1,
+          2,
+          2:size(16),
+          0x4:size(32),
+          "Gleam":utf8,
+          <<<<1, 2, 3>>:bits, "Gleam":utf8, 1024>>:bits,
+        >> == importable.get_bit_array(),
+      )
+    }),
+    "bit_array module const"
+    |> example(fn() {
+      assert_equal(
+        True,
+        <<
+          0x1,
+          2,
+          2:size(16),
+          0x4:size(32),
+          "Gleam":utf8,
           <<<<1, 2, 3>>:bits, "Gleam":utf8, 1024>>:bits,
         >> == importable.data,
       )
@@ -1499,6 +1781,15 @@ fn typescript_file_included_tests() {
 @target(erlang)
 fn typescript_file_included_tests() {
   let path = "./build/dev/erlang/language/_gleam_artefacts/ffi_typescript.ts"
+  [
+    path
+    |> example(fn() { assert_equal(file_exists(path), True) }),
+  ]
+}
+
+@target(nix)
+fn typescript_file_included_tests() {
+  let path = "./build/dev/nix/language/ffi_typescript.ts"
   [
     path
     |> example(fn() { assert_equal(file_exists(path), True) }),
