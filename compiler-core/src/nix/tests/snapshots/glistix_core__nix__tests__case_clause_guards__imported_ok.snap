@@ -1,0 +1,19 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "import gleam\npub type X {\n  Ok\n}\nfn func(x) {\n  case gleam.Ok {\n    _ if [] == [ gleam.Ok ] -> True\n    _ -> False\n  }\n}\n"
+---
+let
+  gleam' = builtins.import ./../gleam.nix;
+  inherit (builtins.import ./../gleam.nix) toList;
+  
+  Ok = { __gleamTag = "Ok"; };
+  
+  func =
+    x:
+    let
+      _pat' = gleam'.Ok;
+    in
+    if (toList [ ]) == (toList [ gleam'.Ok ]) then true
+    else false;
+in
+{ inherit Ok; }
