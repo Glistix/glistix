@@ -527,6 +527,9 @@ jobs:
           elixir-version: "1.16.1"
           rebar3-version: "3"
 
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v27
+
       - name: Download Glistix binary from previous job
         uses: actions/download-artifact@v4
         with:
