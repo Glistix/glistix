@@ -5,7 +5,7 @@
 Additional instructions for Glistix:
 
 
-1. Ensure `compiler-core/src/version.rs` reports the correct Gleam version we're tracking.
+1. Ensure `compiler-core/src/version.rs` and `README.md` both report the current Gleam version we're tracking.
 2. Bump Glistix version in each `Cargo.toml` (as well as `Cargo.lock` by running `cargo check` once), in the new project flake template at `compiler-cli/src/new.rs` and in `nix/glistix.nix`, as well as in `README.md`.
 3. Update the `cargoHash` in `nix/glistix.nix` by setting it to `""` and trying to build. The error will inform the new hash.
 4. Follow "Gleam checklist" below.
