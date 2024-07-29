@@ -27,7 +27,7 @@ in
 
 rustPlatform.buildRustPackage {
   pname = "glistix";
-  version = "0.2.0";
+  version = "0.3.0";
 
   src = lib.cleanSourceWith {
     filter = filterPaths;
@@ -39,7 +39,7 @@ rustPlatform.buildRustPackage {
   buildInputs = [ openssl ] ++
     lib.optionals stdenv.isDarwin [ Security SystemConfiguration ];
 
-  cargoHash = "sha256-rifIMUYfnmVCaS+OaQ3POEaZj00cU3Biaz2ZKj2eFL4=";
+  cargoHash = "sha256-xSnnPR9VKx8htUCq+M7ejw94vi+mOEbUCpqHyyK7s4U=";
 
   meta = with lib; {
     description = "A fork of the Gleam compiler with a Nix backend";
