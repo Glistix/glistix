@@ -10,7 +10,8 @@ use crate::{
         GroupedStatements, Import, ModuleConstant, Publicity, RecordConstructor,
         RecordConstructorArg, SrcSpan, Statement, TypeAlias, TypeAst, TypeAstConstructor,
         TypeAstFn, TypeAstHole, TypeAstTuple, TypeAstVar, TypedDefinition, TypedExpr,
-        TypedFunction, TypedModule, UntypedArg, UntypedFunction, UntypedModule, UntypedStatement,
+        TypedFunction, TypedModule, UntypedArg, UntypedCustomType, UntypedFunction, UntypedImport,
+        UntypedModule, UntypedModuleConstant, UntypedStatement, UntypedTypeAlias,
     },
     build::{Origin, Outcome, Target},
     call_graph::{into_dependency_order, CallGraphNode},
@@ -340,7 +341,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
 
     fn infer_module_constant(
         &mut self,
-        c: ModuleConstant<(), ()>,
+        c: UntypedModuleConstant,
         environment: &mut Environment<'_>,
     ) -> TypedDefinition {
         let ModuleConstant {
@@ -720,7 +721,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
 
     fn analyse_import(
         &mut self,
-        i: Import<()>,
+        i: UntypedImport,
         environment: &Environment<'_>,
     ) -> Option<TypedDefinition> {
         let Import {
@@ -768,7 +769,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
 
     fn analyse_custom_type(
         &mut self,
-        t: CustomType<()>,
+        t: UntypedCustomType,
         environment: &mut Environment<'_>,
     ) -> Option<TypedDefinition> {
         match self.do_analyse_custom_type(t, environment) {
@@ -783,7 +784,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
     // TODO: split this into a new class.
     fn do_analyse_custom_type(
         &mut self,
-        t: CustomType<()>,
+        t: UntypedCustomType,
         environment: &mut Environment<'_>,
     ) -> Result<TypedDefinition, Error> {
         self.register_values_from_custom_type(
@@ -878,7 +879,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
 
     fn register_values_from_custom_type(
         &mut self,
-        t: &CustomType<()>,
+        t: &UntypedCustomType,
         environment: &mut Environment<'_>,
         type_parameters: &[&EcoString],
     ) -> Result<(), Error> {
@@ -1036,7 +1037,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
 
     fn register_types_from_custom_type(
         &mut self,
-        t: &CustomType<()>,
+        t: &UntypedCustomType,
         environment: &mut Environment<'a>,
     ) -> Result<(), Error> {
         let CustomType {
@@ -1120,7 +1121,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         Ok(())
     }
 
-    fn register_type_alias(&mut self, t: &TypeAlias<()>, environment: &mut Environment<'_>) {
+    fn register_type_alias(&mut self, t: &UntypedTypeAlias, environment: &mut Environment<'_>) {
         let TypeAlias {
             location,
             publicity,
@@ -1370,7 +1371,7 @@ fn target_function_implementation<'a>(
     }
 }
 
-fn analyse_type_alias(t: TypeAlias<()>, environment: &mut Environment<'_>) -> TypedDefinition {
+fn analyse_type_alias(t: UntypedTypeAlias, environment: &mut Environment<'_>) -> TypedDefinition {
     let TypeAlias {
         documentation: doc,
         location,
@@ -1743,7 +1744,7 @@ fn get_type_dependencies(typ: &TypeAst) -> Vec<EcoString> {
     deps
 }
 
-fn sorted_type_aliases(aliases: &Vec<TypeAlias<()>>) -> Result<Vec<&TypeAlias<()>>, Error> {
+fn sorted_type_aliases(aliases: &Vec<UntypedTypeAlias>) -> Result<Vec<&UntypedTypeAlias>, Error> {
     let mut deps: Vec<(EcoString, Vec<EcoString>)> = Vec::with_capacity(aliases.len());
 
     for alias in aliases {
