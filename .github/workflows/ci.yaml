@@ -461,8 +461,8 @@ jobs:
 
       - run: cargo fmt --all -- --check
 
-  #  validate-deps:
-  #    name: validate-deps
+  #  validate:
+  #    name: validate
   #    runs-on: ubuntu-latest
   #    timeout-minutes: 10
   #    steps:

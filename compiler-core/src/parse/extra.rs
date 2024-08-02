@@ -22,9 +22,9 @@ impl ModuleExtra {
     pub fn is_within_comment(&self, byte_index: u32) -> bool {
         let cmp = |span: &SrcSpan| {
             if byte_index < span.start {
-                Ordering::Less
-            } else if span.end < byte_index {
                 Ordering::Greater
+            } else if byte_index > span.end {
+                Ordering::Less
             } else {
                 Ordering::Equal
             }
@@ -33,6 +33,20 @@ impl ModuleExtra {
         self.comments.binary_search_by(cmp).is_ok()
             || self.doc_comments.binary_search_by(cmp).is_ok()
             || self.module_comments.binary_search_by(cmp).is_ok()
+    }
+
+    pub(crate) fn has_comment_between(&self, start: u32, end: u32) -> bool {
+        self.comments
+            .binary_search_by(|comment| {
+                if comment.end < start {
+                    Ordering::Less
+                } else if comment.start > end {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            })
+            .is_ok()
     }
 }
 

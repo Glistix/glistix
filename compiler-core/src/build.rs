@@ -262,36 +262,48 @@ impl Module {
             .map(|span| Comment::from((span, self.code.as_str())).content.into())
             .collect();
 
-        // Order statements to avoid missociating doc comments after the order
-        // has changed during compilation.
+        // Order statements to avoid misassociating doc comments after the
+        // order has changed during compilation.
         let mut statements: Vec<_> = self.ast.definitions.iter_mut().collect();
         statements.sort_by(|a, b| a.location().start.cmp(&b.location().start));
 
         // Doc Comments
         let mut doc_comments = self.extra.doc_comments.iter().peekable();
         for statement in &mut statements {
-            let docs: Vec<&str> =
-                comments_before(&mut doc_comments, statement.location().start, &self.code);
+            let (docs_start, docs): (u32, Vec<&str>) = doc_comments_before(
+                &mut doc_comments,
+                &self.extra,
+                statement.location().start,
+                &self.code,
+            );
             if !docs.is_empty() {
                 let doc = docs.join("\n").into();
-                statement.put_doc(doc);
+                statement.put_doc((docs_start, doc));
             }
 
             if let Definition::CustomType(CustomType { constructors, .. }) = statement {
                 for constructor in constructors {
-                    let docs: Vec<&str> =
-                        comments_before(&mut doc_comments, constructor.location.start, &self.code);
+                    let (docs_start, docs): (u32, Vec<&str>) = doc_comments_before(
+                        &mut doc_comments,
+                        &self.extra,
+                        constructor.location.start,
+                        &self.code,
+                    );
                     if !docs.is_empty() {
                         let doc = docs.join("\n").into();
-                        constructor.put_doc(doc);
+                        constructor.put_doc((docs_start, doc));
                     }
 
                     for argument in constructor.arguments.iter_mut() {
-                        let docs: Vec<&str> =
-                            comments_before(&mut doc_comments, argument.location.start, &self.code);
+                        let (docs_start, docs): (u32, Vec<&str>) = doc_comments_before(
+                            &mut doc_comments,
+                            &self.extra,
+                            argument.location.start,
+                            &self.code,
+                        );
                         if !docs.is_empty() {
                             let doc = docs.join("\n").into();
-                            argument.put_doc(doc);
+                            argument.put_doc((docs_start, doc));
                         }
                     }
                 }
@@ -409,23 +421,34 @@ impl Origin {
     }
 }
 
-fn comments_before<'a>(
-    comment_spans: &mut Peekable<impl Iterator<Item = &'a SrcSpan>>,
+fn doc_comments_before<'a>(
+    doc_comments_spans: &mut Peekable<impl Iterator<Item = &'a SrcSpan>>,
+    extra: &ModuleExtra,
     byte: u32,
     src: &'a str,
-) -> Vec<&'a str> {
+) -> (u32, Vec<&'a str>) {
     let mut comments = vec![];
-    while let Some(SrcSpan { start, .. }) = comment_spans.peek() {
-        if start <= &byte {
-            let comment = comment_spans
-                .next()
-                .expect("Comment before accessing next span");
-            comments.push(Comment::from((comment, src)).content)
-        } else {
+    let mut comment_start = u32::MAX;
+    while let Some(SrcSpan { start, end }) = doc_comments_spans.peek() {
+        if start > &byte {
             break;
         }
+        if extra.has_comment_between(*end, byte) {
+            // We ignore doc comments that come before a regular comment.
+            _ = doc_comments_spans.next();
+            continue;
+        }
+        let comment = doc_comments_spans
+            .next()
+            .expect("Comment before accessing next span");
+
+        if comment.start < comment_start {
+            comment_start = comment.start;
+        }
+
+        comments.push(Comment::from((comment, src)).content)
     }
-    comments
+    (comment_start, comments)
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

@@ -4,6 +4,63 @@ use lsp_types::{CompletionItem, Position};
 
 use super::*;
 
+pub fn show_complete(code: &str, position: Position) -> String {
+    let mut str: String = "".into();
+    for (line_number, line) in code.lines().enumerate() {
+        let same_line = line_number as u32 == position.line;
+        if !same_line {
+            str.push_str(line);
+        } else {
+            str.push_str(&line[0..position.character as usize]);
+            str.push('|');
+            str.push_str(&line[position.character as usize..]);
+        }
+
+        str.push('\n');
+    }
+
+    str
+}
+
+#[macro_export]
+macro_rules! assert_completion {
+    ($project:expr) => {
+        let src = $project.src;
+        let result = completion_with_prefix($project, "");
+        let output = format!(
+            "{}\n\n----- Completion content -----\n{:#?}",
+            show_complete(src, Position::new(0, 0)),
+            result
+        );
+        insta::assert_snapshot!(insta::internals::AutoName, output, src);
+    };
+    ($project:expr, $position:expr) => {
+        let src = $project.src;
+        let result = completion($project, $position);
+        let output = format!(
+            "{}\n\n----- Completion content -----\n{:#?}",
+            show_complete(src, $position),
+            result
+        );
+        insta::assert_snapshot!(insta::internals::AutoName, output, src);
+    };
+}
+
+#[macro_export]
+macro_rules! assert_completion_with_prefix {
+    ($project:expr, $prefix:expr) => {
+        let src = $project.src;
+        let result = completion_with_prefix($project, $prefix);
+        let line = 1 + $prefix.lines().count();
+        let output = format!(
+            "{}\n\n----- Completion content -----\n{:#?}",
+            show_complete(src, Position::new(line as u32, 0)),
+            result
+        );
+        insta::assert_snapshot!(insta::internals::AutoName, output, src);
+    };
+}
+
 fn completion(tester: TestProject<'_>, position: Position) -> Vec<CompletionItem> {
     tester.at(position, |engine, param, src| {
         let response = engine.completion(param, src);
@@ -14,10 +71,12 @@ fn completion(tester: TestProject<'_>, position: Position) -> Vec<CompletionItem
     })
 }
 
-fn completion_at_default_position(tester: TestProject<'_>) -> Vec<CompletionItem> {
-    let src = &format!("fn typing_in_here() {{\n  0\n}}\n {}", tester.src);
+fn completion_with_prefix(tester: TestProject<'_>, prefix: &str) -> Vec<CompletionItem> {
+    let src = &format!("{}fn typing_in_here() {{\n  0\n}}\n {}", prefix, tester.src);
     let tester = TestProject { src, ..tester };
-    completion(tester, Position::new(1, 0))
+    // Put the cursor inside the "typing_in_here" fn body.
+    let line = 1 + prefix.lines().count();
+    completion(tester, Position::new(line as u32, 0))
         .into_iter()
         .filter(|c| c.label != "typing_in_here")
         .collect_vec()
@@ -31,10 +90,7 @@ pub fn main() {
   0
 }";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(0, 0)
-    ));
+    assert_completion!(TestProject::for_source(code), Position::new(0, 0));
 }
 
 #[test]
@@ -44,9 +100,7 @@ pub fn main() {
   0
 }";
 
-    assert_debug_snapshot!(completion_at_default_position(TestProject::for_source(
-        code
-    )),);
+    assert_completion!(TestProject::for_source(code));
 }
 
 #[test]
@@ -57,9 +111,7 @@ pub fn main() {
   0
 }";
 
-    assert_debug_snapshot!(completion_at_default_position(TestProject::for_source(
-        code
-    )),);
+    assert_completion!(TestProject::for_source(code));
 }
 
 #[test]
@@ -71,9 +123,7 @@ pub type Direction {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(TestProject::for_source(
-        code
-    )),);
+    assert_completion!(TestProject::for_source(code));
 }
 
 #[test]
@@ -85,9 +135,7 @@ pub type Box {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(TestProject::for_source(
-        code
-    )),);
+    assert_completion!(TestProject::for_source(code));
 }
 
 #[test]
@@ -101,9 +149,7 @@ pub type Direction {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(TestProject::for_source(
-        code
-    )),);
+    assert_completion!(TestProject::for_source(code));
 }
 
 #[test]
@@ -114,9 +160,7 @@ pub type Box {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(TestProject::for_source(
-        code
-    )),);
+    assert_completion!(TestProject::for_source(code));
 }
 
 #[test]
@@ -130,9 +174,7 @@ pub fn wobble() {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -145,9 +187,7 @@ pub fn wobble() {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -169,11 +209,9 @@ pub fn wobble() {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code)
-            .add_module("dep", dep)
-            .add_module("dep2", dep2)
-    ),);
+    assert_completion!(TestProject::for_source(code)
+        .add_module("dep", dep)
+        .add_module("dep2", dep2));
 }
 
 #[test]
@@ -186,9 +224,53 @@ pub fn wobble() {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("a/b/dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("a/b/dep", dep));
+}
+
+#[test]
+fn importable_adds_extra_new_line_if_no_imports() {
+    let dep = "pub fn wobble() {\nNil\n}";
+    let code = "";
+
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
+}
+
+#[test]
+fn importable_adds_extra_new_line_if_import_exists_below_other_definitions() {
+    let dep = "pub fn wobble() {\nNil\n}";
+    let code = "\nimport dep2\n"; // "code" goes after "fn typing_in_here() {}".
+
+    assert_completion!(TestProject::for_source(code)
+        .add_module("dep", dep)
+        .add_module("dep2", ""));
+}
+
+#[test]
+fn importable_does_not_add_extra_new_line_if_imports_exist() {
+    let dep = "pub fn wobble() {\nNil\n}";
+    let prefix = "import foo\n\n";
+    let code = "";
+
+    assert_completion_with_prefix!(
+        TestProject::for_source(code)
+            .add_module("dep", dep)
+            .add_module("foo", ""),
+        prefix
+    );
+}
+
+#[test]
+fn importable_does_not_add_extra_new_line_if_newline_exists() {
+    let dep = "pub fn wobble() {\nNil\n}";
+    let prefix = "\n";
+    let code = "";
+
+    assert_completion_with_prefix!(
+        TestProject::for_source(code)
+            .add_module("dep", dep)
+            .add_module("foo", ""),
+        prefix
+    );
 }
 
 #[test]
@@ -203,9 +285,7 @@ pub type Direction {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -219,9 +299,7 @@ pub type Box {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -235,9 +313,7 @@ pub fn wobble() {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -252,9 +328,7 @@ pub type Direction {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -268,9 +342,7 @@ pub type Box {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -282,9 +354,7 @@ fn private() {
 ";
     let dep = "";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -296,9 +366,7 @@ type Wibble {
 ";
     let dep = "";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -310,9 +378,7 @@ pub opaque type Wibble {
 ";
     let dep = "";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -324,9 +390,7 @@ fn private() {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -338,9 +402,7 @@ type Wibble {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -352,9 +414,7 @@ type Wibble {
 }
 ";
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source(code).add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source(code).add_module("dep", dep));
 }
 
 #[test]
@@ -364,10 +424,7 @@ pub type Wibble {
   Wobble
 }";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(2, 0)
-    ),);
+    assert_completion!(TestProject::for_source(code), Position::new(2, 0));
 }
 
 #[test]
@@ -379,10 +436,7 @@ pub type Wibble = Result(
 )
 ";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(2, 0)
-    ),);
+    assert_completion!(TestProject::for_source(code), Position::new(2, 0));
 }
 
 #[test]
@@ -395,10 +449,7 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(2, 0)
-    ),);
+    assert_completion!(TestProject::for_source(code), Position::new(2, 0));
 }
 
 #[test]
@@ -416,10 +467,10 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("dep", dep),
         Position::new(3, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -437,10 +488,10 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("dep", dep),
         Position::new(3, 12)
-    ),);
+    );
 }
 
 #[test]
@@ -463,12 +514,12 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code)
             .add_module("dep", dep)
             .add_module("dep2", dep2),
         Position::new(4, 12)
-    ),);
+    );
 }
 
 #[test]
@@ -490,12 +541,12 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code)
             .add_module("dep", dep)
             .add_module("other", other),
         Position::new(3, 12)
-    ),);
+    );
 }
 
 #[test]
@@ -517,12 +568,12 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code)
             .add_module("dep", dep)
             .add_module("other", other),
         Position::new(3, 8)
-    ),);
+    );
 }
 
 #[test]
@@ -540,10 +591,10 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("dep", dep),
         Position::new(3, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -565,12 +616,12 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code)
             .add_module("dep", dep)
             .add_module("dep2", dep2),
         Position::new(3, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -596,12 +647,12 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code)
             .add_module("dep", dep)
             .add_module("dep2", dep2),
         Position::new(7, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -619,10 +670,10 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("a/b/dep", dep),
         Position::new(3, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -640,10 +691,10 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("dep", dep),
         Position::new(3, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -658,10 +709,7 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(4, 0)
-    ),);
+    assert_completion!(TestProject::for_source(code), Position::new(4, 0));
 }
 
 #[test]
@@ -674,9 +722,7 @@ fn internal_values_from_root_package_are_in_the_completions() {
 @internal pub const wibble = 1
 "#;
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source("import dep").add_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source("import dep").add_module("dep", dep));
 }
 
 #[test]
@@ -693,10 +739,10 @@ pub fn wibble(
 @internal pub type Alias = Int
 @internal pub type AnotherType { Constructor }
 "#;
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("dep", dep),
         Position::new(3, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -709,9 +755,7 @@ fn internal_values_from_the_same_module_are_in_the_completions() {
 @internal pub const wibble = 1
 "#;
 
-    assert_debug_snapshot!(completion_at_default_position(TestProject::for_source(
-        code
-    )),);
+    assert_completion!(TestProject::for_source(code));
 }
 
 #[test]
@@ -723,10 +767,7 @@ fn internal_types_from_the_same_module_are_in_the_completions() {
 }
 ";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(3, 0)
-    ),);
+    assert_completion!(TestProject::for_source(code), Position::new(3, 0));
 }
 
 #[test]
@@ -744,10 +785,10 @@ pub fn wibble(
 @internal pub type AnotherType { Constructor }
 "#;
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_dep_module("dep", dep),
         Position::new(3, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -760,9 +801,7 @@ fn internal_values_from_a_dependency_are_ignored() {
 @internal pub const wibble = 1
 "#;
 
-    assert_debug_snapshot!(completion_at_default_position(
-        TestProject::for_source("import dep").add_dep_module("dep", dep)
-    ),);
+    assert_completion!(TestProject::for_source("import dep").add_dep_module("dep", dep));
 }
 
 #[test]
@@ -774,10 +813,10 @@ pub fn main() {
 }";
     let dep = "";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("dep", dep),
         Position::new(0, 10)
-    ),);
+    );
 }
 
 #[test]
@@ -795,10 +834,10 @@ pub fn main() {
 }
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_test_module("my_tests", test),
         Position::new(0, 10)
-    ),);
+    );
 }
 
 #[test]
@@ -847,10 +886,10 @@ pub fn main() {
 pub fn main() { 1 }
     ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_dep_module("dep", dep),
         Position::new(0, 10)
-    ),);
+    );
 }
 
 #[test]
@@ -862,10 +901,10 @@ pub fn main() {
 }";
     let dep = "";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_hex_module("example_module", dep),
         Position::new(0, 10)
-    ),);
+    );
 }
 
 #[test]
@@ -877,12 +916,12 @@ pub fn main() {
 }";
     let dep = "";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code)
             .add_hex_module("example_module", dep)
             .add_indirect_hex_module("indirect_module", ""),
         Position::new(0, 10)
-    ),);
+    );
 }
 
 #[test]
@@ -894,12 +933,12 @@ pub fn main() {
 }";
     let dep = "";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code)
             .add_hex_module("example_module", dep)
             .add_dev_hex_module("indirect_module", ""),
         Position::new(0, 10)
-    ),);
+    );
 }
 
 #[test]
@@ -947,10 +986,10 @@ pub fn main() {
 pub fn main() { 1 }
     ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_hex_module("example_module", dep),
         Position::new(3, 10)
-    ),);
+    );
 }
 
 #[test]
@@ -962,10 +1001,10 @@ pub fn main() {
 }";
     let dep = "";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_dep_module("dep", dep),
         Position::new(0, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -977,10 +1016,10 @@ pub fn main() {
 }";
     let dep = "";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_dep_module("dep", dep),
         Position::new(0, 2)
-    ),);
+    );
 }
 
 #[test]
@@ -992,14 +1031,14 @@ pub fn main() {
 }";
     let internal_name = format!("{}/internal", LSP_TEST_ROOT_PACKAGE_NAME);
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code)
             // Not included
             .add_dep_module("dep/internal", "")
             // Included
             .add_module(&internal_name, ""),
         Position::new(0, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -1022,10 +1061,10 @@ pub fn myfun() {
 pub type Wibble = String
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("dep", dep),
         Position::new(1, 12)
-    ),);
+    );
 }
 
 #[test]
@@ -1048,13 +1087,13 @@ pub fn myfun() {
 pub type Wibble = String
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("dep", dep),
         // putting cursor at beginning of line because some formatters
         // remove the empty whitespace in the test code.
         // Does also work with (3, 2) when empty spaces are not removed.
         Position::new(3, 0)
-    ),);
+    );
 }
 
 #[test]
@@ -1077,10 +1116,10 @@ pub fn myfun() {
 pub type Wibble = String
 ";
 
-    assert_debug_snapshot!(completion(
+    assert_completion!(
         TestProject::for_source(code).add_module("dep", dep),
         Position::new(1, 12)
-    ),);
+    );
 }
 
 #[test]
@@ -1093,10 +1132,7 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(2, 11)
-    ),);
+    assert_completion!(TestProject::for_source(code), Position::new(2, 11));
 }
 
 #[test]
@@ -1109,10 +1145,7 @@ pub fn wibble(
 }
 ";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(3, 7)
-    ),);
+    assert_completion!(TestProject::for_source(code), Position::new(3, 7));
 }
 
 #[test]
@@ -1123,10 +1156,7 @@ pub fn main() {
 }
 ";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(2, 16)
-    ),);
+    assert_completion!(TestProject::for_source(code), Position::new(2, 16));
 }
 
 #[test]
@@ -1140,10 +1170,7 @@ pub fn main() {
 }
 ";
 
-    assert_debug_snapshot!(completion(
-        TestProject::for_source(code),
-        Position::new(2, 16)
-    ),);
+    assert_completion!(TestProject::for_source(code), Position::new(2, 16));
 }
 
 #[test]
@@ -1229,4 +1256,113 @@ pub fn main() {
         completion(TestProject::for_source(code), Position::new(2, 5)),
         vec![],
     );
+}
+
+#[test]
+fn completions_for_record_access() {
+    let code = "
+pub type Wibble {
+  Wibble(wibble: Int, wobble: Int)
+  Wobble(wabble: Int, wobble: Int)
+}
+
+fn fun() {
+  let wibble = Wibble(1, 2)
+  wibble.wobble
+}
+";
+
+    assert_completion!(TestProject::for_source(code), Position::new(8, 15));
+}
+
+#[test]
+fn completions_for_record_labels() {
+    let code = "
+pub type Wibble {
+  Wibble(wibble: String, wobble: Int)
+}
+
+fn fun() { // completion inside parens below includes labels
+  let wibble = Wibble()
+}
+";
+
+    assert_completion!(TestProject::for_source(code), Position::new(6, 22));
+}
+
+#[test]
+fn completions_for_imported_record_labels() {
+    let code = "
+import dep
+
+fn fun() { // completion inside parens below includes labels
+  let wibble = dep.Wibble()
+}
+";
+    let dep = "
+pub type Wibble {
+  Wibble(wibble: String, wobble: Int)
+}
+";
+
+    assert_completion!(
+        TestProject::for_source(code).add_dep_module("dep", dep),
+        Position::new(4, 26)
+    );
+}
+
+#[test]
+fn completions_for_function_labels() {
+    let code = "
+fn wibble(wibble arg1: String, wobble arg2: String) {
+  arg1 <> arg2
+}
+
+fn fun() { // completion inside parens below includes labels
+  let wibble = wibble()
+}
+";
+
+    assert_completion!(TestProject::for_source(code), Position::new(6, 22));
+}
+
+#[test]
+fn completions_for_imported_function_labels() {
+    let code = "
+import dep
+
+fn fun() { // completion inside parens below includes labels
+  let wibble = dep.wibble()
+}
+";
+    let dep = "
+pub fn wibble(wibble arg1: String, wobble arg2: String) {
+  arg1 <> arg2
+}
+";
+
+    assert_completion!(
+        TestProject::for_source(code).add_dep_module("dep", dep),
+        Position::new(4, 26)
+    );
+}
+
+#[test]
+fn no_completion_inside_comment_that_is_more_than_three_lines() {
+    let code = "import list
+
+// list.
+// list.
+fn fun() {
+  // list.
+  todo
+}
+";
+
+    let dep = "pub fn map() {}";
+    let completions = completion(
+        TestProject::for_source(code).add_dep_module("list", dep),
+        Position::new(5, 10),
+    );
+    assert_eq!(completions, vec![],);
 }

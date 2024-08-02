@@ -1,16 +1,29 @@
 use std::{iter, sync::Arc};
 
 use crate::{
-    ast::{self, visit::Visit as _, SrcSpan},
-    build,
+    ast::{
+        self,
+        visit::{
+            visit_typed_call_arg, visit_typed_expr_call, visit_typed_pattern_call_arg,
+            visit_typed_record_update_arg, Visit as _,
+        },
+        AssignName, AssignmentKind, CallArg, ImplicitCallArgOrigin, Pattern, SrcSpan, TypedExpr,
+        TypedPattern, TypedRecordUpdateArg,
+    },
+    build::Module,
     line_numbers::LineNumbers,
     parse::extra::ModuleExtra,
-    type_::Type,
+    type_::{FieldMap, ModuleValueConstructor, Type, TypedCallArg},
 };
 use ecow::EcoString;
+use im::HashMap;
+use itertools::Itertools;
 use lsp_types::{CodeAction, CodeActionKind, CodeActionParams, TextEdit, Url};
 
-use super::{engine::overlaps, src_span_to_lsp_range};
+use super::{
+    engine::{overlaps, within},
+    src_span_to_lsp_range,
+};
 
 #[derive(Debug)]
 pub struct CodeActionBuilder {
@@ -107,11 +120,11 @@ impl<'ast> ast::visit::Visit<'ast> for RedundantTupleInCaseSubject<'_> {
         &mut self,
         location: &'ast SrcSpan,
         typ: &'ast Arc<Type>,
-        subjects: &'ast [ast::TypedExpr],
+        subjects: &'ast [TypedExpr],
         clauses: &'ast [ast::TypedClause],
     ) {
         'subj: for (subject_idx, subject) in subjects.iter().enumerate() {
-            let ast::TypedExpr::Tuple {
+            let TypedExpr::Tuple {
                 location, elems, ..
             } = subject
             else {
@@ -126,14 +139,14 @@ impl<'ast> ast::visit::Visit<'ast> for RedundantTupleInCaseSubject<'_> {
             let mut clause_edits = vec![];
             for clause in clauses {
                 match clause.pattern.get(subject_idx) {
-                    Some(ast::Pattern::Tuple { location, elems }) => {
+                    Some(Pattern::Tuple { location, elems }) => {
                         clause_edits.extend(self.delete_tuple_tokens(
                             *location,
                             elems.last().map(|elem| elem.location()),
                         ))
                     }
 
-                    Some(ast::Pattern::Discard { location, .. }) => {
+                    Some(Pattern::Discard { location, .. }) => {
                         clause_edits.push(self.discard_tuple_items(*location, elems.len()))
                     }
 
@@ -156,7 +169,7 @@ impl<'ast> ast::visit::Visit<'ast> for RedundantTupleInCaseSubject<'_> {
 }
 
 impl<'a> RedundantTupleInCaseSubject<'a> {
-    pub fn new(module: &'a build::Module, params: &'a CodeActionParams) -> Self {
+    pub fn new(module: &'a Module, params: &'a CodeActionParams) -> Self {
         Self {
             line_numbers: LineNumbers::new(&module.code),
             code: &module.code,
@@ -274,5 +287,351 @@ impl<'a> RedundantTupleInCaseSubject<'a> {
             range: src_span_to_lsp_range(discard_location, &self.line_numbers),
             new_text: itertools::intersperse(iter::repeat("_").take(tuple_items), ", ").collect(),
         }
+    }
+}
+
+/// Builder for code action to convert `let assert` into a case expression.
+///
+pub struct LetAssertToCase<'a> {
+    module: &'a Module,
+    params: &'a CodeActionParams,
+    actions: Vec<CodeAction>,
+    line_numbers: LineNumbers,
+    pattern_variables: Vec<EcoString>,
+}
+
+impl<'ast> ast::visit::Visit<'ast> for LetAssertToCase<'_> {
+    fn visit_typed_assignment(&mut self, assignment: &'ast ast::TypedAssignment) {
+        // To prevent weird behaviour when `let assert` statements are nested,
+        // we only check for the code action between the `let` and `=`.
+        let code_action_location =
+            SrcSpan::new(assignment.location.start, assignment.value.location().start);
+        let code_action_range = src_span_to_lsp_range(code_action_location, &self.line_numbers);
+
+        self.visit_typed_expr(&assignment.value);
+
+        // Only offer the code action if the cursor is over the statement
+        if !overlaps(code_action_range, self.params.range) {
+            return;
+        }
+
+        // This pattern only applies to `let assert`
+        if !matches!(assignment.kind, AssignmentKind::Assert { .. }) {
+            return;
+        };
+
+        // Get the source code for the tested expression
+        let location = assignment.value.location();
+        let expr = self
+            .module
+            .code
+            .get(location.start as usize..location.end as usize)
+            .expect("Location must be valid");
+
+        // Get the source code for the pattern
+        let pattern_location = assignment.pattern.location();
+        let pattern = self
+            .module
+            .code
+            .get(pattern_location.start as usize..pattern_location.end as usize)
+            .expect("Location must be valid");
+
+        let range = src_span_to_lsp_range(assignment.location, &self.line_numbers);
+        let indent = " ".repeat(range.start.character as usize);
+
+        // Figure out which variables are assigned in the pattern
+        self.pattern_variables.clear();
+        self.visit_typed_pattern(&assignment.pattern);
+        let variables = std::mem::take(&mut self.pattern_variables);
+
+        let assigned = match variables.len() {
+            0 => "_",
+            1 => variables.first().expect("Variables is length one"),
+            _ => &format!("#({})", variables.join(", ")),
+        };
+
+        let edit = TextEdit {
+            range,
+            new_text: format!(
+                "let {assigned} = case {expr} {{
+{indent}  {pattern} -> {value}
+{indent}  _ -> panic
+{indent}}}",
+                // "_" isn't a valid expression, so we just return Nil from the case expression
+                value = if assigned == "_" { "Nil" } else { assigned }
+            ),
+        };
+
+        let uri = &self.params.text_document.uri;
+
+        CodeActionBuilder::new("Convert to case")
+            .kind(CodeActionKind::REFACTOR)
+            .changes(uri.clone(), vec![edit])
+            .preferred(true)
+            .push_to(&mut self.actions);
+    }
+
+    fn visit_typed_pattern_variable(
+        &mut self,
+        _location: &'ast SrcSpan,
+        name: &'ast EcoString,
+        _type: &'ast Arc<Type>,
+    ) {
+        self.pattern_variables.push(name.clone());
+    }
+
+    fn visit_typed_pattern_assign(
+        &mut self,
+        location: &'ast SrcSpan,
+        name: &'ast EcoString,
+        pattern: &'ast TypedPattern,
+    ) {
+        self.pattern_variables.push(name.clone());
+        ast::visit::visit_typed_pattern_assign(self, location, name, pattern);
+    }
+
+    fn visit_typed_pattern_string_prefix(
+        &mut self,
+        _location: &'ast SrcSpan,
+        _left_location: &'ast SrcSpan,
+        left_side_assignment: &'ast Option<(EcoString, SrcSpan)>,
+        _right_location: &'ast SrcSpan,
+        _left_side_string: &'ast EcoString,
+        right_side_assignment: &'ast AssignName,
+    ) {
+        if let Some((name, _)) = left_side_assignment {
+            self.pattern_variables.push(name.clone());
+        }
+        if let AssignName::Variable(name) = right_side_assignment {
+            self.pattern_variables.push(name.clone());
+        }
+    }
+}
+
+impl<'a> LetAssertToCase<'a> {
+    pub fn new(module: &'a Module, params: &'a CodeActionParams) -> Self {
+        let line_numbers = LineNumbers::new(&module.code);
+        Self {
+            module,
+            params,
+            actions: Vec::new(),
+            line_numbers,
+            pattern_variables: Vec::new(),
+        }
+    }
+
+    pub fn code_actions(mut self) -> Vec<CodeAction> {
+        self.visit_typed_module(&self.module.ast);
+        self.actions
+    }
+}
+
+/// Builder for code action to apply the label shorthand syntax on arguments
+/// where the label has the same name as the variable.
+///
+pub struct LabelShorthandSyntax<'a> {
+    module: &'a Module,
+    params: &'a CodeActionParams,
+    line_numbers: LineNumbers,
+    edits: Vec<TextEdit>,
+}
+
+impl<'a> LabelShorthandSyntax<'a> {
+    pub fn new(module: &'a Module, params: &'a CodeActionParams) -> Self {
+        let line_numbers = LineNumbers::new(&module.code);
+        Self {
+            module,
+            params,
+            line_numbers,
+            edits: vec![],
+        }
+    }
+
+    fn push_delete_edit(&mut self, location: &SrcSpan) {
+        self.edits.push(TextEdit {
+            range: src_span_to_lsp_range(*location, &self.line_numbers),
+            new_text: "".into(),
+        })
+    }
+
+    pub fn code_actions(mut self) -> Vec<CodeAction> {
+        self.visit_typed_module(&self.module.ast);
+        if self.edits.is_empty() {
+            return vec![];
+        }
+        let mut action = Vec::with_capacity(1);
+        CodeActionBuilder::new("Use label shorthand syntax")
+            .kind(CodeActionKind::REFACTOR)
+            .changes(self.params.text_document.uri.clone(), self.edits)
+            .preferred(false)
+            .push_to(&mut action);
+        action
+    }
+}
+
+impl<'ast> ast::visit::Visit<'ast> for LabelShorthandSyntax<'_> {
+    fn visit_typed_call_arg(&mut self, arg: &'ast TypedCallArg) {
+        let arg_range = src_span_to_lsp_range(arg.location, &self.line_numbers);
+        let is_selected = overlaps(arg_range, self.params.range);
+
+        match arg {
+            CallArg {
+                label: Some(label),
+                value: TypedExpr::Var { name, location, .. },
+                ..
+            } if is_selected && !arg.uses_label_shorthand() && label == name => {
+                self.push_delete_edit(location)
+            }
+            _ => (),
+        }
+
+        visit_typed_call_arg(self, arg)
+    }
+
+    fn visit_typed_pattern_call_arg(&mut self, arg: &'ast CallArg<TypedPattern>) {
+        let arg_range = src_span_to_lsp_range(arg.location, &self.line_numbers);
+        let is_selected = overlaps(arg_range, self.params.range);
+
+        match arg {
+            CallArg {
+                label: Some(label),
+                value: TypedPattern::Variable { name, location, .. },
+                ..
+            } if is_selected && !arg.uses_label_shorthand() && label == name => {
+                self.push_delete_edit(location)
+            }
+            _ => (),
+        }
+
+        visit_typed_pattern_call_arg(self, arg)
+    }
+
+    fn visit_typed_record_update_arg(&mut self, arg: &'ast TypedRecordUpdateArg) {
+        let arg_range = src_span_to_lsp_range(arg.location, &self.line_numbers);
+        let is_selected = overlaps(arg_range, self.params.range);
+
+        match arg {
+            TypedRecordUpdateArg {
+                label,
+                value: TypedExpr::Var { name, location, .. },
+                ..
+            } if is_selected && !arg.uses_label_shorthand() && label == name => {
+                self.push_delete_edit(location)
+            }
+            _ => (),
+        }
+
+        visit_typed_record_update_arg(self, arg)
+    }
+}
+
+/// Builder for code action to apply the fill in the missing labelled arguments
+/// of the selected function call.
+///
+pub struct FillInMissingLabelledArgs<'a> {
+    module: &'a Module,
+    params: &'a CodeActionParams,
+    line_numbers: LineNumbers,
+    selected_call: Option<(SrcSpan, &'a FieldMap, &'a [TypedCallArg])>,
+}
+
+impl<'a> FillInMissingLabelledArgs<'a> {
+    pub fn new(module: &'a Module, params: &'a CodeActionParams) -> Self {
+        let line_numbers = LineNumbers::new(&module.code);
+        Self {
+            module,
+            params,
+            line_numbers,
+            selected_call: None,
+        }
+    }
+
+    pub fn code_actions(mut self) -> Vec<CodeAction> {
+        self.visit_typed_module(&self.module.ast);
+
+        if let Some((call_location, field_map, args)) = self.selected_call {
+            let mut missing_labels = field_map
+                .fields
+                .iter()
+                .map(|(l, i)| (i, l))
+                .collect::<HashMap<_, _>>();
+
+            for arg in args.iter() {
+                match arg.implicit {
+                    Some(ImplicitCallArgOrigin::Use | ImplicitCallArgOrigin::IncorrectArityUse) => {
+                        _ = missing_labels.remove(&(field_map.arity - 1))
+                    }
+                    Some(ImplicitCallArgOrigin::Pipe) => _ = missing_labels.remove(&0),
+                    // We do not support this action for functions that have
+                    // already been explicitly supplied an argument!
+                    Some(ImplicitCallArgOrigin::PatternFieldSpread) | None => return vec![],
+                }
+            }
+
+            // If we couldn't find any missing label to insert we just return.
+            if missing_labels.is_empty() {
+                return vec![];
+            }
+
+            let add_labels_edit = TextEdit {
+                range: src_span_to_lsp_range(
+                    SrcSpan {
+                        start: call_location.end - 1,
+                        end: call_location.end - 1,
+                    },
+                    &self.line_numbers,
+                ),
+                new_text: missing_labels
+                    .iter()
+                    .sorted_by_key(|(position, _label)| *position)
+                    .map(|(_, label)| format!("{label}: todo"))
+                    .join(", "),
+            };
+
+            let mut action = Vec::with_capacity(1);
+            CodeActionBuilder::new("Fill labels")
+                .kind(CodeActionKind::REFACTOR)
+                .changes(self.params.text_document.uri.clone(), vec![add_labels_edit])
+                .preferred(false)
+                .push_to(&mut action);
+            return action;
+        }
+
+        vec![]
+    }
+}
+
+impl<'ast> ast::visit::Visit<'ast> for FillInMissingLabelledArgs<'ast> {
+    fn visit_typed_expr_call(
+        &mut self,
+        location: &'ast SrcSpan,
+        typ: &'ast Arc<Type>,
+        fun: &'ast TypedExpr,
+        args: &'ast [TypedCallArg],
+    ) {
+        let call_range = src_span_to_lsp_range(*location, &self.line_numbers);
+        if !within(self.params.range, call_range) {
+            return;
+        }
+
+        let field_map = match fun {
+            TypedExpr::Var { constructor, .. } => constructor.field_map(),
+            TypedExpr::ModuleSelect { constructor, .. } => match constructor {
+                ModuleValueConstructor::Record { field_map, .. }
+                | ModuleValueConstructor::Fn { field_map, .. } => field_map.as_ref(),
+                ModuleValueConstructor::Constant { .. } => None,
+            },
+            _ => None,
+        };
+
+        if let Some(field_map) = field_map {
+            self.selected_call = Some((*location, field_map, args))
+        }
+
+        // We only want to take into account the innermost function call
+        // containing the current selection so we can't stop at the first call
+        // we find (the outermost one) and have to keep traversing it in case
+        // we're inside a nested call.
+        visit_typed_expr_call(self, location, typ, fun, args)
     }
 }

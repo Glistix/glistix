@@ -1,6 +1,7 @@
 use super::*;
-use crate::ast::{
-    Layer, TypeAst, TypeAstConstructor, TypeAstFn, TypeAstHole, TypeAstTuple, TypeAstVar,
+use crate::{
+    analyse::name::check_name_case,
+    ast::{Layer, TypeAst, TypeAstConstructor, TypeAstFn, TypeAstHole, TypeAstTuple, TypeAstVar},
 };
 use std::sync::Arc;
 
@@ -93,9 +94,10 @@ impl Hydrator {
         &mut self,
         ast: &Option<TypeAst>,
         environment: &mut Environment<'_>,
+        problems: &mut Problems,
     ) -> Result<Arc<Type>, Error> {
         match ast {
-            Some(ast) => self.type_from_ast(ast, environment),
+            Some(ast) => self.type_from_ast(ast, environment, problems),
             None => Ok(environment.new_unbound_var()),
         }
     }
@@ -106,6 +108,7 @@ impl Hydrator {
         &mut self,
         ast: &TypeAst,
         environment: &mut Environment<'_>,
+        problems: &mut Problems,
     ) -> Result<Arc<Type>, Error> {
         match ast {
             TypeAst::Constructor(TypeAstConstructor {
@@ -117,7 +120,7 @@ impl Hydrator {
                 // Hydrate the type argument AST into types
                 let mut argument_types = Vec::with_capacity(args.len());
                 for t in args {
-                    let typ = self.type_from_ast(t, environment)?;
+                    let typ = self.type_from_ast(t, environment, problems)?;
                     argument_types.push((t.location(), typ));
                 }
 
@@ -135,7 +138,7 @@ impl Hydrator {
                 match deprecation {
                     Deprecation::NotDeprecated => {}
                     Deprecation::Deprecated { message } => {
-                        environment.warnings.emit(Warning::DeprecatedItem {
+                        problems.warning(Warning::DeprecatedItem {
                             location: *location,
                             message: message.clone(),
                             layer: Layer::Type,
@@ -184,7 +187,7 @@ impl Hydrator {
             TypeAst::Tuple(TypeAstTuple { elems, .. }) => Ok(tuple(
                 elems
                     .iter()
-                    .map(|t| self.type_from_ast(t, environment))
+                    .map(|t| self.type_from_ast(t, environment, problems))
                     .try_collect()?,
             )),
 
@@ -195,9 +198,9 @@ impl Hydrator {
             }) => {
                 let args = args
                     .iter()
-                    .map(|t| self.type_from_ast(t, environment))
+                    .map(|t| self.type_from_ast(t, environment, problems))
                     .try_collect()?;
-                let retrn = self.type_from_ast(retrn, environment)?;
+                let retrn = self.type_from_ast(retrn, environment, problems)?;
                 Ok(fn_(args, retrn))
             }
 
@@ -209,6 +212,9 @@ impl Hydrator {
                     }
 
                     None if self.permit_new_type_variables => {
+                        if let Err(error) = check_name_case(*location, name, Named::TypeVariable) {
+                            problems.error(error);
+                        }
                         let t = environment.new_generic_var();
                         let _ = self
                             .rigid_type_names

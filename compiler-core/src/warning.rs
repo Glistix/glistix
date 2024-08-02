@@ -176,6 +176,18 @@ pub enum DeprecatedSyntaxWarning {
     /// ```
     ///
     DeprecatedListPattern { location: SrcSpan },
+
+    /// If someone uses the deprecated syntax to match on all lists instead of
+    /// a common `_`:
+    /// ```gleam
+    /// case list {
+    ///   [..] -> todo
+    /// //^^^^ this matches on all lists so a `_` should be used instead!
+    ///   _ ->
+    /// }
+    /// ```
+    ///
+    DeprecatedListCatchAllPattern { location: SrcSpan },
 }
 
 impl Warning {
@@ -235,6 +247,29 @@ like this: `[item, ..list]`.",
                 location: Some(Location {
                     label: diagnostic::Label {
                         text: Some("This spread should be preceded by a comma".into()),
+                        span: *location,
+                    },
+                    path: path.clone(),
+                    src: src.clone(),
+                    extra_labels: vec![],
+                }),
+            },
+
+            Warning::DeprecatedSyntax {
+                path,
+                src,
+                warning: DeprecatedSyntaxWarning::DeprecatedListCatchAllPattern { location },
+            } => Diagnostic {
+                title: "Deprecated list pattern matching syntax".into(),
+                text: wrap(
+                    "This syntax for pattern matching on lists is deprecated.
+To match on all possible lists, use the `_` catch-all pattern instead.",
+                ),
+                hint: None,
+                level: diagnostic::Level::Warning,
+                location: Some(Location {
+                    label: diagnostic::Label {
+                        text: Some("This can be replaced with `_`".into()),
                         span: *location,
                     },
                     path: path.clone(),
@@ -513,10 +548,15 @@ Hint: You can safely remove it.
                     }),
                 },
 
-                type_::Warning::UnusedVariable { location, name, .. } => Diagnostic {
+                type_::Warning::UnusedVariable {
+                    location,
+                    how_to_ignore,
+                } => Diagnostic {
                     title: "Unused variable".into(),
                     text: "".into(),
-                    hint: Some(format!("You can ignore it with an underscore: `_{name}`.")),
+                    hint: how_to_ignore.as_ref().map(|rewrite_as| {
+                        format!("You can ignore it with an underscore: `{rewrite_as}`.")
+                    }),
                     level: diagnostic::Level::Warning,
                     location: Some(Location {
                         src: src.clone(),

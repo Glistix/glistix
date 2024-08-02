@@ -1,0 +1,70 @@
+---
+source: compiler-core/src/language_server/tests/completion.rs
+expression: "\n/// Hello\npub fn main() {\n  0\n}"
+---
+|
+/// Hello
+pub fn main() {
+  0
+}
+
+
+----- Completion content -----
+[
+    CompletionItem {
+        label: "main",
+        label_details: Some(
+            CompletionItemLabelDetails {
+                detail: None,
+                description: Some(
+                    "app",
+                ),
+            },
+        ),
+        kind: Some(
+            Function,
+        ),
+        detail: Some(
+            "fn() -> Int",
+        ),
+        documentation: Some(
+            MarkupContent(
+                MarkupContent {
+                    kind: Markdown,
+                    value: " Hello\n",
+                },
+            ),
+        ),
+        deprecated: None,
+        preselect: None,
+        sort_text: Some(
+            "2_main",
+        ),
+        filter_text: None,
+        insert_text: None,
+        insert_text_format: None,
+        insert_text_mode: None,
+        text_edit: Some(
+            Edit(
+                TextEdit {
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: 1,
+                            character: 0,
+                        },
+                    },
+                    new_text: "main",
+                },
+            ),
+        ),
+        additional_text_edits: None,
+        command: None,
+        commit_characters: None,
+        data: None,
+        tags: None,
+    },
+]

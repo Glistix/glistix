@@ -1,21 +1,63 @@
+use super::{
+    expression::{ArgumentKind, CallKind},
+    FieldAccessUsage,
+};
 use crate::{
-    ast::{BinOp, SrcSpan, TodoKind},
+    ast::{BinOp, Layer, SrcSpan, TodoKind},
     build::Target,
     type_::Type,
 };
 
 use camino::Utf8PathBuf;
-use std::sync::Arc;
-
-use crate::ast::Layer;
 use ecow::EcoString;
 #[cfg(test)]
 use pretty_assertions::assert_eq;
+use std::sync::Arc;
 
-use super::{
-    expression::{ArgumentKind, CallKind},
-    FieldAccessUsage,
-};
+/// Errors and warnings discovered when compiling a module.
+///
+#[derive(Debug, Eq, PartialEq, Clone, Default)]
+pub struct Problems {
+    errors: Vec<Error>,
+    warnings: Vec<Warning>,
+}
+
+impl Problems {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Sort the warnings and errors by their location.
+    ///
+    pub fn sort(&mut self) {
+        self.errors.sort_by_key(|e| e.start_location());
+        self.warnings.sort_by_key(|w| w.location().start);
+    }
+
+    /// Register an error.
+    ///
+    pub fn error(&mut self, error: Error) {
+        self.errors.push(error)
+    }
+
+    /// Register an warning.
+    ///
+    pub fn warning(&mut self, warning: Warning) {
+        self.warnings.push(warning)
+    }
+
+    /// Take all the errors, leaving an empty vector in its place.
+    ///
+    pub fn take_errors(&mut self) -> Vec<Error> {
+        std::mem::take(&mut self.errors)
+    }
+
+    /// Take all the warnings, leaving an empty vector in its place.
+    ///
+    pub fn take_warnings(&mut self) -> Vec<Warning> {
+        std::mem::take(&mut self.warnings)
+    }
+}
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct UnknownType {
@@ -438,6 +480,20 @@ pub enum Error {
         location: SrcSpan,
         actual_type: Option<Type>,
     },
+
+    /// When the name assigned to a variable or function doesn't follow the gleam
+    /// naming conventions.
+    ///
+    /// For example:
+    ///
+    /// ```gleam
+    /// let myBadName = 42
+    /// ```
+    BadName {
+        location: SrcSpan,
+        kind: Named,
+        name: EcoString,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -452,20 +508,51 @@ pub enum PatternMatchKind {
     Assignment,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EmptyListCheckKind {
     Empty,
     NonEmpty,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LiteralCollectionKind {
     List,
     Tuple,
     Record,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Named {
+    Type,
+    TypeAlias,
+    TypeVariable,
+    CustomTypeVariant,
+    Variable,
+    Argument,
+    Label,
+    Constant,
+    Function,
+    Discard,
+}
+
+impl Named {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Named::Type => "type",
+            Named::TypeAlias => "type alias",
+            Named::TypeVariable => "type variable",
+            Named::CustomTypeVariant => "type variant",
+            Named::Variable => "variable",
+            Named::Argument => "argument",
+            Named::Label => "label",
+            Named::Constant => "constant",
+            Named::Function => "function",
+            Named::Discard => "discard",
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Warning {
     Todo {
         kind: TodoKind,
@@ -533,7 +620,8 @@ pub enum Warning {
 
     UnusedVariable {
         location: SrcSpan,
-        name: EcoString,
+        /// how the variable could be rewritten to be ignored.
+        how_to_ignore: Option<EcoString>,
     },
 
     UnnecessaryDoubleIntNegation {
@@ -669,8 +757,7 @@ pub enum Warning {
     },
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-
+#[derive(Debug, Eq, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub enum PanicPosition {
     /// When the unreachable part is a function argument, this means that one
     /// of the previous arguments must be a panic.
@@ -684,7 +771,7 @@ pub enum PanicPosition {
     PreviousExpression,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub enum TodoOrPanic {
     Todo,
     Panic,
@@ -753,7 +840,8 @@ impl Error {
                 ..
             }
             | Error::UseFnDoesntTakeCallback { location, .. }
-            | Error::UseFnIncorrectArity { location, .. } => location.start,
+            | Error::UseFnIncorrectArity { location, .. }
+            | Error::BadName { location, .. } => location.start,
             Error::UnknownLabels { unknown, .. } => {
                 unknown.iter().map(|(_, s)| s.start).min().unwrap_or(0)
             }
@@ -794,6 +882,46 @@ impl Warning {
             path,
             src,
             warning: self,
+        }
+    }
+
+    fn location(&self) -> SrcSpan {
+        match self {
+            Warning::Todo { location, .. }
+            | Warning::ImplicitlyDiscardedResult { location, .. }
+            | Warning::UnusedLiteral { location, .. }
+            | Warning::UnusedValue { location, .. }
+            | Warning::NoFieldsRecordUpdate { location, .. }
+            | Warning::AllFieldsRecordUpdate { location, .. }
+            | Warning::UnusedType { location, .. }
+            | Warning::UnusedConstructor { location, .. }
+            | Warning::UnusedImportedValue { location, .. }
+            | Warning::UnusedImportedModule { location, .. }
+            | Warning::UnusedImportedModuleAlias { location, .. }
+            | Warning::UnusedPrivateModuleConstant { location, .. }
+            | Warning::UnusedPrivateFunction { location, .. }
+            | Warning::UnusedVariable { location, .. }
+            | Warning::UnnecessaryDoubleIntNegation { location, .. }
+            | Warning::UnnecessaryDoubleBoolNegation { location, .. }
+            | Warning::InefficientEmptyListCheck { location, .. }
+            | Warning::TransitiveDependencyImported { location, .. }
+            | Warning::DeprecatedItem { location, .. }
+            | Warning::UnreachableCaseClause { location, .. }
+            | Warning::CaseMatchOnLiteralCollection { location, .. }
+            | Warning::CaseMatchOnLiteralValue { location, .. }
+            | Warning::OpaqueExternalType { location, .. }
+            | Warning::InternalTypeLeak { location, .. }
+            | Warning::RedundantAssertAssignment { location, .. }
+            | Warning::TodoOrPanicUsedAsFunction { location, .. }
+            | Warning::UnreachableCodeAfterPanic { location, .. }
+            | Warning::RedundantPipeFunctionCapture { location, .. } => *location,
+        }
+    }
+
+    pub(crate) fn is_todo(&self) -> bool {
+        match self {
+            Self::Todo { .. } => true,
+            _ => false,
         }
     }
 }
@@ -920,10 +1048,17 @@ pub fn convert_get_type_constructor_error(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MatchFunTypeError {
-    IncorrectArity { expected: usize, given: usize },
-    NotFn { typ: Arc<Type> },
+    IncorrectArity {
+        expected: usize,
+        given: usize,
+        args: Vec<Arc<Type>>,
+        return_type: Arc<Type>,
+    },
+    NotFn {
+        typ: Arc<Type>,
+    },
 }
 
 pub fn convert_not_fun_error(
@@ -933,14 +1068,17 @@ pub fn convert_not_fun_error(
     call_kind: CallKind,
 ) -> Error {
     match (call_kind, e) {
-        (CallKind::Function, MatchFunTypeError::IncorrectArity { expected, given }) => {
-            Error::IncorrectArity {
-                labels: vec![],
-                location: call_location,
-                expected,
-                given,
-            }
-        }
+        (
+            CallKind::Function,
+            MatchFunTypeError::IncorrectArity {
+                expected, given, ..
+            },
+        ) => Error::IncorrectArity {
+            labels: vec![],
+            location: call_location,
+            expected,
+            given,
+        },
 
         (CallKind::Function, MatchFunTypeError::NotFn { typ }) => Error::NotFn {
             location: fn_location,
@@ -949,7 +1087,9 @@ pub fn convert_not_fun_error(
 
         (
             CallKind::Use { call_location, .. },
-            MatchFunTypeError::IncorrectArity { expected, given },
+            MatchFunTypeError::IncorrectArity {
+                expected, given, ..
+            },
         ) => Error::UseFnIncorrectArity {
             location: call_location,
             expected,

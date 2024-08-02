@@ -14,7 +14,7 @@ pub mod tests;
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 pub use environment::*;
-pub use error::{Error, UnifyErrorSituation, Warning};
+pub use error::{Error, Problems, UnifyErrorSituation, Warning};
 pub(crate) use expression::ExprTyper;
 pub use fields::FieldMap;
 pub use prelude::*;
@@ -45,7 +45,7 @@ pub trait HasType {
     fn type_(&self) -> Arc<Type>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Type {
     /// A nominal (named) type such as `Int`, `Float`, or a programmer defined
     /// custom type such as `Person`. The type can take other types as
@@ -122,7 +122,7 @@ impl Type {
     pub fn return_type(&self) -> Option<Arc<Self>> {
         match self {
             Self::Fn { retrn, .. } => Some(retrn.clone()),
-            Type::Var { type_ } => type_.borrow().return_type(),
+            Self::Var { type_ } => type_.borrow().return_type(),
             _ => None,
         }
     }
@@ -457,6 +457,7 @@ impl ValueConstructorVariant {
                 module: module_name.clone(),
                 documentation: None,
                 location: *location,
+                field_map: None,
             },
 
             Self::ModuleFn {
@@ -464,12 +465,14 @@ impl ValueConstructorVariant {
                 module,
                 location,
                 documentation,
+                field_map,
                 ..
             } => ModuleValueConstructor::Fn {
                 name: name.clone(),
                 module: module.clone(),
                 documentation: documentation.clone(),
                 location: *location,
+                field_map: field_map.clone(),
             },
         }
     }
@@ -556,6 +559,7 @@ pub enum ModuleValueConstructor {
         ///
         module: EcoString,
         name: EcoString,
+        field_map: Option<FieldMap>,
         documentation: Option<EcoString>,
     },
 
@@ -599,7 +603,6 @@ pub struct ModuleInterface {
     pub values: HashMap<EcoString, ValueConstructor>,
     pub accessors: HashMap<EcoString, AccessorsMap>,
     pub unused_imports: Vec<SrcSpan>,
-    pub contains_todo: bool,
     /// Used for mapping to original source locations on disk
     pub line_numbers: LineNumbers,
     /// Used for determining the source path of the module on disk
@@ -608,6 +611,14 @@ pub struct ModuleInterface {
     // importable by other packages but to do so is violating the contract of
     // the package and as such is not recommended.
     pub is_internal: bool,
+    /// Warnings emitted during analysis of this module.
+    pub warnings: Vec<Warning>,
+}
+
+impl ModuleInterface {
+    pub fn contains_todo(&self) -> bool {
+        self.warnings.iter().any(|warning| warning.is_todo())
+    }
 }
 
 /// Information on the constructors of a custom type.
@@ -633,13 +644,13 @@ pub struct TypeVariantConstructors {
 impl TypeVariantConstructors {
     pub(crate) fn new(
         variants: Vec<TypeValueConstructor>,
-        type_parameters: &[EcoString],
+        type_parameters: &[&EcoString],
         hydrator: Hydrator,
     ) -> TypeVariantConstructors {
         let named_types = hydrator.named_type_variables();
         let type_parameters = type_parameters
             .iter()
-            .map(|p| {
+            .map(|&p| {
                 let t = named_types
                     .get(p)
                     .expect("Type parameter not found in hydrator");
@@ -689,10 +700,10 @@ impl ModuleInterface {
             values: Default::default(),
             accessors: Default::default(),
             unused_imports: Default::default(),
-            contains_todo: false,
             is_internal: false,
             line_numbers,
             src_path,
+            warnings: vec![],
         }
     }
 
@@ -774,7 +785,7 @@ impl PatternConstructor {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TypeVar {
     /// Unbound is an unbound variable. It is one specific type but we don't
     /// know what yet in the inference process. It has a unique id which can be used to
@@ -1105,6 +1116,8 @@ fn match_fun_type(
             Err(MatchFunTypeError::IncorrectArity {
                 expected: args.len(),
                 given: arity,
+                args: args.clone(),
+                return_type: retrn.clone(),
             })
         } else {
             Ok((args.clone(), retrn.clone()))

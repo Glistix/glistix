@@ -315,3 +315,147 @@ pub fn main() {
 "#
     );
 }
+
+#[test]
+fn function_call_incorrect_arg_types_fault_tolerance() {
+    assert_module_error!(
+        r#"
+fn add(x: Int, y: Int) {
+  x + y
+}
+
+pub fn main() {
+  add(1.0, 1.0)
+}
+"#
+    );
+}
+
+#[test]
+fn function_call_incorrect_arity_fault_tolerance() {
+    assert_module_error!(
+        r#"
+fn add(x: Int, y: Int) {
+  x + y
+}
+
+pub fn main() {
+  add(1.0)
+}
+"#
+    );
+}
+
+#[test]
+fn function_call_incorrect_arity_with_labels_fault_tolerance() {
+    assert_module_error!(
+        r#"
+fn wibble(wibble arg1: fn() -> Int, wobble arg2: Int) -> Int {
+  arg1() + arg2
+}
+
+pub fn main() {
+  wibble(wobble: "")
+}
+"#
+    );
+}
+
+#[test]
+fn function_call_incorrect_arity_with_label_shorthand_fault_tolerance() {
+    assert_module_error!(
+        r#"
+fn wibble(wibble arg1: fn() -> Int, wobble arg2: Int) -> Int {
+  arg1() + arg2
+}
+
+pub fn main() {
+  let wobble = ""
+  wibble(wobble:)
+}
+"#
+    );
+}
+
+#[test]
+fn function_call_incorrect_arity_with_labels_fault_tolerance2() {
+    assert_module_error!(
+        r#"
+fn wibble(wibble arg1: fn() -> Int, wobble arg2: Int, wabble arg3: Int) -> Int {
+  arg1() + arg2 + arg3
+}
+
+pub fn main() {
+  wibble(fn() {""}, wobble: "")
+}
+"#
+    );
+}
+
+#[test]
+fn function_call_incorrect_arity_with_label_shorthand_fault_tolerance2() {
+    assert_module_error!(
+        r#"
+fn wibble(wibble arg1: fn() -> Int, wobble arg2: Int, wabble arg3: Int) -> Int {
+  arg1() + arg2 + arg3
+}
+
+pub fn main() {
+  let wobble = ""
+  wibble(fn() {""}, wobble:)
+}
+"#
+    );
+}
+
+#[test]
+fn case_clause_pattern_fault_tolerance() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+  let wibble = True
+  case wibble {
+    True -> 0
+    Wibble -> 1
+    Wibble2 -> 2
+    _ -> 3
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn case_clause_guard_fault_tolerance() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+  let wibble = True
+  case wibble {
+    a if a == Wibble -> 0
+    b if b == Wibble -> 0
+    _ -> 1
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn case_clause_then_fault_tolerance() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+  let wibble = True
+  case wibble {
+    True -> {
+      1.0 + 1.0
+    }
+    _ -> {
+      1.0 + 1.0
+    }
+  }
+}
+"#
+    );
+}

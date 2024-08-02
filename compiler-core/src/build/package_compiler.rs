@@ -48,6 +48,7 @@ pub struct PackageCompiler<'a, IO> {
     pub compile_beam_bytecode: bool,
     pub subprocess_stdio: Stdio,
     pub target_support: TargetSupport,
+    pub cached_warnings: CachedWarnings,
 }
 
 impl<'a, IO> PackageCompiler<'a, IO>
@@ -80,6 +81,7 @@ where
             compile_beam_bytecode: true,
             subprocess_stdio: Stdio::Inherit,
             target_support: TargetSupport::NotEnforced,
+            cached_warnings: CachedWarnings::Ignore,
         }
     }
 
@@ -115,6 +117,7 @@ where
             self.ids.clone(),
             self.mode,
             self.root,
+            self.cached_warnings,
             warnings,
             codegen_required,
             &artefact_directory,
@@ -131,6 +134,15 @@ where
 
         // Load the cached modules that have previously been compiled
         for module in loaded.cached.into_iter() {
+            // Emit any cached warnings.
+            // Note that `self.cached_warnings` is set to `Ignore` (such as for
+            // dependency packages) then this field will not be populated.
+            if let Err(e) = self.emit_warnings(warnings, &module) {
+                return e.into();
+            }
+
+            // Register the cached module so its type information etc can be
+            // used for compiling futher modules.
             _ = existing_modules.insert(module.name.clone(), module);
         }
 
@@ -285,6 +297,18 @@ where
                 line_numbers: module.ast.type_info.line_numbers.clone(),
             };
             self.io.write_bytes(&path, &info.to_binary())?;
+
+            // Write warnings.
+            // Dependency packages don't get warnings persisted as the
+            // programmer doesn't want to be told every time about warnings they
+            // cannot fix directly.
+            if self.cached_warnings.should_use() {
+                let name = format!("{}.cache_warnings", &module_name);
+                let path = artefact_dir.join(name);
+                let warnings = &module.ast.type_info.warnings;
+                let data = bincode::serialize(warnings).expect("Serialise warnings");
+                self.io.write_bytes(&path, &data)?;
+            }
         }
         Ok(())
     }
@@ -425,6 +449,23 @@ where
         self.io.write(&path, &module)?;
         let _ = modules_to_compile.insert(name.into());
         tracing::debug!("erlang_entrypoint_written");
+        Ok(())
+    }
+
+    fn emit_warnings(
+        &self,
+        warnings: &WarningEmitter,
+        module: &type_::ModuleInterface,
+    ) -> Result<()> {
+        for warning in &module.warnings {
+            let src = self.io.read(&module.src_path)?;
+            warnings.emit(Warning::Type {
+                path: module.src_path.clone(),
+                src: src.into(),
+                warning: warning.clone(),
+            });
+        }
+
         Ok(())
     }
 }
@@ -651,4 +692,18 @@ pub(crate) struct UncompiledModule {
 #[template(path = "gleam@@main.erl", escape = "none")]
 struct ErlangEntrypointModule<'a> {
     application: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum CachedWarnings {
+    Use,
+    Ignore,
+}
+impl CachedWarnings {
+    pub(crate) fn should_use(&self) -> bool {
+        match self {
+            CachedWarnings::Use => true,
+            CachedWarnings::Ignore => false,
+        }
+    }
 }

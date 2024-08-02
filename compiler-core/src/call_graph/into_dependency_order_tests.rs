@@ -15,12 +15,13 @@ fn parse_and_order(
     let functions = functions
         .iter()
         .map(|(name, arguments, src)| Function {
-            name: EcoString::from(*name),
+            name: Some((SrcSpan::default(), EcoString::from(*name))),
             arguments: arguments
                 .iter()
                 .map(|name| Arg {
                     names: crate::ast::ArgNames::Named {
                         name: EcoString::from(*name),
+                        location: Default::default(),
                     },
                     location: Default::default(),
                     annotation: None,
@@ -58,6 +59,7 @@ fn parse_and_order(
                 location: Default::default(),
                 publicity: Publicity::Public,
                 name: EcoString::from(*name),
+                name_location: SrcSpan::default(),
                 annotation: None,
                 value: Box::from(const_value),
                 implementations: Implementations {
@@ -81,7 +83,7 @@ fn parse_and_order(
             level
                 .into_iter()
                 .map(|function| match function {
-                    CallGraphNode::Function(f) => f.name,
+                    CallGraphNode::Function(f) => f.name.map(|(_, name)| name).unwrap(),
                     CallGraphNode::ModuleConstant(c) => c.name,
                 })
                 .collect_vec()

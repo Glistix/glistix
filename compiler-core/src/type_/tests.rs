@@ -100,6 +100,14 @@ macro_rules! assert_module_error {
 }
 
 #[macro_export]
+macro_rules! assert_internal_module_error {
+    ($src:expr) => {
+        let output = $crate::type_::tests::internal_module_error($src, vec![]);
+        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
+    };
+}
+
+#[macro_export]
 macro_rules! assert_js_module_error {
     ($src:expr) => {
         let output = $crate::type_::tests::module_error_with_target(
@@ -250,7 +258,7 @@ fn compile_statement_sequence(
     // to have one place where we create all this required state for use in each
     // place.
     let _ = modules.insert(PRELUDE_MODULE_NAME.into(), build_prelude(&ids));
-    let errors = &mut vec![];
+    let mut problems = Problems::new();
     let res = ExprTyper::new(
         &mut Environment::new(
             ids,
@@ -258,7 +266,6 @@ fn compile_statement_sequence(
             "themodule".into(),
             Target::Erlang,
             &modules,
-            &TypeWarningEmitter::null(),
             TargetSupport::Enforced,
         ),
         FunctionDefinition {
@@ -267,10 +274,10 @@ fn compile_statement_sequence(
             has_javascript_external: false,
             has_nix_external: false,
         },
-        errors,
+        &mut problems,
     )
     .infer_statements(ast);
-    match Vec1::try_from_vec(errors.to_vec()) {
+    match Vec1::try_from_vec(problems.take_errors()) {
         Err(_) => Ok(res),
         Ok(errors) => Err(errors),
     }
@@ -447,6 +454,32 @@ pub fn module_error_with_target(
     error.pretty_string()
 }
 
+pub fn internal_module_error(src: &str, deps: Vec<DependencyModule<'_>>) -> String {
+    internal_module_error_with_target(src, deps, Target::Erlang)
+}
+
+pub fn internal_module_error_with_target(
+    src: &str,
+    deps: Vec<DependencyModule<'_>>,
+    target: Target,
+) -> String {
+    let error = compile_module_with_opts(
+        "thepackage/internal/themodule",
+        src,
+        None,
+        deps,
+        target,
+        TargetSupport::NotEnforced,
+    )
+    .expect_err("should infer an error");
+    let error = Error::Type {
+        src: src.into(),
+        path: Utf8PathBuf::from("/src/one/two.gleam"),
+        errors: Vec1::try_from_vec(error).expect("should have at least one error"),
+    };
+    error.pretty_string()
+}
+
 pub fn syntax_error(src: &str) -> String {
     let error =
         crate::parse::parse_module(Utf8PathBuf::from("test/path"), src, &WarningEmitter::null())
@@ -501,19 +534,19 @@ fn field_map_reorder_test() {
         fields: HashMap::new(),
         args: vec![
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("1"),
             },
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("2"),
             },
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("3"),
@@ -522,19 +555,19 @@ fn field_map_reorder_test() {
         expected_result: Ok(()),
         expected_args: vec![
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("1"),
             },
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("2"),
             },
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("3"),
@@ -548,19 +581,19 @@ fn field_map_reorder_test() {
         fields: [("last".into(), 2)].into(),
         args: vec![
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("1"),
             },
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("2"),
             },
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: Some("last".into()),
                 value: int("3"),
@@ -569,19 +602,19 @@ fn field_map_reorder_test() {
         expected_result: Ok(()),
         expected_args: vec![
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("1"),
             },
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: None,
                 value: int("2"),
             },
             CallArg {
-                implicit: false,
+                implicit: None,
                 location: Default::default(),
                 label: Some("last".into()),
                 value: int("3"),
@@ -626,7 +659,7 @@ fn infer_module_type_retention_test() {
     assert_eq!(
         module.type_info,
         ModuleInterface {
-            contains_todo: false,
+            warnings: vec![],
             origin: Origin::Src,
             package: "thepackage".into(),
             name: "ok".into(),
@@ -1252,6 +1285,18 @@ fn infer_module_test26() {
     assert_module_infer!(
         "pub type Tup(a, b, c) { Tup(first: a, second: b, third: c) }
          pub fn third(t) { let Tup(_ , _, third: a) = t a }",
+        vec![
+            ("Tup", "fn(a, b, c) -> Tup(a, b, c)"),
+            ("third", "fn(Tup(a, b, c)) -> c"),
+        ],
+    );
+}
+
+#[test]
+fn infer_label_shorthand_pattern() {
+    assert_module_infer!(
+        "pub type Tup(a, b, c) { Tup(first: a, second: b, third: c) }
+         pub fn third(t) { let Tup(_, _, third:) = t third }",
         vec![
             ("Tup", "fn(a, b, c) -> Tup(a, b, c)"),
             ("third", "fn(Tup(a, b, c)) -> c"),
@@ -2019,15 +2064,101 @@ fn block_maths() {
 }
 
 #[test]
-fn contains_todo_true() {
-    let module = compile_module("test_module", "pub fn main() { 1 }", None, vec![]).unwrap();
-    assert!(!module.type_info.contains_todo);
+fn infer_label_shorthand_in_call_arg() {
+    assert_module_infer!(
+        "
+    pub fn main() {
+        let arg1 = 1
+        let arg2 = 1.0
+        let arg3 = False
+        wibble(arg2:, arg3:, arg1:)
+    }
+
+    pub fn wibble(arg1 arg1: Int, arg2 arg2: Float, arg3 arg3: Bool) { Nil }
+        ",
+        vec![
+            ("main", "fn() -> Nil"),
+            ("wibble", "fn(Int, Float, Bool) -> Nil")
+        ],
+    );
 }
 
 #[test]
-fn contains_todo_false() {
-    let module = compile_module("test_module", "pub fn main() { todo }", None, vec![]).unwrap();
-    assert!(module.type_info.contains_todo);
+fn infer_label_shorthand_in_constructor_arg() {
+    assert_module_infer!(
+        "
+    pub type Wibble { Wibble(arg1: Int, arg2: Bool, arg3: Float) }
+    pub fn main() {
+        let arg1 = 1
+        let arg2 = True
+        let arg3 = 1.0
+        Wibble(arg2:, arg3:, arg1:)
+    }
+",
+        vec![
+            ("Wibble", "fn(Int, Bool, Float) -> Wibble"),
+            ("main", "fn() -> Wibble"),
+        ],
+    );
+}
+
+#[test]
+fn infer_label_shorthand_in_constant_constructor_arg() {
+    assert_module_infer!(
+        "
+    pub type Wibble { Wibble(arg1: Int, arg2: Bool, arg3: Float) }
+    pub const arg1 = 1
+    pub const arg2 = True
+    pub const arg3 = 1.0
+
+    pub const wibble = Wibble(arg2:, arg3:, arg1:)
+",
+        vec![
+            ("Wibble", "fn(Int, Bool, Float) -> Wibble"),
+            ("arg1", "Int"),
+            ("arg2", "Bool"),
+            ("arg3", "Float"),
+            ("wibble", "Wibble")
+        ],
+    );
+}
+
+#[test]
+fn infer_label_shorthand_in_pattern_arg() {
+    assert_module_infer!(
+        "
+    pub type Wibble { Wibble(arg1: Int, arg2: Bool, arg3: Int) }
+    pub fn main() {
+        case Wibble(1, True, 2) {
+           Wibble(arg2:, arg3:, arg1:) if arg2 -> arg1 * arg3
+           _ -> 0
+        }
+    }
+",
+        vec![
+            ("Wibble", "fn(Int, Bool, Int) -> Wibble"),
+            ("main", "fn() -> Int")
+        ],
+    );
+}
+
+#[test]
+fn infer_label_shorthand_in_record_update_arg() {
+    assert_module_infer!(
+        "
+    pub type Wibble { Wibble(arg1: Int, arg2: Bool, arg3: Float) }
+    pub fn main() {
+        let wibble = Wibble(1, True, 2.0)
+        let arg3 = 3.0
+        let arg2 = False
+        Wibble(..wibble, arg3:, arg2:)
+    }
+",
+        vec![
+            ("Wibble", "fn(Int, Bool, Float) -> Wibble"),
+            ("main", "fn() -> Wibble")
+        ],
+    );
 }
 
 #[test]

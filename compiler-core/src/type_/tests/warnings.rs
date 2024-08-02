@@ -1969,3 +1969,48 @@ fn deprecated_list_pattern_syntax() {
         "#
     );
 }
+
+// https://github.com/gleam-lang/gleam/issues/3383
+#[test]
+fn deprecated_list_pattern_syntax_1() {
+    assert_warning!(
+        r#"
+    pub fn main() {
+      let letters = ["b", "c"]
+      case letters {
+        [] -> []
+        [..] -> []
+      }
+    }
+        "#
+    );
+}
+
+#[test]
+fn unused_label_shorthand_pattern_arg() {
+    assert_warning!(
+        r#"
+pub type Wibble { Wibble(arg1: Int, arg2: Bool ) }
+
+pub fn main() {
+  let Wibble(arg1:, arg2:) = Wibble(1, True)
+  arg1
+}
+"#
+    );
+}
+
+#[test]
+fn unused_label_shorthand_pattern_arg_shadowing() {
+    assert_warning!(
+        r#"
+pub type Wibble { Wibble(arg1: Int, arg2: Bool ) }
+
+pub fn main() {
+  let Wibble(arg1:, arg2:) = Wibble(1, True)
+  let arg1 = False
+  arg1
+}
+"#
+    );
+}

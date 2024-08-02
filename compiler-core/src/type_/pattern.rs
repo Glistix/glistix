@@ -6,8 +6,8 @@ use itertools::Itertools;
 ///
 use super::*;
 use crate::{
-    analyse::Inferred,
-    ast::{AssignName, Layer, UntypedPatternBitArraySegment},
+    analyse::{name::check_name_case, Inferred},
+    ast::{AssignName, ImplicitCallArgOrigin, Layer, UntypedPatternBitArraySegment},
 };
 use std::sync::Arc;
 
@@ -16,6 +16,7 @@ pub struct PatternTyper<'a, 'b> {
     hydrator: &'a Hydrator,
     mode: PatternMode,
     initial_pattern_vars: HashSet<EcoString>,
+    problems: &'a mut Problems,
 }
 
 enum PatternMode {
@@ -24,12 +25,17 @@ enum PatternMode {
 }
 
 impl<'a, 'b> PatternTyper<'a, 'b> {
-    pub fn new(environment: &'a mut Environment<'b>, hydrator: &'a Hydrator) -> Self {
+    pub fn new(
+        environment: &'a mut Environment<'b>,
+        hydrator: &'a Hydrator,
+        problems: &'a mut Problems,
+    ) -> Self {
         Self {
             environment,
             hydrator,
             mode: PatternMode::Initial,
             initial_pattern_vars: HashSet::new(),
+            problems,
         }
     }
 
@@ -39,11 +45,19 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
         typ: Arc<Type>,
         location: SrcSpan,
     ) -> Result<(), UnifyError> {
+        self.check_name_case(location, &EcoString::from(name), Named::Variable);
+
         match &mut self.mode {
             PatternMode::Initial => {
                 // Register usage for the unused variable detection
-                self.environment
-                    .init_usage(name.into(), EntityKind::Variable, location);
+                self.environment.init_usage(
+                    name.into(),
+                    EntityKind::Variable {
+                        how_to_ignore: Some(format!("_{name}").into()),
+                    },
+                    location,
+                    self.problems,
+                );
                 // Ensure there are no duplicate variable names in the pattern
                 if self.initial_pattern_vars.contains(name) {
                     return Err(UnifyError::DuplicateVarInPattern { name: name.into() });
@@ -207,16 +221,20 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
         type_: Arc<Type>,
     ) -> Result<TypedPattern, Error> {
         match pattern {
-            Pattern::Discard { name, location, .. } => Ok(Pattern::Discard {
-                type_,
-                name,
-                location,
-            }),
+            Pattern::Discard { name, location, .. } => {
+                self.check_name_case(location, &name, Named::Discard);
+                Ok(Pattern::Discard {
+                    type_,
+                    name,
+                    location,
+                })
+            }
             Pattern::Invalid { location, .. } => Ok(Pattern::Invalid { type_, location }),
 
             Pattern::Variable { name, location, .. } => {
                 self.insert_variable(&name, type_.clone(), location)
                     .map_err(|e| convert_unify_error(e, location))?;
+
                 Ok(Pattern::Variable {
                     type_,
                     name,
@@ -274,6 +292,8 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 if let AssignName::Variable(right) = &right_side_assignment {
                     self.insert_variable(right.as_ref(), string(), right_location)
                         .map_err(|e| convert_unify_error(e, location))?;
+                } else if let AssignName::Discard(right) = &right_side_assignment {
+                    self.check_name_case(right_location, right, Named::Discard);
                 };
 
                 Ok(Pattern::StringPrefix {
@@ -510,7 +530,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                                     },
                                     location: spread_location,
                                     label: missing_labels.next(),
-                                    implicit: true,
+                                    implicit: Some(ImplicitCallArgOrigin::PatternFieldSpread),
                                 };
 
                                 pattern_args.insert(index_of_first_labelled_arg, new_call_arg);
@@ -535,7 +555,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                                         },
                                         location: spread_location,
                                         label: None,
-                                        implicit: true,
+                                        implicit: Some(ImplicitCallArgOrigin::PatternFieldSpread),
                                     });
                                 }
                             };
@@ -572,7 +592,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 match constructor_deprecation {
                     Deprecation::NotDeprecated => {}
                     Deprecation::Deprecated { message } => {
-                        self.environment.warnings.emit(Warning::DeprecatedItem {
+                        self.problems.warning(Warning::DeprecatedItem {
                             location,
                             message: message.clone(),
                             layer: Layer::Value,
@@ -652,6 +672,12 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                     _ => panic!("Unexpected constructor type for a constructor pattern."),
                 }
             }
+        }
+    }
+
+    fn check_name_case(&mut self, location: SrcSpan, name: &EcoString, kind: Named) {
+        if let Err(error) = check_name_case(location, name, kind) {
+            self.problems.error(error);
         }
     }
 }
