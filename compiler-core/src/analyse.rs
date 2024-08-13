@@ -922,7 +922,8 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
 
         let mut constructors_data = vec![];
 
-        for (index, constructor) in constructors.iter().enumerate() {
+        let mut index = 0;
+        for constructor in constructors.iter() {
             if let Err(error) = assert_unique_name(
                 &mut self.value_names,
                 &constructor.name,
@@ -982,6 +983,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                 module: self.module_name.clone(),
                 constructor_index: index as u16,
             };
+            index += 1;
 
             // If the contructor belongs to an opaque type then it's going to be
             // considered as private.
