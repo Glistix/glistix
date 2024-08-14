@@ -958,11 +958,18 @@ where
                 end: pattern.location().end,
             },
         })?;
-        let value = self.parse_expression_inner(true)?.ok_or(ParseError {
-            error: ParseErrorType::ExpectedValue,
-            location: SrcSpan {
-                start: eq_s,
-                end: eq_e,
+        let value = self.parse_expression_inner(true)?.ok_or(match self.tok0 {
+            Some((start, Token::DiscardName { .. }, end)) => ParseError {
+                error: ParseErrorType::IncorrectName,
+                location: SrcSpan { start, end },
+            },
+
+            _ => ParseError {
+                error: ParseErrorType::ExpectedValue,
+                location: SrcSpan {
+                    start: eq_s,
+                    end: eq_e,
+                },
             },
         })?;
         Ok(Statement::Assignment(Assignment {
@@ -1394,13 +1401,18 @@ where
                     then,
                 }))
             } else {
-                parse_error(
-                    ParseErrorType::ExpectedExpr,
-                    SrcSpan {
-                        start: arr_s,
-                        end: arr_e,
-                    },
-                )
+                match self.tok0 {
+                    Some((start, Token::DiscardName { .. }, end)) => {
+                        parse_error(ParseErrorType::IncorrectName, SrcSpan { start, end })
+                    }
+                    _ => parse_error(
+                        ParseErrorType::ExpectedExpr,
+                        SrcSpan {
+                            start: arr_s,
+                            end: arr_e,
+                        },
+                    ),
+                }
             }
         } else {
             Ok(None)
