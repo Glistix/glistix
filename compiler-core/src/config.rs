@@ -759,7 +759,7 @@ pub enum Repository {
         user: String,
         repo: String,
     },
-    CodeBerg {
+    Codeberg {
         user: String,
         repo: String,
     },
@@ -788,7 +788,7 @@ impl Repository {
             Repository::BitBucket { repo, user } => {
                 Some(format!("https://bitbucket.com/{user}/{repo}"))
             }
-            Repository::CodeBerg { repo, user } => {
+            Repository::Codeberg { repo, user } => {
                 Some(format!("https://codeberg.org/{user}/{repo}"))
             }
             Repository::SourceHut { repo, user } => {
