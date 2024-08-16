@@ -185,7 +185,7 @@ struct Constant {
     record :group {
       args @6 :List(Constant);
       tag @7 :Text;
-      typ @8 :Type;
+      type @8 :Type;
     }
 
     bitArray @9 :List(BitArraySegment);
@@ -193,7 +193,7 @@ struct Constant {
     var :group {
       module @10 :Text;
       name @11 :Text;
-      typ @12 :Type;
+      type @12 :Type;
       constructor @13 :ValueConstructor;
     }
 

@@ -2656,7 +2656,7 @@ where
                 Ok(Some(Constant::List {
                     elements,
                     location: SrcSpan { start, end },
-                    typ: (),
+                    type_: (),
                 }))
             }
             // BitArray
@@ -2712,7 +2712,7 @@ where
                                 module: Some(name),
                                 name: end_name,
                                 constructor: None,
-                                typ: (),
+                                type_: (),
                             })),
                         }
                     }
@@ -2746,7 +2746,7 @@ where
                         module: None,
                         name,
                         constructor: None,
-                        typ: (),
+                        type_: (),
                     })),
                 }
             }
@@ -2816,7 +2816,7 @@ where
                 name,
                 args,
                 tag: (),
-                typ: (),
+                type_: (),
                 field_map: None,
             }))
         } else {
@@ -2826,7 +2826,7 @@ where
                 name,
                 args: vec![],
                 tag: (),
-                typ: (),
+                type_: (),
                 field_map: None,
             }))
         }
@@ -2883,7 +2883,7 @@ where
                     constructor: None,
                     module: None,
                     name: label,
-                    typ: (),
+                    type_: (),
                 },
             }))
         } else {

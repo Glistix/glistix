@@ -220,7 +220,7 @@ wibble}"#,
     let int1 = TypedExpr::Int {
         location: SrcSpan { start: 14, end: 15 },
         value: "1".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     let var = TypedExpr::Var {
@@ -262,17 +262,17 @@ fn find_node_list() {
 
     let int1 = TypedExpr::Int {
         location: SrcSpan { start: 1, end: 2 },
-        typ: type_::int(),
+        type_: type_::int(),
         value: "1".into(),
     };
     let int2 = TypedExpr::Int {
         location: SrcSpan { start: 4, end: 5 },
-        typ: type_::int(),
+        type_: type_::int(),
         value: "2".into(),
     };
     let int3 = TypedExpr::Int {
         location: SrcSpan { start: 7, end: 8 },
-        typ: type_::int(),
+        type_: type_::int(),
         value: "3".into(),
     };
 
@@ -295,17 +295,17 @@ fn find_node_tuple() {
 
     let int1 = TypedExpr::Int {
         location: SrcSpan { start: 2, end: 3 },
-        typ: type_::int(),
+        type_: type_::int(),
         value: "1".into(),
     };
     let int2 = TypedExpr::Int {
         location: SrcSpan { start: 5, end: 6 },
-        typ: type_::int(),
+        type_: type_::int(),
         value: "2".into(),
     };
     let int3 = TypedExpr::Int {
         location: SrcSpan { start: 8, end: 9 },
-        typ: type_::int(),
+        type_: type_::int(),
         value: "3".into(),
     };
 
@@ -342,7 +342,7 @@ fn find_node_tuple_index() {
     let int = TypedExpr::Int {
         location: SrcSpan { start: 2, end: 3 },
         value: "1".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     assert_eq!(expr.find_node(2), Some(Located::Expression(&int)));
@@ -354,7 +354,7 @@ fn find_node_tuple_index() {
 fn find_node_module_select() {
     let expr = TypedExpr::ModuleSelect {
         location: SrcSpan { start: 1, end: 3 },
-        typ: type_::int(),
+        type_: type_::int(),
         label: "label".into(),
         module_name: "name".into(),
         module_alias: "alias".into(),
@@ -381,7 +381,7 @@ fn find_node_fn() {
     let int = TypedExpr::Int {
         location: SrcSpan { start: 7, end: 8 },
         value: "1".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     assert_eq!(expr.find_node(0), Some(Located::Expression(expr)));
@@ -400,19 +400,19 @@ fn find_node_call() {
     let retrn = TypedExpr::Int {
         location: SrcSpan { start: 11, end: 12 },
         value: "1".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     let arg1 = TypedExpr::Int {
         location: SrcSpan { start: 15, end: 16 },
         value: "1".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     let arg2 = TypedExpr::Int {
         location: SrcSpan { start: 18, end: 19 },
         value: "2".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     assert_eq!(expr.find_node(11), Some(Located::Expression(&retrn)));
@@ -432,13 +432,13 @@ fn find_node_record_access() {
     let string = TypedExpr::String {
         location: SrcSpan { start: 4, end: 10 },
         value: "Nubi".into(),
-        typ: type_::string(),
+        type_: type_::string(),
     };
 
     let int = TypedExpr::Int {
         location: SrcSpan { start: 12, end: 13 },
         value: "3".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     assert_eq!(access.find_node(4), Some(Located::Expression(&string)));
@@ -457,7 +457,7 @@ fn find_node_record_update() {
     let int = TypedExpr::Int {
         location: SrcSpan { start: 27, end: 28 },
         value: "4".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     assert_eq!(update.find_node(0), Some(Located::Expression(update)));
@@ -481,19 +481,19 @@ case 1, 2 {
     let int1 = TypedExpr::Int {
         location: SrcSpan { start: 6, end: 7 },
         value: "1".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     let int2 = TypedExpr::Int {
         location: SrcSpan { start: 9, end: 10 },
         value: "2".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     let int3 = TypedExpr::Int {
         location: SrcSpan { start: 23, end: 24 },
         value: "3".into(),
-        typ: type_::int(),
+        type_: type_::int(),
     };
 
     assert_eq!(case.find_node(1), Some(Located::Expression(case)));
