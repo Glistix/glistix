@@ -18,6 +18,7 @@ use crate::{
     config::PackageConfig,
     dep_tree,
     line_numbers::LineNumbers,
+    parse::SpannedString,
     type_::{
         self,
         environment::*,
@@ -1197,7 +1198,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
 
     fn make_type_vars(
         &mut self,
-        args: &[(SrcSpan, EcoString)],
+        args: &[SpannedString],
         hydrator: &mut Hydrator,
         environment: &mut Environment<'_>,
     ) -> Vec<Arc<Type>> {
