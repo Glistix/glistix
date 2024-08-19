@@ -98,6 +98,12 @@ impl Target {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Compile {
+    All,
+    DepsOnly,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Codegen {
     All,
     DepsOnly,
