@@ -769,4 +769,11 @@ impl WarningEmitterIO for ConsoleWarningEmitter {
             .print(&buffer)
             .expect("Writing warning to stderr");
     }
+
+    fn new_line(&self) {
+        let buffer_writer = crate::cli::stderr_buffer_writer();
+        let mut buffer = buffer_writer.buffer();
+
+        let _ = writeln!(buffer);
+    }
 }

@@ -172,6 +172,8 @@ pub fn parse_module(
         });
     }
 
+    warnings.new_line();
+
     Ok(parsed)
 }
 
