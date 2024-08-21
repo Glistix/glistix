@@ -2399,7 +2399,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
     fn infer_value_constructor(
         &mut self,
-        module: &Option<EcoString>,
+        module: &Option<(EcoString, SrcSpan)>,
         name: &EcoString,
         location: &SrcSpan,
     ) -> Result<ValueConstructor, Error> {
@@ -2419,13 +2419,13 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             }
 
             // Look in an imported module for a binding with this name
-            Some(module_name) => {
+            Some((module_name, module_location)) => {
                 let (_, module) = &self
                     .environment
                     .imported_modules
                     .get(module_name)
                     .ok_or_else(|| Error::UnknownModule {
-                        location: *location,
+                        location: *module_location,
                         name: module_name.clone(),
                         suggestions: self
                             .environment
@@ -2533,7 +2533,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 ..
             } if args.is_empty() => {
                 // Register the module as having been used if it was imported
-                if let Some(ref module) = &module {
+                if let Some((module, _)) = &module {
                     _ = self.environment.unused_modules.remove(module);
                     _ = self.environment.unused_module_aliases.remove(module);
                 }
@@ -2578,7 +2578,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 ..
             } => {
                 // Register the module as having been used if it was imported
-                if let Some(ref module) = &module {
+                if let Some((module, _)) = &module {
                     _ = self.environment.unused_modules.remove(module);
                     _ = self.environment.unused_module_aliases.remove(module);
                 }
@@ -2608,7 +2608,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 // TODO: resvisit this. It is rather awkward at present how we
                 // have to convert to this other data structure.
                 let fun = match &module {
-                    Some(module_alias) => {
+                    Some((module_alias, _)) => {
                         let type_ = Arc::clone(&constructor.type_);
                         let module_name = self
                             .environment
@@ -2705,7 +2705,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 ..
             } => {
                 // Register the module as having been used if it was imported
-                if let Some(ref module) = &module {
+                if let Some((module, _)) = &module {
                     _ = self.environment.unused_modules.remove(module);
                     _ = self.environment.unused_module_aliases.remove(module);
                 }

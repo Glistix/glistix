@@ -469,7 +469,7 @@ impl<'comments> Formatter<'comments> {
             Constant::Record {
                 name,
                 args,
-                module: Some(m),
+                module: Some((m, _)),
                 ..
             } if args.is_empty() => m.to_doc().append(".").append(name.as_str()),
 
@@ -489,7 +489,7 @@ impl<'comments> Formatter<'comments> {
             Constant::Record {
                 name,
                 args,
-                module: Some(m),
+                module: Some((m, _)),
                 location,
                 ..
             } => {
@@ -507,7 +507,7 @@ impl<'comments> Formatter<'comments> {
 
             Constant::Var {
                 name,
-                module: Some(module),
+                module: Some((module, _)),
                 ..
             } => docvec![module, ".", name],
 
@@ -649,14 +649,14 @@ impl<'comments> Formatter<'comments> {
 
     fn type_ast_constructor<'a>(
         &mut self,
-        module: &'a Option<EcoString>,
+        module: &'a Option<(EcoString, SrcSpan)>,
         name: &'a str,
         args: &'a [TypeAst],
         location: &SrcSpan,
     ) -> Document<'a> {
         let head = module
             .as_ref()
-            .map(|qualifier| qualifier.to_doc().append(".").append(name))
+            .map(|(qualifier, _)| qualifier.to_doc().append(".").append(name))
             .unwrap_or_else(|| name.to_doc());
 
         if args.is_empty() {
