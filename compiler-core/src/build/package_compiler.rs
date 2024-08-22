@@ -481,8 +481,6 @@ where
             });
         }
 
-        warnings.new_line();
-
         Ok(())
     }
 }
