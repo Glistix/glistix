@@ -1,7 +1,17 @@
 ---
 source: compiler-core/src/language_server/tests/completion.rs
-expression: "completion_at_default_position(TestProject::for_source(code))"
+expression: "\npub type Direction {\n  /// Hello\n  Left\n  /// Goodbye\n  Right\n}\n"
 ---
+|
+pub type Direction {
+  /// Hello
+  Left
+  /// Goodbye
+  Right
+}
+
+
+----- Completion content -----
 [
     CompletionItem {
         label: "Left",
@@ -29,7 +39,9 @@ expression: "completion_at_default_position(TestProject::for_source(code))"
         ),
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "2_Left",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -83,7 +95,9 @@ expression: "completion_at_default_position(TestProject::for_source(code))"
         ),
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "2_Right",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,

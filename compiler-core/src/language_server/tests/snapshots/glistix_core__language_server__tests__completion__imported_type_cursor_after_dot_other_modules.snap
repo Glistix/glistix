@@ -1,7 +1,17 @@
 ---
 source: compiler-core/src/language_server/tests/completion.rs
-expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n            dep).add_module(\"other\", other), Position::new(3, 12))"
+expression: "import dep\n\npub fn wibble(\n  _: dep.Zoo,\n) -> Nil {\n  Nil\n}\n"
 ---
+import dep
+
+pub fn wibble(
+  _: dep.Zoo|,
+) -> Nil {
+  Nil
+}
+
+
+----- Completion content -----
 [
     CompletionItem {
         label: "BitArray",
@@ -15,7 +25,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_BitArray",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -39,7 +51,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Bool",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -63,7 +77,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Float",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -87,7 +103,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Int",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -111,7 +129,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_List",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -135,7 +155,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Nil",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -159,7 +181,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Result",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -183,7 +207,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_String",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -207,7 +233,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_UtfCodepoint",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -231,7 +259,9 @@ expression: "completion(TestProject::for_source(code).add_module(\"dep\",\n     
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "3_dep.Zoo",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,

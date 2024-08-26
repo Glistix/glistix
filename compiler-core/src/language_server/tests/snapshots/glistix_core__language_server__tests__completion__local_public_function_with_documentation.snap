@@ -1,7 +1,15 @@
 ---
 source: compiler-core/src/language_server/tests/completion.rs
-expression: "completion_at_default_position(TestProject::for_source(code))"
+expression: "\n/// Hello\npub fn main() {\n  0\n}"
 ---
+|
+/// Hello
+pub fn main() {
+  0
+}
+
+
+----- Completion content -----
 [
     CompletionItem {
         label: "main",
@@ -29,7 +37,9 @@ expression: "completion_at_default_position(TestProject::for_source(code))"
         ),
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "2_main",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
