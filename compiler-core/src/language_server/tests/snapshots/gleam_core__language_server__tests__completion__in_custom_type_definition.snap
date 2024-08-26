@@ -1,9 +1,0 @@
----
-source: compiler-core/src/language_server/tests/completion.rs
-expression: import dep
----
-|import dep
-
-
------ Completion content -----
-[]
