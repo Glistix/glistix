@@ -214,15 +214,19 @@ impl<'module> Generator<'module> {
         &mut self,
         function: &'a TypedFunction,
     ) -> Option<Result<ModuleDeclaration<'a>, Error>> {
+        let (_, name) = function
+            .name
+            .as_ref()
+            .expect("A module's function must be named");
         let mut generator = expression::Generator::new(
             self.module,
             self.line_numbers,
-            Some(function.name.clone()),
+            Some(name.clone()),
             self.module_scope.clone(),
             &mut self.tracker,
         );
 
-        let name = maybe_escape_identifier_doc(function.name.as_ref());
+        let name = maybe_escape_identifier_doc(name.as_ref());
 
         // A module-level function, in Nix, will have the exact same syntax as a lambda function.
         let def_body = match generator.fn_(function.arguments.as_slice(), &function.body) {
@@ -279,7 +283,7 @@ impl<'module> Generator<'module> {
         fn parameter((i, arg): (usize, &TypedRecordConstructorArg)) -> Document<'_> {
             arg.label
                 .as_ref()
-                .map(|s| maybe_escape_identifier_doc(s))
+                .map(|(_, s)| maybe_escape_identifier_doc(s))
                 .unwrap_or_else(|| Document::String(format!("x{i}")))
         }
 
@@ -313,7 +317,9 @@ impl<'module> Generator<'module> {
             .iter()
             .enumerate()
             .partition::<Vec<_>, _>(|(_, arg)| {
-                arg.label.as_deref().is_some_and(is_usable_nix_identifier)
+                arg.label
+                    .as_ref()
+                    .is_some_and(|(_, l)| is_usable_nix_identifier(l))
             });
 
         let inherited_fields = if inherited_fields.is_empty() {
@@ -322,9 +328,11 @@ impl<'module> Generator<'module> {
             docvec![
                 break_("", " "),
                 syntax::inherit(inherited_fields.iter().map(|(_, arg)| {
-                    arg.label
+                    (&arg
+                        .label
                         .as_ref()
                         .expect("presence of label should already have been checked")
+                        .1)
                         .to_doc()
                 }))
             ]
@@ -332,7 +340,7 @@ impl<'module> Generator<'module> {
 
         let other_fields = concat(other_fields.iter().map(|(i, arg)| {
             let parameter = parameter((*i, arg));
-            let assignment = if let Some(label) = &arg.label {
+            let assignment = if let Some((_, label)) = &arg.label {
                 // Add "quotes" around attribute name if it would be a keyword.
                 // The quotes are needed on declaration site and also on field
                 // access, but the underlying attribute name isn't changed.
@@ -369,8 +377,15 @@ impl<'module> Generator<'module> {
     fn register_module_definitions_in_scope(&mut self) {
         for statement in self.module.definitions.iter() {
             match statement {
-                Definition::ModuleConstant(ModuleConstant { name, .. })
-                | Definition::Function(Function { name, .. }) => self.register_in_scope(name),
+                Definition::ModuleConstant(ModuleConstant { name, .. }) => {
+                    self.register_in_scope(name)
+                }
+
+                Definition::Function(Function { name, .. }) => self.register_in_scope(
+                    name.as_ref()
+                        .map(|(_, name)| name)
+                        .expect("Function in a definition must be named"),
+                ),
 
                 Definition::Import(Import {
                     unqualified_values: unqualified,
@@ -404,7 +419,7 @@ impl<'module> Generator<'module> {
                 }
 
                 Definition::Function(Function {
-                    name,
+                    name: Some((_, name)),
                     publicity,
                     external_nix: Some((module, function)),
                     ..
