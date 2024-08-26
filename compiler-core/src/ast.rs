@@ -158,7 +158,7 @@ impl<A> Arg<A> {
 
     pub fn is_capture_hole(&self) -> bool {
         match &self.names {
-            ArgNames::Named { name } if name == CAPTURE_VARIABLE => true,
+            ArgNames::Named { name, .. } if name == CAPTURE_VARIABLE => true,
             _ => false,
         }
     }
@@ -176,10 +176,26 @@ impl TypedArg {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArgNames {
-    Discard { name: EcoString },
-    LabelledDiscard { label: EcoString, name: EcoString },
-    Named { name: EcoString },
-    NamedLabelled { name: EcoString, label: EcoString },
+    Discard {
+        name: EcoString,
+        location: SrcSpan,
+    },
+    LabelledDiscard {
+        label: EcoString,
+        label_location: SrcSpan,
+        name: EcoString,
+        name_location: SrcSpan,
+    },
+    Named {
+        name: EcoString,
+        location: SrcSpan,
+    },
+    NamedLabelled {
+        label: EcoString,
+        label_location: SrcSpan,
+        name: EcoString,
+        name_location: SrcSpan,
+    },
 }
 
 impl ArgNames {
@@ -194,7 +210,7 @@ impl ArgNames {
     pub fn get_variable_name(&self) -> Option<&EcoString> {
         match self {
             ArgNames::Discard { .. } | ArgNames::LabelledDiscard { .. } => None,
-            ArgNames::NamedLabelled { name, .. } | ArgNames::Named { name } => Some(name),
+            ArgNames::NamedLabelled { name, .. } | ArgNames::Named { name, .. } => Some(name),
         }
     }
 }
@@ -204,13 +220,14 @@ pub type TypedRecordConstructor = RecordConstructor<Arc<Type>>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordConstructor<T> {
     pub location: SrcSpan,
+    pub name_location: SrcSpan,
     pub name: EcoString,
     pub arguments: Vec<RecordConstructorArg<T>>,
-    pub documentation: Option<EcoString>,
+    pub documentation: Option<(u32, EcoString)>,
 }
 
 impl<A> RecordConstructor<A> {
-    pub fn put_doc(&mut self, new_doc: EcoString) {
+    pub fn put_doc(&mut self, new_doc: (u32, EcoString)) {
         self.documentation = Some(new_doc);
     }
 }
@@ -219,15 +236,15 @@ pub type TypedRecordConstructorArg = RecordConstructorArg<Arc<Type>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordConstructorArg<T> {
-    pub label: Option<EcoString>,
+    pub label: Option<(SrcSpan, EcoString)>,
     pub ast: TypeAst,
     pub location: SrcSpan,
     pub type_: T,
-    pub doc: Option<EcoString>,
+    pub doc: Option<(u32, EcoString)>,
 }
 
 impl<T: PartialEq> RecordConstructorArg<T> {
-    pub fn put_doc(&mut self, new_doc: EcoString) {
+    pub fn put_doc(&mut self, new_doc: (u32, EcoString)) {
         self.doc = Some(new_doc);
     }
 }
@@ -414,9 +431,149 @@ impl TypeAst {
             TypeAst::Var(_) | TypeAst::Hole(_) => Some(Located::Annotation(self.location(), type_)),
         }
     }
+
+    /// Generates an annotation corresponding to the type.
+    pub fn print(&self, buffer: &mut EcoString) {
+        match &self {
+            TypeAst::Var(var) => buffer.push_str(&var.name),
+            TypeAst::Hole(hole) => buffer.push_str(&hole.name),
+            TypeAst::Tuple(tuple) => {
+                buffer.push_str("#(");
+                for (i, elem) in tuple.elems.iter().enumerate() {
+                    elem.print(buffer);
+                    if i < tuple.elems.len() - 1 {
+                        buffer.push_str(", ");
+                    }
+                }
+                buffer.push(')')
+            }
+            TypeAst::Fn(func) => {
+                buffer.push_str("fn(");
+                for (i, argument) in func.arguments.iter().enumerate() {
+                    argument.print(buffer);
+                    if i < func.arguments.len() - 1 {
+                        buffer.push_str(", ");
+                    }
+                }
+                buffer.push(')');
+                buffer.push_str(" -> ");
+                func.return_.print(buffer);
+            }
+            TypeAst::Constructor(constructor) => {
+                if let Some(module) = &constructor.module {
+                    buffer.push_str(module);
+                    buffer.push('.');
+                }
+                buffer.push_str(&constructor.name);
+                if !constructor.arguments.is_empty() {
+                    buffer.push('(');
+                    for (i, argument) in constructor.arguments.iter().enumerate() {
+                        argument.print(buffer);
+                        if i < constructor.arguments.len() - 1 {
+                            buffer.push_str(", ");
+                        }
+                    }
+                    buffer.push(')');
+                }
+            }
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[test]
+fn type_ast_print_fn() {
+    let mut buffer = EcoString::new();
+    let ast = TypeAst::Fn(TypeAstFn {
+        location: SrcSpan { start: 1, end: 1 },
+        arguments: vec![
+            TypeAst::Var(TypeAstVar {
+                location: SrcSpan { start: 1, end: 1 },
+                name: "String".into(),
+            }),
+            TypeAst::Var(TypeAstVar {
+                location: SrcSpan { start: 1, end: 1 },
+                name: "Bool".into(),
+            }),
+        ],
+        return_: Box::new(TypeAst::Var(TypeAstVar {
+            location: SrcSpan { start: 1, end: 1 },
+            name: "Int".into(),
+        })),
+    });
+    ast.print(&mut buffer);
+    assert_eq!(&buffer, "fn(String, Bool) -> Int")
+}
+
+#[test]
+fn type_ast_print_constructor() {
+    let mut buffer = EcoString::new();
+    let ast = TypeAst::Constructor(TypeAstConstructor {
+        name: "SomeType".into(),
+        module: Some("some_module".into()),
+        location: SrcSpan { start: 1, end: 1 },
+        arguments: vec![
+            TypeAst::Var(TypeAstVar {
+                location: SrcSpan { start: 1, end: 1 },
+                name: "String".into(),
+            }),
+            TypeAst::Var(TypeAstVar {
+                location: SrcSpan { start: 1, end: 1 },
+                name: "Bool".into(),
+            }),
+        ],
+    });
+    ast.print(&mut buffer);
+    assert_eq!(&buffer, "some_module.SomeType(String, Bool)")
+}
+
+#[test]
+fn type_ast_print_tuple() {
+    let mut buffer = EcoString::new();
+    let ast = TypeAst::Tuple(TypeAstTuple {
+        location: SrcSpan { start: 1, end: 1 },
+        elems: vec![
+            TypeAst::Constructor(TypeAstConstructor {
+                name: "SomeType".into(),
+                module: Some("some_module".into()),
+                location: SrcSpan { start: 1, end: 1 },
+                arguments: vec![
+                    TypeAst::Var(TypeAstVar {
+                        location: SrcSpan { start: 1, end: 1 },
+                        name: "String".into(),
+                    }),
+                    TypeAst::Var(TypeAstVar {
+                        location: SrcSpan { start: 1, end: 1 },
+                        name: "Bool".into(),
+                    }),
+                ],
+            }),
+            TypeAst::Fn(TypeAstFn {
+                location: SrcSpan { start: 1, end: 1 },
+                arguments: vec![
+                    TypeAst::Var(TypeAstVar {
+                        location: SrcSpan { start: 1, end: 1 },
+                        name: "String".into(),
+                    }),
+                    TypeAst::Var(TypeAstVar {
+                        location: SrcSpan { start: 1, end: 1 },
+                        name: "Bool".into(),
+                    }),
+                ],
+                return_: Box::new(TypeAst::Var(TypeAstVar {
+                    location: SrcSpan { start: 1, end: 1 },
+                    name: "Int".into(),
+                })),
+            }),
+        ],
+    });
+    ast.print(&mut buffer);
+    assert_eq!(
+        &buffer,
+        "#(some_module.SomeType(String, Bool), fn(String, Bool) -> Int)"
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Publicity {
     Public,
     Private,
@@ -456,6 +613,9 @@ impl Publicity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A function definition
 ///
+/// Note that an anonymous function will have `None` as the name field, while a
+/// named function will have `Some`.
+///
 /// # Example(s)
 ///
 /// ```gleam
@@ -463,18 +623,20 @@ impl Publicity {
 /// pub fn wobble() -> String { ... }
 /// // Private function
 /// fn wibble(x: Int) -> Int { ... }
+/// // Anonymous function
+/// fn(x: Int) { ... }
 /// ```
 pub struct Function<T, Expr> {
     pub location: SrcSpan,
     pub end_position: u32,
-    pub name: EcoString,
+    pub name: Option<(SrcSpan, EcoString)>,
     pub arguments: Vec<Arg<T>>,
     pub body: Vec1<Statement<T, Expr>>,
     pub publicity: Publicity,
     pub deprecation: Deprecation,
     pub return_annotation: Option<TypeAst>,
     pub return_type: T,
-    pub documentation: Option<EcoString>,
+    pub documentation: Option<(u32, EcoString)>,
     pub external_erlang: Option<(EcoString, EcoString)>,
     pub external_javascript: Option<(EcoString, EcoString)>,
     pub external_nix: Option<(EcoString, EcoString)>,
@@ -539,10 +701,13 @@ pub type UntypedModuleConstant = ModuleConstant<(), ()>;
 /// pub const end_year = 2111
 /// ```
 pub struct ModuleConstant<T, ConstantRecordTag> {
-    pub documentation: Option<EcoString>,
+    pub documentation: Option<(u32, EcoString)>,
+    /// The location of the constant, starting at the "(pub) const" keywords and
+    /// ending after the ": Type" annotation, or (without an annotation) after its name.
     pub location: SrcSpan,
     pub publicity: Publicity,
     pub name: EcoString,
+    pub name_location: SrcSpan,
     pub annotation: Option<TypeAst>,
     pub value: Box<Constant<T, ConstantRecordTag>>,
     pub type_: T,
@@ -572,13 +737,14 @@ pub struct CustomType<T> {
     pub location: SrcSpan,
     pub end_position: u32,
     pub name: EcoString,
+    pub name_location: SrcSpan,
     pub publicity: Publicity,
     pub constructors: Vec<RecordConstructor<T>>,
-    pub documentation: Option<EcoString>,
+    pub documentation: Option<(u32, EcoString)>,
     pub deprecation: Deprecation,
     pub opaque: bool,
     /// The names of the type parameters.
-    pub parameters: Vec<EcoString>,
+    pub parameters: Vec<(SrcSpan, EcoString)>,
     /// Once type checked this field will contain the type information for the
     /// type parameters.
     pub typed_parameters: Vec<T>,
@@ -607,11 +773,12 @@ pub type UntypedTypeAlias = TypeAlias<()>;
 pub struct TypeAlias<T> {
     pub location: SrcSpan,
     pub alias: EcoString,
-    pub parameters: Vec<EcoString>,
+    pub name_location: SrcSpan,
+    pub parameters: Vec<(SrcSpan, EcoString)>,
     pub type_ast: TypeAst,
     pub type_: T,
     pub publicity: Publicity,
-    pub documentation: Option<EcoString>,
+    pub documentation: Option<(u32, EcoString)>,
     pub deprecation: Deprecation,
 }
 
@@ -634,7 +801,9 @@ pub enum Definition<T, Expr, ConstantRecordTag, PackageName> {
 impl TypedDefinition {
     pub fn main_function(&self) -> Option<&TypedFunction> {
         match self {
-            Definition::Function(f) if f.name == "main" => Some(f),
+            Definition::Function(f) if f.name.as_ref().is_some_and(|(_, name)| name == "main") => {
+                Some(f)
+            }
             _ => None,
         }
     }
@@ -817,9 +986,22 @@ impl<A, B, C, E> Definition<A, B, C, E> {
         matches!(self, Self::Function(..))
     }
 
-    pub fn put_doc(&mut self, new_doc: EcoString) {
+    pub fn put_doc(&mut self, new_doc: (u32, EcoString)) {
         match self {
             Definition::Import(Import { .. }) => (),
+
+            Definition::Function(Function { documentation, .. })
+            | Definition::TypeAlias(TypeAlias { documentation, .. })
+            | Definition::CustomType(CustomType { documentation, .. })
+            | Definition::ModuleConstant(ModuleConstant { documentation, .. }) => {
+                let _ = std::mem::replace(documentation, Some(new_doc));
+            }
+        }
+    }
+
+    pub fn get_doc(&self) -> Option<EcoString> {
+        match self {
+            Definition::Import(Import { .. }) => None,
 
             Definition::Function(Function {
                 documentation: doc, ..
@@ -832,9 +1014,7 @@ impl<A, B, C, E> Definition<A, B, C, E> {
             })
             | Definition::ModuleConstant(ModuleConstant {
                 documentation: doc, ..
-            }) => {
-                let _ = std::mem::replace(doc, Some(new_doc));
-            }
+            }) => doc.as_ref().map(|(_, doc)| doc.clone()),
         }
     }
 
@@ -863,7 +1043,7 @@ impl UnqualifiedImport {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub enum Layer {
     #[default]
     Value,
@@ -1012,17 +1192,60 @@ pub struct CallArg<A> {
     pub label: Option<EcoString>,
     pub location: SrcSpan,
     pub value: A,
-    // This is true if this argument is given as the callback in a `use`
-    // expression. In future it may also be true for pipes too. It is used to
-    // determine if we should error if an argument without a label is given or
-    // not, which is not permitted if the argument is given explicitly by the
-    // programmer rather than implicitly by Gleam's syntactic sugar.
-    pub implicit: bool,
+    pub implicit: Option<ImplicitCallArgOrigin>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ImplicitCallArgOrigin {
+    /// The implicit callback argument passed as the last argument to the
+    /// function on the right hand side of `use`.
+    ///
+    Use,
+    /// An argument added by the compiler when rewriting a pipe `left |> right`.
+    ///
+    Pipe,
+    /// An argument added by the compiler to fill in all the missing fields of a
+    /// record that are being ignored with the `..` syntax.
+    ///
+    PatternFieldSpread,
+    /// An argument used to fill in the missing args when a function on the
+    /// right hand side of `use` is being called with the wrong arity.
+    ///
+    IncorrectArityUse,
+}
+
+impl<A> CallArg<A> {
+    #[must_use]
+    pub fn is_implicit(&self) -> bool {
+        self.implicit.is_some()
+    }
 }
 
 impl CallArg<TypedExpr> {
     pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
-        self.value.find_node(byte_index)
+        match (self.implicit, &self.value) {
+            // If a call argument is the implicit use callback then we don't
+            // want to look at its arguments and body but we don't want to
+            // return the whole anonymous function if anything else doesn't
+            // match.
+            //
+            // In addition, if the callback is invalid because it couldn't be
+            // typed, we don't want to return it as it would make it hard for
+            // the LSP to give any suggestions on the use function being typed.
+            //
+            (Some(ImplicitCallArgOrigin::Use), TypedExpr::Invalid { .. }) => None,
+            // So the code below is exactly the same as
+            // `TypedExpr::Fn{}.find_node()` except we do not return self as a
+            // fallback.
+            //
+            (Some(ImplicitCallArgOrigin::Use), TypedExpr::Fn { args, body, .. }) => args
+                .iter()
+                .find_map(|arg| arg.find_node(byte_index))
+                .or_else(|| body.iter().find_map(|s| s.find_node(byte_index))),
+            // In all other cases we're happy with the default behaviour.
+            //
+            _ => self.value.find_node(byte_index),
+        }
     }
 }
 
@@ -1038,6 +1261,16 @@ impl CallArg<UntypedExpr> {
             UntypedExpr::Var { ref name, .. } => name == CAPTURE_VARIABLE,
             _ => false,
         }
+    }
+}
+
+impl<T> CallArg<T>
+where
+    T: HasLocation,
+{
+    #[must_use]
+    pub fn uses_label_shorthand(&self) -> bool {
+        self.label.is_some() && self.location == self.value.location()
     }
 }
 
@@ -1060,6 +1293,13 @@ pub struct UntypedRecordUpdateArg {
     pub value: UntypedExpr,
 }
 
+impl UntypedRecordUpdateArg {
+    #[must_use]
+    pub fn uses_label_shorthand(&self) -> bool {
+        self.value.location() == self.location
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedRecordUpdateArg {
     pub label: EcoString,
@@ -1071,6 +1311,11 @@ pub struct TypedRecordUpdateArg {
 impl TypedRecordUpdateArg {
     pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
         self.value.find_node(byte_index)
+    }
+
+    #[must_use]
+    pub fn uses_label_shorthand(&self) -> bool {
+        self.value.location() == self.location
     }
 }
 
@@ -1411,7 +1656,7 @@ impl SrcSpan {
     }
 
     pub fn contains(&self, byte_index: u32) -> bool {
-        byte_index >= self.start && byte_index < self.end
+        byte_index >= self.start && byte_index <= self.end
     }
 }
 
@@ -1541,10 +1786,10 @@ impl AssignName {
         }
     }
 
-    pub fn to_arg_names(self) -> ArgNames {
+    pub fn to_arg_names(self, location: SrcSpan) -> ArgNames {
         match self {
-            AssignName::Variable(name) => ArgNames::Named { name },
-            AssignName::Discard(name) => ArgNames::Discard { name },
+            AssignName::Variable(name) => ArgNames::Named { name, location },
+            AssignName::Discard(name) => ArgNames::Discard { name, location },
         }
     }
 
@@ -1559,7 +1804,9 @@ impl AssignName {
 impl<A> Pattern<A> {
     pub fn location(&self) -> SrcSpan {
         match self {
-            Pattern::Assign { pattern, .. } => pattern.location(),
+            Pattern::Assign {
+                pattern, location, ..
+            } => SrcSpan::new(pattern.location().start, location.end),
             Pattern::Int { location, .. }
             | Pattern::Variable { location, .. }
             | Pattern::VarUsage { location, .. }
@@ -1871,7 +2118,7 @@ impl<A> BitArrayOption<A> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TodoKind {
     Keyword,
     EmptyFunction,

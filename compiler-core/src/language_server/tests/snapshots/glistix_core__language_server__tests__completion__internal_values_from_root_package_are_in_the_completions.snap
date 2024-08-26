@@ -1,7 +1,11 @@
 ---
 source: compiler-core/src/language_server/tests/completion.rs
-expression: "completion_at_default_position(TestProject::for_source(\"import dep\").add_module(\"dep\",\n        dep))"
+expression: import dep
 ---
+|import dep
+
+
+----- Completion content -----
 [
     CompletionItem {
         label: "dep.Wobble",
@@ -22,7 +26,9 @@ expression: "completion_at_default_position(TestProject::for_source(\"import dep
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "3_dep.Wobble",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -69,7 +75,9 @@ expression: "completion_at_default_position(TestProject::for_source(\"import dep
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "3_dep.main",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -116,7 +124,9 @@ expression: "completion_at_default_position(TestProject::for_source(\"import dep
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "3_dep.random_float",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -163,7 +173,9 @@ expression: "completion_at_default_position(TestProject::for_source(\"import dep
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "3_dep.wibble",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,

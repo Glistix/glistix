@@ -1,7 +1,11 @@
 ---
 source: compiler-core/src/language_server/tests/completion.rs
-expression: "completion_at_default_position(TestProject::for_source(code).add_module(\"a/b/dep\",\n        dep))"
+expression: "\n"
 ---
+|
+
+
+----- Completion content -----
 [
     CompletionItem {
         label: "dep.wobble",
@@ -22,7 +26,9 @@ expression: "completion_at_default_position(TestProject::for_source(code).add_mo
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "5_dep.wobble",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -57,7 +63,7 @@ expression: "completion_at_default_position(TestProject::for_source(code).add_mo
                             character: 0,
                         },
                     },
-                    new_text: "import a/b/dep\n",
+                    new_text: "import a/b/dep\n\n",
                 },
             ],
         ),

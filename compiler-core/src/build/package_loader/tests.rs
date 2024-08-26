@@ -56,10 +56,10 @@ fn write_cache(
         values: Default::default(),
         accessors: Default::default(),
         unused_imports: Vec::new(),
-        contains_todo: false,
         line_numbers: line_numbers.clone(),
         is_internal: false,
         src_path: Utf8PathBuf::from(format!("/src/{}.gleam", name)),
+        warnings: vec![],
     };
     let path = Utf8Path::new("/artefact").join(format!("{name}.cache"));
     fs.write_bytes(
@@ -87,6 +87,7 @@ fn run_loader(fs: InMemoryFileSystem, root: &Utf8Path, artefact: &Utf8Path) -> L
         stale_modules: &mut StaleTracker::default(),
         already_defined_modules: &mut defined,
         incomplete_modules: &mut HashSet::new(),
+        cached_warnings: CachedWarnings::Ignore,
     };
     let loaded = loader.run().unwrap();
 

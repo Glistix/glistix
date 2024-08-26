@@ -1337,6 +1337,12 @@ pub(crate) fn constant_expression<'a>(
             }
         }),
 
+        Constant::StringConcatenation { left, right, .. } => {
+            let left = wrap_child_constant_expression(tracker, left)?;
+            let right = wrap_child_constant_expression(tracker, right)?;
+            Ok(docvec!(left, " + ", right))
+        }
+
         Constant::Invalid { .. } => panic!("invalid constants should not reach code generation"),
     }
 }
@@ -1354,7 +1360,9 @@ fn wrap_child_constant_expression<'a>(
         Constant::Int { value, .. } | Constant::Float { value, .. } if value.starts_with('-') => {
             Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
         }
-        Constant::List { .. } | Constant::BitArray { .. } => {
+        Constant::List { .. }
+        | Constant::BitArray { .. }
+        | Constant::StringConcatenation { .. } => {
             Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
         }
         Constant::Record { args, .. } if !args.is_empty() => {
@@ -1386,7 +1394,9 @@ pub(crate) fn wrap_child_guard_constant_expression<'a>(
                 ")"
             ))
         }
-        Constant::List { .. } | Constant::BitArray { .. } => Ok(docvec!(
+        Constant::List { .. }
+        | Constant::BitArray { .. }
+        | Constant::StringConcatenation { .. } => Ok(docvec!(
             "(",
             guard_constant_expression(assignments, tracker, expression)?,
             ")"

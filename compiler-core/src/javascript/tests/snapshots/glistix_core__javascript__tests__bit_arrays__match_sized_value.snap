@@ -5,7 +5,7 @@ expression: "\nfn go(x) {\n  let assert <<258:16>> = x\n}\n"
 import { makeError } from "../gleam.mjs";
 
 function go(x) {
-  if (x.intFromSlice(0, 2) !== 258 || !(x.length == 2)) {
+  if (x.intFromSlice(0, 2, true, false) !== 258 || !(x.length == 2)) {
     throw makeError(
       "assignment_no_match",
       "my/mod",

@@ -1,7 +1,8 @@
 use crate::{
+    analyse::name::correct_name_case,
     ast::{
-        Arg, Definition, ModuleConstant, SrcSpan, TypedExpr, TypedFunction, TypedModule,
-        TypedPattern,
+        Arg, CustomType, Definition, ModuleConstant, SrcSpan, TypedExpr, TypedFunction,
+        TypedModule, TypedPattern,
     },
     build::{type_constructor_from_modules, Located, Module, UnqualifiedImport},
     config::PackageConfig,
@@ -11,19 +12,29 @@ use crate::{
     },
     line_numbers::LineNumbers,
     paths::ProjectPaths,
-    type_::{pretty::Printer, ModuleInterface, Type, TypeConstructor, ValueConstructorVariant},
+    type_::{
+        self, pretty::Printer, Deprecation, ModuleInterface, Type, TypeConstructor,
+        ValueConstructorVariant,
+    },
     Error, Result, Warning,
 };
 use camino::Utf8PathBuf;
 use ecow::EcoString;
+use itertools::Itertools;
 use lsp::CodeAction;
-use lsp_types::{self as lsp, Hover, HoverContents, MarkedString, Url};
+use lsp_types::{
+    self as lsp, DocumentSymbol, Hover, HoverContents, MarkedString, SignatureHelp, SymbolKind,
+    SymbolTag, Url,
+};
 use std::sync::Arc;
 
 use super::{
-    code_action::{CodeActionBuilder, RedundantTupleInCaseSubject},
+    code_action::{
+        CodeActionBuilder, FillInMissingLabelledArgs, LabelShorthandSyntax, LetAssertToCase,
+        RedundantTupleInCaseSubject,
+    },
     completer::Completer,
-    src_span_to_lsp_range, DownloadDependencies, MakeLocker,
+    signature_help, src_span_to_lsp_range, DownloadDependencies, MakeLocker,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -53,6 +64,7 @@ pub struct LanguageServerEngine<IO, Reporter> {
 
     modules_compiled_since_last_feedback: Vec<Utf8PathBuf>,
     compiled_since_last_feedback: bool,
+    error: Option<Error>,
 
     // Used to publish progress notifications to the client without waiting for
     // the usual request-response loop.
@@ -92,7 +104,7 @@ where
         // NOTE: This must come after the progress reporter has finished!
         let manifest = manifest?;
 
-        let compiler =
+        let compiler: LspProjectCompiler<FileSystemProxy<IO>> =
             LspProjectCompiler::new(manifest, config, paths.clone(), io.clone(), locker)?;
 
         let hex_deps = compiler
@@ -114,6 +126,7 @@ where
             progress_reporter,
             compiler,
             paths,
+            error: None,
             hex_deps,
         })
     }
@@ -130,11 +143,18 @@ where
         let outcome = self.compiler.compile();
         self.progress_reporter.compilation_finished();
 
-        outcome
+        let result = outcome
             // Register which modules have changed
             .map(|modules| self.modules_compiled_since_last_feedback.extend(modules))
             // Return the error, if present
-            .into_result()
+            .into_result();
+
+        self.error = match &result {
+            Ok(_) => None,
+            Err(error) => Some(error.clone()),
+        };
+
+        result
     }
 
     fn take_warnings(&mut self) -> Vec<Warning> {
@@ -191,14 +211,6 @@ where
             };
 
             let completer = Completer::new(&src, &params, &this.compiler, module);
-
-            // Check current filercontents if the user is writing an import
-            // and handle separately from the rest of the completion flow
-            // Check if an import is being written
-            if let Some(value) = completer.import_completions() {
-                return value;
-            }
-
             let byte_index = completer
                 .module_line_numbers
                 .byte_index(params.position.line, params.position.character);
@@ -208,6 +220,13 @@ where
                 return Ok(None);
             }
 
+            // Check current filercontents if the user is writing an import
+            // and handle separately from the rest of the completion flow
+            // Check if an import is being written
+            if let Some(value) = completer.import_completions() {
+                return value;
+            }
+
             let Some(found) = module.find_node(byte_index) else {
                 return Ok(None);
             };
@@ -215,14 +234,23 @@ where
             let completions = match found {
                 Located::PatternSpread { .. } => None,
                 Located::Pattern(_pattern) => None,
-
                 // Do not show completions when typing inside a string.
                 Located::Expression(TypedExpr::String { .. }) => None,
-
+                Located::Expression(TypedExpr::Call { fun, args, .. }) => {
+                    let mut completions = vec![];
+                    completions.append(&mut completer.completion_values());
+                    completions.append(&mut completer.completion_labels(fun, args));
+                    Some(completions)
+                }
+                Located::Expression(TypedExpr::RecordAccess { record, .. }) => {
+                    let mut completions = vec![];
+                    completions.append(&mut completer.completion_values());
+                    completions.append(&mut completer.completion_field_accessors(record.type_()));
+                    Some(completions)
+                }
                 Located::Statement(_) | Located::Expression(_) => {
                     Some(completer.completion_values())
                 }
-
                 Located::ModuleStatement(Definition::Function(_)) => {
                     Some(completer.completion_types())
                 }
@@ -266,13 +294,149 @@ where
             };
 
             code_action_unused_imports(module, &params, &mut actions);
+            code_action_fix_names(module, &params, &this.error, &mut actions);
+            actions.extend(LetAssertToCase::new(module, &params).code_actions());
             actions.extend(RedundantTupleInCaseSubject::new(module, &params).code_actions());
+            actions.extend(LabelShorthandSyntax::new(module, &params).code_actions());
+            actions.extend(FillInMissingLabelledArgs::new(module, &params).code_actions());
 
             Ok(if actions.is_empty() {
                 None
             } else {
                 Some(actions)
             })
+        })
+    }
+
+    pub fn document_symbol(
+        &mut self,
+        params: lsp::DocumentSymbolParams,
+    ) -> Response<Vec<DocumentSymbol>> {
+        self.respond(|this| {
+            let mut symbols = vec![];
+            let Some(module) = this.module_for_uri(&params.text_document.uri) else {
+                return Ok(symbols);
+            };
+            let line_numbers = LineNumbers::new(&module.code);
+
+            for definition in &module.ast.definitions {
+                match definition {
+                    // Typically, imports aren't considered document symbols.
+                    Definition::Import(_) => {}
+
+                    Definition::Function(function) => {
+                        // By default, the function's location ends right after the return type.
+                        // For the full symbol range, have it end at the end of the body.
+                        // Also include the documentation, if available.
+                        //
+                        // By convention, the symbol span starts from the leading slash in the
+                        // documentation comment's marker ('///'), not from its content (of which
+                        // we have the position), so we must convert the content start position
+                        // to the leading slash's position using 'get_doc_marker_pos'.
+                        let full_function_span = SrcSpan {
+                            start: function
+                                .documentation
+                                .as_ref()
+                                .map(|(doc_start, _)| get_doc_marker_pos(*doc_start))
+                                .unwrap_or(function.location.start),
+
+                            end: function.end_position,
+                        };
+
+                        let (name_location, name) = function
+                            .name
+                            .as_ref()
+                            .expect("Function in a definition must be named");
+
+                        // The 'deprecated' field is deprecated, but we have to specify it anyway
+                        // to be able to construct the 'DocumentSymbol' type, so
+                        // we suppress the warning. We specify 'None' as specifying 'Some'
+                        // is what is actually deprecated.
+                        #[allow(deprecated)]
+                        symbols.push(DocumentSymbol {
+                            name: name.to_string(),
+                            detail: Some(
+                                Printer::new().pretty_print(&get_function_type(function), 0),
+                            ),
+                            kind: SymbolKind::FUNCTION,
+                            tags: make_deprecated_symbol_tag(&function.deprecation),
+                            deprecated: None,
+                            range: src_span_to_lsp_range(full_function_span, &line_numbers),
+                            selection_range: src_span_to_lsp_range(*name_location, &line_numbers),
+                            children: None,
+                        });
+                    }
+
+                    Definition::TypeAlias(alias) => {
+                        let full_alias_span = match alias.documentation {
+                            Some((doc_position, _)) => {
+                                SrcSpan::new(get_doc_marker_pos(doc_position), alias.location.end)
+                            }
+                            None => alias.location,
+                        };
+
+                        // The 'deprecated' field is deprecated, but we have to specify it anyway
+                        // to be able to construct the 'DocumentSymbol' type, so
+                        // we suppress the warning. We specify 'None' as specifying 'Some'
+                        // is what is actually deprecated.
+                        #[allow(deprecated)]
+                        symbols.push(DocumentSymbol {
+                            name: alias.alias.to_string(),
+                            detail: Some(Printer::new().pretty_print(&alias.type_, 0)),
+                            kind: SymbolKind::CLASS,
+                            tags: make_deprecated_symbol_tag(&alias.deprecation),
+                            deprecated: None,
+                            range: src_span_to_lsp_range(full_alias_span, &line_numbers),
+                            selection_range: src_span_to_lsp_range(
+                                alias.name_location,
+                                &line_numbers,
+                            ),
+                            children: None,
+                        });
+                    }
+
+                    Definition::CustomType(type_) => {
+                        symbols.push(custom_type_symbol(type_, &line_numbers));
+                    }
+
+                    Definition::ModuleConstant(constant) => {
+                        // `ModuleConstant.location` ends at the constant's name or type.
+                        // For the full symbol span, necessary for `range`, we need to
+                        // include the constant value as well.
+                        // Also include the documentation at the start, if available.
+                        let full_constant_span = SrcSpan {
+                            start: constant
+                                .documentation
+                                .as_ref()
+                                .map(|(doc_start, _)| get_doc_marker_pos(*doc_start))
+                                .unwrap_or(constant.location.start),
+
+                            end: constant.value.location().end,
+                        };
+
+                        // The 'deprecated' field is deprecated, but we have to specify it anyway
+                        // to be able to construct the 'DocumentSymbol' type, so
+                        // we suppress the warning. We specify 'None' as specifying 'Some'
+                        // is what is actually deprecated.
+                        #[allow(deprecated)]
+                        symbols.push(DocumentSymbol {
+                            name: constant.name.to_string(),
+                            detail: Some(Printer::new().pretty_print(&constant.type_, 0)),
+                            kind: SymbolKind::CONSTANT,
+                            tags: make_deprecated_symbol_tag(&constant.deprecation),
+                            deprecated: None,
+                            range: src_span_to_lsp_range(full_constant_span, &line_numbers),
+                            selection_range: src_span_to_lsp_range(
+                                constant.name_location,
+                                &line_numbers,
+                            ),
+                            children: None,
+                        });
+                    }
+                }
+            }
+
+            Ok(symbols)
         })
     }
 
@@ -349,7 +513,7 @@ where
                         // We only want to display the arguments that were ignored using `..`.
                         // Any argument ignored that way is marked as implicit, so if it is
                         // not implicit we just ignore it.
-                        if !argument.implicit {
+                        if !argument.is_implicit() {
                             continue;
                         }
 
@@ -407,6 +571,21 @@ Unused labelled fields:
         })
     }
 
+    pub(crate) fn signature_help(
+        &mut self,
+        params: lsp_types::SignatureHelpParams,
+    ) -> Response<Option<SignatureHelp>> {
+        self.respond(
+            |this| match this.node_at_position(&params.text_document_position_params) {
+                Some((_lines, Located::Expression(expr))) => {
+                    Ok(signature_help::for_expression(expr))
+                }
+                Some((_lines, _located)) => Ok(None),
+                None => Ok(None),
+            },
+        )
+    }
+
     fn module_node_at_position(
         &self,
         params: &lsp::TextDocumentPositionParams,
@@ -428,8 +607,6 @@ Unused labelled fields:
     }
 
     fn module_for_uri(&self, uri: &Url) -> Option<&Module> {
-        use itertools::Itertools;
-
         // The to_file_path method is available on these platforms
         #[cfg(any(unix, windows, target_os = "redox", target_os = "wasi"))]
         let path = uri.to_file_path().expect("URL file");
@@ -452,6 +629,115 @@ Unused labelled fields:
     }
 }
 
+fn custom_type_symbol(type_: &CustomType<Arc<Type>>, line_numbers: &LineNumbers) -> DocumentSymbol {
+    let constructors = type_
+        .constructors
+        .iter()
+        .map(|constructor| {
+            let mut arguments = vec![];
+
+            // List named arguments as field symbols.
+            for argument in &constructor.arguments {
+                let Some((label_location, label)) = &argument.label else {
+                    continue;
+                };
+
+                let full_arg_span = match argument.doc {
+                    Some((doc_position, _)) => {
+                        SrcSpan::new(get_doc_marker_pos(doc_position), argument.location.end)
+                    }
+                    None => argument.location,
+                };
+
+                // The 'deprecated' field is deprecated, but we have to specify it anyway
+                // to be able to construct the 'DocumentSymbol' type, so
+                // we suppress the warning. We specify 'None' as specifying 'Some'
+                // is what is actually deprecated.
+                #[allow(deprecated)]
+                arguments.push(DocumentSymbol {
+                    name: label.to_string(),
+                    detail: Some(Printer::new().pretty_print(&argument.type_, 0)),
+                    kind: SymbolKind::FIELD,
+                    tags: None,
+                    deprecated: None,
+                    range: src_span_to_lsp_range(full_arg_span, line_numbers),
+                    selection_range: src_span_to_lsp_range(*label_location, line_numbers),
+                    children: None,
+                });
+            }
+
+            // Start from the documentation if available, otherwise from the constructor's name,
+            // all the way to the end of its arguments.
+            let full_constructor_span = SrcSpan {
+                start: constructor
+                    .documentation
+                    .as_ref()
+                    .map(|(doc_start, _)| get_doc_marker_pos(*doc_start))
+                    .unwrap_or(constructor.location.start),
+
+                end: constructor.location.end,
+            };
+
+            // The 'deprecated' field is deprecated, but we have to specify it anyway
+            // to be able to construct the 'DocumentSymbol' type, so
+            // we suppress the warning. We specify 'None' as specifying 'Some'
+            // is what is actually deprecated.
+            #[allow(deprecated)]
+            DocumentSymbol {
+                name: constructor.name.to_string(),
+                detail: None,
+                kind: if constructor.arguments.is_empty() {
+                    SymbolKind::ENUM_MEMBER
+                } else {
+                    SymbolKind::CONSTRUCTOR
+                },
+                tags: None,
+                deprecated: None,
+                range: src_span_to_lsp_range(full_constructor_span, line_numbers),
+                selection_range: src_span_to_lsp_range(constructor.name_location, line_numbers),
+                children: if arguments.is_empty() {
+                    None
+                } else {
+                    Some(arguments)
+                },
+            }
+        })
+        .collect_vec();
+
+    // The type's location, by default, ranges from "(pub) type" to the end of its name.
+    // We need it to range to the end of its constructors instead for the full symbol range.
+    // We also include documentation, if available, by LSP convention.
+    let full_type_span = SrcSpan {
+        start: type_
+            .documentation
+            .as_ref()
+            .map(|(doc_start, _)| get_doc_marker_pos(*doc_start))
+            .unwrap_or(type_.location.start),
+
+        end: type_.end_position,
+    };
+
+    // The 'deprecated' field is deprecated, but we have to specify it anyway
+    // to be able to construct the 'DocumentSymbol' type, so
+    // we suppress the warning. We specify 'None' as specifying 'Some'
+    // is what is actually deprecated.
+    #[allow(deprecated)]
+    DocumentSymbol {
+        name: type_.name.to_string(),
+        detail: None,
+        kind: SymbolKind::CLASS,
+        tags: make_deprecated_symbol_tag(&type_.deprecation),
+        deprecated: None,
+        range: src_span_to_lsp_range(full_type_span, line_numbers),
+        selection_range: src_span_to_lsp_range(type_.name_location, line_numbers),
+        children: if constructors.is_empty() {
+            None
+        } else {
+            Some(constructors)
+        },
+    }
+}
+
 fn hover_for_pattern(pattern: &TypedPattern, line_numbers: LineNumbers) -> Hover {
     let documentation = pattern.get_documentation().unwrap_or_default();
 
@@ -469,13 +755,21 @@ fn hover_for_pattern(pattern: &TypedPattern, line_numbers: LineNumbers) -> Hover
     }
 }
 
-fn hover_for_function_head(fun: &TypedFunction, line_numbers: LineNumbers) -> Hover {
-    let empty_str = EcoString::from("");
-    let documentation = fun.documentation.as_ref().unwrap_or(&empty_str);
-    let function_type = Type::Fn {
+fn get_function_type(fun: &TypedFunction) -> Type {
+    Type::Fn {
         args: fun.arguments.iter().map(|arg| arg.type_.clone()).collect(),
         retrn: fun.return_type.clone(),
-    };
+    }
+}
+
+fn hover_for_function_head(fun: &TypedFunction, line_numbers: LineNumbers) -> Hover {
+    let empty_str = EcoString::from("");
+    let documentation = fun
+        .documentation
+        .as_ref()
+        .map(|(_, doc)| doc)
+        .unwrap_or(&empty_str);
+    let function_type = get_function_type(fun);
     let formatted_type = Printer::new().pretty_print(&function_type, 0);
     let contents = format!(
         "```gleam
@@ -527,7 +821,11 @@ fn hover_for_module_constant(
 ) -> Hover {
     let empty_str = EcoString::from("");
     let type_ = Printer::new().pretty_print(&constant.type_, 0);
-    let documentation = constant.documentation.as_ref().unwrap_or(&empty_str);
+    let documentation = constant
+        .documentation
+        .as_ref()
+        .map(|(_, doc)| doc)
+        .unwrap_or(&empty_str);
     let contents = format!("```gleam\n{type_}\n```\n{documentation}");
     Hover {
         contents: HoverContents::Scalar(MarkedString::String(contents)),
@@ -565,7 +863,7 @@ fn hover_for_expression(
 }
 
 fn hover_for_imported_value(
-    value: &crate::type_::ValueConstructor,
+    value: &type_::ValueConstructor,
     location: &SrcSpan,
     line_numbers: LineNumbers,
     hex_module_imported_from: Option<&ModuleInterface>,
@@ -593,12 +891,20 @@ fn hover_for_imported_value(
 
 // Returns true if any part of either range overlaps with the other.
 pub fn overlaps(a: lsp_types::Range, b: lsp_types::Range) -> bool {
-    within(a.start, b) || within(a.end, b) || within(b.start, a) || within(b.end, a)
+    position_within(a.start, b)
+        || position_within(a.end, b)
+        || position_within(b.start, a)
+        || position_within(b.end, a)
 }
 
-// Returns true if a position is within a range
-fn within(position: lsp_types::Position, range: lsp_types::Range) -> bool {
-    position >= range.start && position < range.end
+// Returns true if a range is contained within another.
+pub fn within(a: lsp_types::Range, b: lsp_types::Range) -> bool {
+    position_within(a.start, b) && position_within(a.end, b)
+}
+
+// Returns true if a position is within a range.
+fn position_within(position: lsp_types::Position, range: lsp_types::Range) -> bool {
+    position >= range.start && position <= range.end
 }
 
 fn code_action_unused_imports(
@@ -650,6 +956,66 @@ fn code_action_unused_imports(
         .changes(uri.clone(), edits)
         .preferred(true)
         .push_to(actions);
+}
+
+struct NameCorrection {
+    pub location: SrcSpan,
+    pub correction: EcoString,
+}
+
+fn code_action_fix_names(
+    module: &Module,
+    params: &lsp::CodeActionParams,
+    error: &Option<Error>,
+    actions: &mut Vec<CodeAction>,
+) {
+    let uri = &params.text_document.uri;
+    let Some(Error::Type { errors, .. }) = error else {
+        return;
+    };
+    let name_corrections = errors
+        .iter()
+        .filter_map(|error| match error {
+            type_::Error::BadName {
+                location,
+                name,
+                kind,
+            } => Some(NameCorrection {
+                correction: correct_name_case(name, *kind),
+                location: *location,
+            }),
+            _ => None,
+        })
+        .collect_vec();
+
+    if name_corrections.is_empty() {
+        return;
+    }
+
+    // Convert src spans to lsp range
+    let line_numbers = LineNumbers::new(&module.code);
+
+    for name_correction in name_corrections {
+        let NameCorrection {
+            location,
+            correction,
+        } = name_correction;
+
+        let range = src_span_to_lsp_range(location, &line_numbers);
+        // Check if the user's cursor is on the invalid name
+        if overlaps(params.range, range) {
+            let edit = lsp_types::TextEdit {
+                range,
+                new_text: correction.to_string(),
+            };
+
+            CodeActionBuilder::new(&format!("Rename to {}", correction))
+                .kind(lsp_types::CodeActionKind::QUICKFIX)
+                .changes(uri.clone(), vec![edit])
+                .preferred(true)
+                .push_to(actions);
+        }
+    }
 }
 
 // Check if the edit empties a whole line; if so, delete the line.
@@ -704,4 +1070,16 @@ fn get_hexdocs_link_section(
     })?;
 
     Some(format_hexdocs_link_section(package_name, module_name, name))
+}
+
+/// Converts the source start position of a documentation comment's contents into
+/// the position of the leading slash in its marker ('///').
+fn get_doc_marker_pos(content_pos: u32) -> u32 {
+    content_pos.saturating_sub(3)
+}
+
+fn make_deprecated_symbol_tag(deprecation: &Deprecation) -> Option<Vec<SymbolTag>> {
+    deprecation
+        .is_deprecated()
+        .then(|| vec![SymbolTag::DEPRECATED])
 }

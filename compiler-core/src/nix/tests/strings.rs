@@ -239,3 +239,30 @@ pub fn go() {
 "#,
     )
 }
+
+#[test]
+fn const_concat() {
+    assert_nix!(
+        r#"
+const cute = "cute"
+const cute_bee = cute <> "bee"
+pub fn main() {
+  cute_bee
+}
+"#
+    );
+}
+
+#[test]
+fn const_concat_multiple() {
+    assert_nix!(
+        r#"
+const cute = "cute"
+const cute_bee = cute <> "bee"
+const cute_cute_bee_buzz = cute <> cute_bee <> "buzz"
+pub fn main() {
+  cute_cute_bee_buzz
+}
+"#
+    );
+}

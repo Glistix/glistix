@@ -1,5 +1,6 @@
 use crate::{
-    assert_error, assert_module_error, assert_module_syntax_error, assert_with_module_error,
+    assert_error, assert_internal_module_error, assert_module_error, assert_module_syntax_error,
+    assert_with_module_error,
 };
 
 #[test]
@@ -31,22 +32,22 @@ fn bit_arrays4() {
 
 #[test]
 fn bit_array() {
-    assert_error!("case <<1>> { <<2.0, a>> -> 1 }");
+    assert_error!("case <<1>> { <<2.0, a>> -> 1 _ -> 2 }");
 }
 
 #[test]
 fn bit_array_float() {
-    assert_error!("case <<1>> { <<a:float>> if a > 1 -> 1 }");
+    assert_error!("case <<1>> { <<a:float>> if a > 1 -> 1 _ -> 2 }");
 }
 
 #[test]
 fn bit_array_binary() {
-    assert_error!("case <<1>> { <<a:bytes>> if a > 1 -> 1 }");
+    assert_error!("case <<1>> { <<a:bytes>> if a > 1 -> 1 _ -> 2 }");
 }
 
 #[test]
 fn bit_array_guard() {
-    assert_error!("case <<1>> { <<a:utf16_codepoint>> if a == \"test\" -> 1 }");
+    assert_error!("case <<1>> { <<a:utf16_codepoint>> if a == \"test\" -> 1 _ -> 2 }");
 }
 
 #[test]
@@ -101,7 +102,7 @@ fn bit_array_segment_size() {
 
 #[test]
 fn bit_array_segment_size2() {
-    assert_error!("case <<1>> { <<1:size(2)-size(8)>> -> a }");
+    assert_error!("case <<1>> { <<1:size(2)-size(8)>> -> 1 }");
 }
 
 #[test]
@@ -121,7 +122,7 @@ fn bit_array_segment_type_does_not_allow_unit_codepoint_utf16() {
 
 #[test]
 fn bit_array_segment_type_does_not_allow_unit_codepoint_utf32() {
-    assert_error!("case <<1>> { <<1:utf32_codepoint-unit(2)>> -> a }");
+    assert_error!("case <<1>> { <<1:utf32_codepoint-unit(2)>> -> 1 }");
 }
 
 #[test]
@@ -136,7 +137,7 @@ fn bit_array_segment_type_does_not_allow_unit_codepoint_utf16_2() {
 
 #[test]
 fn bit_array_segment_type_does_not_allow_unit_codepoint_utf32_2() {
-    assert_error!("case <<1>> { <<1:utf32_codepoint-size(5)>> -> a }");
+    assert_error!("case <<1>> { <<1:utf32_codepoint-size(5)>> -> 1 }");
 }
 
 #[test]
@@ -151,7 +152,7 @@ fn bit_array_segment_type_does_not_allow_unit_utf16() {
 
 #[test]
 fn bit_array_segment_type_does_not_allow_unit_utf32() {
-    assert_error!("case <<1>> { <<1:utf32-unit(2)>> -> a }");
+    assert_error!("case <<1>> { <<1:utf32-unit(2)>> -> 1 }");
 }
 
 #[test]
@@ -166,7 +167,7 @@ fn bit_array_segment_type_does_not_allow_size_utf16() {
 
 #[test]
 fn bit_array_segment_type_does_not_allow_size_utf32() {
-    assert_error!("case <<1>> { <<1:utf32-size(5)>> -> a }");
+    assert_error!("case <<1>> { <<1:utf32-size(5)>> -> 1 }");
 }
 
 #[test]
@@ -545,7 +546,7 @@ fn duplicate_vars() {
 
 #[test]
 fn duplicate_vars_2() {
-    assert_error!("case [3.33], 1 { x, x if x > x -> 1 }");
+    assert_error!("case [3.33], 1 { x, x -> 1 }");
 }
 
 #[test]
@@ -813,9 +814,32 @@ pub type LeakType { Variant(PrivateType) }"#
     );
 }
 
+// https://github.com/gleam-lang/gleam/issues/3387
+// Private types should not leak even in internal modules
+#[test]
+fn module_private_type_leak_6() {
+    assert_internal_module_error!(
+        r#"type PrivateType
+pub type LeakType { Variant(PrivateType) }"#
+    );
+}
+
 #[test]
 fn unexpected_labelled_arg() {
     assert_module_error!(r#"fn id(x) { x } fn y() { id(x: 4) }"#);
+}
+
+#[test]
+fn unexpected_arg_with_label_shorthand() {
+    assert_module_error!(
+        r#"
+    fn id(x) { x }
+    fn y() {
+        let x = 4
+        id(x:)
+    }
+"#
+    );
 }
 
 #[test]
@@ -823,6 +847,18 @@ fn positional_argument_after_labelled() {
     assert_module_error!(
         r#"type X { X(a: Int, b: Int, c: Int) }
 fn x() { X(b: 1, a: 1, 1) }"#
+    );
+}
+
+#[test]
+fn positional_argument_after_one_using_label_shorthand() {
+    assert_module_error!(
+        r#"type X { X(a: Int, b: Int, c: Int) }
+fn x() {
+  let b = 1
+  let a = 1
+  X(b:, a:, 1)
+}"#
     );
 }
 
@@ -900,6 +936,17 @@ fn duplicate_var_in_record_pattern() {
         r#"type X { X(a: Int, b: Int, c: Int) }
 fn x() {
   case X(1,2,3) { X(x, y, x) -> 1 }
+}"#
+    );
+}
+
+#[test]
+fn duplicate_label_shorthands_in_record_pattern() {
+    // Duplicate var in record
+    assert_module_error!(
+        r#"type X { X(a: Int, b: Int, c: Int) }
+fn x() {
+  case X(1,2,3) { X(a:, b:, c: a) -> 1 }
 }"#
     );
 }
@@ -1131,6 +1178,191 @@ const wibble = 2"
 }
 
 #[test]
+fn invalid_const_name() {
+    assert_module_error!("const myInvalid_Constant = 42");
+}
+
+#[test]
+fn invalid_parameter_name() {
+    assert_module_error!("fn add(numA: Int, num_b: Int) { numA + num_b }");
+}
+
+#[test]
+fn invalid_parameter_name2() {
+    assert_module_error!("fn pass(label paramName: Bool) { paramName }");
+}
+
+#[test]
+fn invalid_parameter_name3() {
+    assert_error!("let add = fn(numA: Int, num_b: Int) { numA + num_b }");
+}
+
+#[test]
+fn invalid_parameter_discard_name() {
+    assert_module_error!("fn ignore(_ignoreMe: Bool) { 98 }");
+}
+
+#[test]
+fn invalid_parameter_discard_name2() {
+    assert_module_error!("fn ignore(labelled_discard _ignoreMe: Bool) { 98 }");
+}
+
+#[test]
+fn invalid_parameter_discard_name3() {
+    assert_error!("let ignore = fn(_ignoreMe: Bool) { 98 }");
+}
+
+#[test]
+fn invalid_parameter_label() {
+    assert_module_error!("fn func(thisIsALabel param: Int) { param }");
+}
+
+#[test]
+fn invalid_parameter_label2() {
+    assert_module_error!("fn ignore(thisIsALabel _ignore: Int) { 25 }");
+}
+
+#[test]
+fn invalid_constructor_name() {
+    assert_module_error!("type MyType { Int_Value(Int) }");
+}
+
+#[test]
+fn invalid_constructor_arg_name() {
+    assert_module_error!("type IntWrapper { IntWrapper(innerInt: Int) }");
+}
+
+#[test]
+fn invalid_custom_type_name() {
+    assert_module_error!("type Boxed_value { Box(Int) }");
+}
+
+#[test]
+fn invalid_type_alias_name() {
+    assert_module_error!("type Fancy_Bool = Bool");
+}
+
+#[test]
+fn invalid_function_name() {
+    assert_module_error!("fn doStuff() {}");
+}
+
+#[test]
+fn invalid_variable_name() {
+    assert_error!("let theAnswer = 42");
+}
+
+#[test]
+fn invalid_variable_discard_name() {
+    assert_error!("let _boringNumber = 72");
+}
+
+#[test]
+fn invalid_use_name() {
+    assert_module_error!(
+        "fn use_test(f) { f(Nil) }
+pub fn main() { use useVar <- use_test() }"
+    );
+}
+
+#[test]
+fn invalid_use_discard_name() {
+    assert_module_error!(
+        "fn use_test(f) { f(Nil) }
+pub fn main() { use _discardVar <- use_test() }"
+    );
+}
+
+#[test]
+fn invalid_pattern_assignment_name() {
+    assert_error!("let assert 42 as theAnswer = 42");
+}
+
+#[test]
+fn invalid_list_pattern_name() {
+    assert_error!("let assert [theElement] = [9.4]");
+}
+
+#[test]
+fn invalid_list_pattern_discard_name() {
+    assert_error!("let assert [_elemOne] = [False]");
+}
+
+#[test]
+fn invalid_constructor_pattern_name() {
+    assert_module_error!(
+        "pub type Box { Box(Int) } pub fn main() { let Box(innerValue) = Box(203) }"
+    );
+}
+
+#[test]
+fn invalid_constructor_pattern_discard_name() {
+    assert_module_error!(
+        "pub type Box { Box(Int) } pub fn main() { let Box(_ignoredInner) = Box(203)}"
+    );
+}
+
+#[test]
+fn invalid_tuple_pattern_name() {
+    assert_error!("let #(a, secondValue) = #(1, 2)");
+}
+
+#[test]
+fn invalid_tuple_pattern_discard_name() {
+    assert_error!("let #(a, _secondValue) = #(1, 2)");
+}
+
+#[test]
+fn invalid_bit_array_pattern_name() {
+    assert_error!("let assert <<bitValue>> = <<73>>");
+}
+
+#[test]
+fn invalid_bit_array_pattern_discard_name() {
+    assert_error!("let assert <<_iDontCare>> = <<97>>");
+}
+
+#[test]
+fn invalid_string_prefix_pattern_name() {
+    assert_error!(r#"let assert "prefix" <> coolSuffix = "prefix-suffix""#);
+}
+
+#[test]
+fn invalid_string_prefix_pattern_discard_name() {
+    assert_error!(r#"let assert "prefix" <> _boringSuffix = "prefix-suffix""#);
+}
+
+#[test]
+fn invalid_string_prefix_pattern_alias() {
+    assert_error!(r#"let assert "prefix" as thePrefix <> _suffix = "prefix-suffix""#);
+}
+
+#[test]
+fn invalid_case_variable_name() {
+    assert_error!("case 21 { twentyOne -> {Nil} }");
+}
+
+#[test]
+fn invalid_case_variable_discard_name() {
+    assert_error!("case 21 { _twentyOne -> {Nil} }");
+}
+
+#[test]
+fn invalid_type_parameter_name() {
+    assert_module_error!("type Wrapper(innerType) {}");
+}
+
+#[test]
+fn invalid_type_alias_parameter_name() {
+    assert_module_error!("type GleamOption(okType) = Result(okType, Nil)");
+}
+
+#[test]
+fn invalid_function_type_parameter_name() {
+    assert_module_error!("fn identity(value: someType) { value }");
+}
+
+#[test]
 fn correct_pipe_arity_error_location() {
     // https://github.com/gleam-lang/gleam/issues/672
     assert_module_error!(
@@ -1254,6 +1486,18 @@ fn unknown_label() {
         r#"type X { X(a: Int, b: Float) }
 fn x() {
   let x = X(a: 1, c: 2.0)
+  x
+}"#
+    );
+}
+
+#[test]
+fn unknown_label_shorthand() {
+    assert_module_error!(
+        r#"type X { X(a: Int, b: Float) }
+fn x() {
+  let c = 2.0
+  let x = X(a: 1, c:)
   x
 }"#
     );
@@ -1493,6 +1737,7 @@ pub fn parse(input: BitArray) -> String {
     <<"(":utf8, b:bytes>> ->
       parse(input)
       |> change
+    _ -> 3
   }
 }"#
     );
@@ -1903,5 +2148,27 @@ fn leak_multiple_private_types() {
             ret_private()
         }
         "
+    );
+}
+
+#[test]
+fn const_string_concat_invalid_type() {
+    assert_module_error!(
+        "
+const some_int = 5
+const invalid_concat = some_int <> \"with_string\"
+"
+    );
+}
+
+#[test]
+fn invalid_pattern_label_shorthand() {
+    assert_module_error!(
+        "
+pub type Wibble { Wibble(arg: Int) }
+pub fn main() {
+  let Wibble(not_a_label:) = Wibble(1)
+}
+"
     );
 }

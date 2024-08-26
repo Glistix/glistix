@@ -69,7 +69,6 @@ impl ModuleDecoder {
             name: reader.get_name()?.into(),
             package: reader.get_package()?.into(),
             is_internal: reader.get_is_internal(),
-            contains_todo: reader.get_contains_todo(),
             origin: Origin::Src,
             values: read_hashmap!(reader.get_values()?, self, value_constructor),
             types: read_hashmap!(reader.get_types()?, self, type_constructor),
@@ -82,6 +81,7 @@ impl ModuleDecoder {
             unused_imports: read_vec!(reader.get_unused_imports()?, self, src_span),
             line_numbers: self.line_numbers(&reader.get_line_numbers()?)?,
             src_path: reader.get_src_path()?.into(),
+            warnings: vec![],
         })
     }
 
@@ -246,6 +246,7 @@ impl ModuleDecoder {
             Which::Record(reader) => self.constant_record(&reader),
             Which::BitArray(reader) => self.constant_bit_array(&reader?),
             Which::Var(reader) => self.constant_var(&reader),
+            Which::StringConcatenation(reader) => self.constant_string_concatenation(&reader),
         }
     }
 
@@ -309,7 +310,7 @@ impl ModuleDecoder {
         reader: &constant::Reader<'_>,
     ) -> Result<CallArg<TypedConstant>> {
         Ok(CallArg {
-            implicit: false,
+            implicit: None,
             label: Default::default(),
             location: Default::default(),
             value: self.constant(reader)?,
@@ -340,6 +341,17 @@ impl ModuleDecoder {
             name: name.into(),
             constructor: Some(Box::from(constructor)),
             typ: type_,
+        })
+    }
+
+    fn constant_string_concatenation(
+        &mut self,
+        reader: &constant::string_concatenation::Reader<'_>,
+    ) -> Result<TypedConstant> {
+        Ok(Constant::StringConcatenation {
+            location: Default::default(),
+            left: Box::new(self.constant(&reader.get_left()?)?),
+            right: Box::new(self.constant(&reader.get_right()?)?),
         })
     }
 

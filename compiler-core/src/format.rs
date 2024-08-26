@@ -107,12 +107,23 @@ impl<'comments> Formatter<'comments> {
 
     /// Pop comments that occur before a byte-index in the source, consuming
     /// and retaining any empty lines contained within.
-    fn pop_comments(&mut self, limit: u32) -> impl Iterator<Item = Option<&'comments str>> {
+    /// Returns an iterator of comments with their start position.
+    fn pop_comments_with_position(
+        &mut self,
+        limit: u32,
+    ) -> impl Iterator<Item = (u32, Option<&'comments str>)> {
         let (popped, rest, empty_lines) =
             comments_before(self.comments, self.empty_lines, limit, true);
         self.comments = rest;
         self.empty_lines = empty_lines;
         popped
+    }
+
+    /// Pop comments that occur before a byte-index in the source, consuming
+    /// and retaining any empty lines contained within.
+    fn pop_comments(&mut self, limit: u32) -> impl Iterator<Item = Option<&'comments str>> {
+        self.pop_comments_with_position(limit)
+            .map(|(_position, comment)| comment)
     }
 
     /// Pop doc comments that occur before a byte-index in the source, consuming
@@ -122,7 +133,7 @@ impl<'comments> Formatter<'comments> {
             comments_before(self.doc_comments, self.empty_lines, limit, false);
         self.doc_comments = rest;
         self.empty_lines = empty_lines;
-        popped
+        popped.map(|(_position, comment)| comment)
     }
 
     /// Remove between 0 and `limit` empty lines following the current position,
@@ -147,7 +158,9 @@ impl<'comments> Formatter<'comments> {
         let target = definition.target;
         let definition = &definition.definition;
         let start = definition.location().start;
-        let comments = self.pop_comments(start);
+
+        let comments = self.pop_comments_with_position(start);
+        let comments = self.printed_documented_comments(comments);
         let document = self.documented_definition(definition);
         let document = match target {
             None => document,
@@ -155,7 +168,8 @@ impl<'comments> Formatter<'comments> {
             Some(Target::JavaScript) => docvec!["@target(javascript)", line(), document],
             Some(Target::Nix) => docvec!["@target(nix)", line(), document],
         };
-        commented(document, comments)
+
+        comments.to_doc().append(document.group())
     }
 
     pub(crate) fn module<'a>(&mut self, module: &'a UntypedModule) -> Document<'a> {
@@ -167,7 +181,7 @@ impl<'comments> Formatter<'comments> {
         for (is_import_group, definitions) in &module
             .definitions
             .iter()
-            .group_by(|definition| definition.definition.is_import())
+            .chunk_by(|definition| definition.definition.is_import())
         {
             if is_import_group {
                 if previous_was_a_definition {
@@ -398,7 +412,11 @@ impl<'comments> Formatter<'comments> {
                 value,
                 ..
             }) => {
-                let head = pub_(*publicity).append("const ").append(name.as_str());
+                let attributes = AttributesPrinter::new().set_internal(*publicity).to_doc();
+                let head = attributes
+                    .append(pub_(*publicity))
+                    .append("const ")
+                    .append(name.as_str());
                 let head = match annotation {
                     None => head,
                     Some(t) => head.append(": ").append(self.type_ast(t)),
@@ -491,6 +509,13 @@ impl<'comments> Formatter<'comments> {
                 module: Some(module),
                 ..
             } => docvec![module, ".", name],
+
+            Constant::StringConcatenation { left, right, .. } => self
+                .const_expr(left)
+                .append(break_("", " ").append("<>".to_doc()))
+                .nest(INDENT)
+                .append(" ")
+                .append(self.const_expr(right)),
 
             Constant::Invalid { .. } => {
                 panic!("invalid constants can not be in an untyped ast")
@@ -595,13 +620,9 @@ impl<'comments> Formatter<'comments> {
         name: &'a str,
         value: &'a TypedConstant,
     ) -> Document<'a> {
-        let mut printer = type_::pretty::Printer::new();
-
-        pub_(publicity)
-            .append("const ")
-            .append(name)
-            .append(": ")
-            .append(printer.print(&value.type_()))
+        let type_ = type_::pretty::Printer::new().print(&value.type_());
+        let attributes = AttributesPrinter::new().set_internal(publicity);
+        docvec![attributes, pub_(publicity), "const ", name, ": ", type_]
     }
 
     fn documented_definition<'a>(&mut self, s: &'a UntypedDefinition) -> Document<'a> {
@@ -684,37 +705,26 @@ impl<'comments> Formatter<'comments> {
         &mut self,
         publicity: Publicity,
         name: &'a str,
-        args: &'a [EcoString],
+        args: &'a [(SrcSpan, EcoString)],
         typ: &'a TypeAst,
         deprecation: &'a Deprecation,
         location: &SrcSpan,
     ) -> Document<'a> {
-        // @deprecated attribute
-        let head = self.deprecation_attr(deprecation);
+        let attributes = AttributesPrinter::new()
+            .set_deprecation(deprecation)
+            .set_internal(publicity)
+            .to_doc();
 
-        let head = head.append(pub_(publicity)).append("type ").append(name);
-
+        let head = docvec![attributes, pub_(publicity), "type ", name];
         let head = if args.is_empty() {
             head
         } else {
-            let args = args.iter().map(|e| e.to_doc()).collect_vec();
+            let args = args.iter().map(|(_, e)| e.to_doc()).collect_vec();
             head.append(self.wrap_args(args, location.end).group())
         };
 
         head.append(" =")
             .append(line().append(self.type_ast(typ)).group().nest(INDENT))
-    }
-
-    fn deprecation_attr<'a>(&mut self, deprecation: &'a Deprecation) -> Document<'a> {
-        match deprecation {
-            Deprecation::NotDeprecated => "".to_doc(),
-            Deprecation::Deprecated { message } => ""
-                .to_doc()
-                .append("@deprecated(\"")
-                .append(message)
-                .append("\")")
-                .append(line()),
-        }
     }
 
     fn fn_arg<'a, A>(&mut self, arg: &'a Arg<A>) -> Document<'a> {
@@ -728,25 +738,13 @@ impl<'comments> Formatter<'comments> {
     }
 
     fn statement_fn<'a>(&mut self, function: &'a UntypedFunction) -> Document<'a> {
-        // @deprecated attribute
-        let attributes = self.deprecation_attr(&function.deprecation);
-
-        // @external attribute
-        let external = |t: &'static str, m: &'a str, f: &'a str| {
-            docvec!["@external(", t, ", \"", m, "\", \"", f, "\")", line()]
-        };
-        let attributes = match function.external_erlang.as_ref() {
-            Some((m, f)) => attributes.append(external("erlang", m, f)),
-            None => attributes,
-        };
-        let attributes = match function.external_javascript.as_ref() {
-            Some((m, f)) => attributes.append(external("javascript", m, f)),
-            None => attributes,
-        };
-        let attributes = match function.external_nix.as_ref() {
-            Some((m, f)) => attributes.append(external("nix", m, f)),
-            None => attributes,
-        };
+        let attributes = AttributesPrinter::new()
+            .set_deprecation(&function.deprecation)
+            .set_internal(function.publicity)
+            .set_external_erlang(&function.external_erlang)
+            .set_external_javascript(&function.external_javascript)
+            .set_external_nix(&function.external_nix)
+            .to_doc();
 
         // Fn name and args
         let args = function
@@ -756,7 +754,13 @@ impl<'comments> Formatter<'comments> {
             .collect_vec();
         let signature = pub_(function.publicity)
             .append("fn ")
-            .append(&function.name)
+            .append(
+                &function
+                    .name
+                    .as_ref()
+                    .expect("Function in a statement must be named")
+                    .1,
+            )
             .append(self.wrap_args(args, function.location.end));
 
         // Add return annotation
@@ -1567,7 +1571,7 @@ impl<'comments> Formatter<'comments> {
                      }| {
                         let arg_comments = self.pop_comments(location.start);
                         let arg = match label {
-                            Some(l) => l.to_doc().append(": ").append(self.type_ast(ast)),
+                            Some((_, l)) => l.to_doc().append(": ").append(self.type_ast(ast)),
                             None => self.type_ast(ast),
                         };
 
@@ -1592,17 +1596,18 @@ impl<'comments> Formatter<'comments> {
     pub fn custom_type<'a, A>(&mut self, ct: &'a CustomType<A>) -> Document<'a> {
         let _ = self.pop_empty_lines(ct.location.end);
 
-        // @deprecated attribute
-        let doc = self.deprecation_attr(&ct.deprecation);
+        let attributes = AttributesPrinter::new()
+            .set_deprecation(&ct.deprecation)
+            .set_internal(ct.publicity)
+            .to_doc();
 
-        let doc = doc
+        let doc = attributes
             .append(pub_(ct.publicity))
-            .to_doc()
             .append(if ct.opaque { "opaque type " } else { "type " })
             .append(if ct.parameters.is_empty() {
                 Document::EcoString(ct.name.clone())
             } else {
-                let args = ct.parameters.iter().map(|e| e.to_doc()).collect_vec();
+                let args = ct.parameters.iter().map(|(_, e)| e.to_doc()).collect_vec();
                 Document::EcoString(ct.name.clone())
                     .append(self.wrap_args(args, ct.location.end))
                     .group()
@@ -1637,17 +1642,19 @@ impl<'comments> Formatter<'comments> {
         &mut self,
         publicity: Publicity,
         name: &'a str,
-        args: &'a [EcoString],
+        args: &'a [(SrcSpan, EcoString)],
         location: &'a SrcSpan,
     ) -> Document<'a> {
         let _ = self.pop_empty_lines(location.start);
-        pub_(publicity)
-            .to_doc()
+        let attributes = AttributesPrinter::new().set_internal(publicity).to_doc();
+
+        attributes
+            .append(pub_(publicity))
             .append("opaque type ")
             .append(if args.is_empty() {
                 name.to_doc()
             } else {
-                let args = args.iter().map(|e| e.to_doc()).collect_vec();
+                let args = args.iter().map(|(_, e)| e.to_doc()).collect_vec();
                 name.to_doc().append(self.wrap_args(args, location.end))
             })
     }
@@ -1661,13 +1668,19 @@ impl<'comments> Formatter<'comments> {
         location: &SrcSpan,
     ) -> Document<'a> {
         let mut printer = type_::pretty::Printer::new();
+        let fn_args = self.docs_fn_args(args, &mut printer, location);
+        let return_type = printer.print(&return_type);
 
-        pub_(publicity)
-            .append("fn ")
-            .append(name)
-            .append(self.docs_fn_args(args, &mut printer, location))
-            .append(" -> ".to_doc())
-            .append(printer.print(&return_type))
+        let attributes = AttributesPrinter::new().set_internal(publicity);
+        docvec![
+            attributes,
+            pub_(publicity),
+            "fn ",
+            name,
+            fn_args,
+            " -> ",
+            return_type
+        ]
     }
 
     // Will always print the types, even if they were implicit in the original source
@@ -1690,41 +1703,71 @@ impl<'comments> Formatter<'comments> {
 
     fn docs_fn_arg_name<'a>(&mut self, arg: &'a TypedArg) -> Document<'a> {
         match &arg.names {
-            ArgNames::Named { name } => name.to_doc(),
-            ArgNames::NamedLabelled { label, name } => docvec![label, " ", name],
+            ArgNames::Named { name, .. } => name.to_doc(),
+            ArgNames::NamedLabelled { label, name, .. } => docvec![label, " ", name],
             // We remove the underscore from discarded function arguments since we don't want to
             // expose this kind of detail: https://github.com/gleam-lang/gleam/issues/2561
-            ArgNames::Discard { name } => name.strip_prefix('_').unwrap_or(name).to_doc(),
-            ArgNames::LabelledDiscard { label, name } => {
+            ArgNames::Discard { name, .. } => name.strip_prefix('_').unwrap_or(name).to_doc(),
+            ArgNames::LabelledDiscard { label, name, .. } => {
                 docvec![label, " ", name.strip_prefix('_').unwrap_or(name).to_doc()]
             }
         }
     }
 
     fn call_arg<'a>(&mut self, arg: &'a CallArg<UntypedExpr>, arity: usize) -> Document<'a> {
-        match &arg.label {
-            Some(s) => commented(
-                s.to_doc().append(": "),
-                self.pop_comments(arg.location.start),
-            ),
-            None => nil(),
+        self.format_call_arg(arg, expr_call_arg_formatting, |this, value| {
+            this.comma_separated_item(value, arity)
+        })
+    }
+
+    fn format_call_arg<'a, A, F, G>(
+        &mut self,
+        arg: &'a CallArg<A>,
+        figure_formatting: F,
+        format_value: G,
+    ) -> Document<'a>
+    where
+        F: Fn(&'a CallArg<A>) -> CallArgFormatting<'a, A>,
+        G: Fn(&mut Self, &'a A) -> Document<'a>,
+    {
+        match figure_formatting(arg) {
+            CallArgFormatting::Unlabelled(value) => format_value(self, value),
+            CallArgFormatting::ShorthandLabelled(label) => {
+                let comments = self.pop_comments(arg.location.start);
+                let label = label.as_ref().to_doc().append(":");
+                commented(label, comments)
+            }
+            CallArgFormatting::Labelled(label, value) => {
+                let comments = self.pop_comments(arg.location.start);
+                let label = label.as_ref().to_doc().append(": ");
+                let value = format_value(self, value);
+                commented(label, comments).append(value)
+            }
         }
-        .append(self.comma_separated_item(&arg.value, arity))
     }
 
     fn record_update_arg<'a>(&mut self, arg: &'a UntypedRecordUpdateArg) -> Document<'a> {
         let comments = self.pop_comments(arg.location.start);
-        let doc = arg
-            .label
-            .as_str()
-            .to_doc()
-            .append(": ")
-            .append(self.expr(&arg.value));
+        match arg {
+            // Argument supplied with a label shorthand.
+            _ if arg.uses_label_shorthand() => {
+                commented(arg.label.as_str().to_doc().append(":"), comments)
+            }
+            // Labelled argument.
+            _ => {
+                let doc = arg
+                    .label
+                    .as_str()
+                    .to_doc()
+                    .append(": ")
+                    .append(self.expr(&arg.value));
 
-        if arg.value.is_binop() || arg.value.is_pipeline() {
-            commented(doc, comments).nest(INDENT)
-        } else {
-            commented(doc, comments)
+                if arg.value.is_binop() || arg.value.is_pipeline() {
+                    commented(doc, comments).nest(INDENT)
+                } else {
+                    commented(doc, comments)
+                }
+            }
         }
     }
 
@@ -1742,7 +1785,14 @@ impl<'comments> Formatter<'comments> {
             UntypedExpr::Fn { .. }
             | UntypedExpr::List { .. }
             | UntypedExpr::Tuple { .. }
-            | UntypedExpr::BitArray { .. } => " ".to_doc().append(self.expr(expr)),
+            | UntypedExpr::BitArray { .. } => {
+                let expression_comments = self.pop_comments(expr.location().start);
+                let expression_doc = self.expr(expr);
+                match printed_comments(expression_comments, true) {
+                    Some(comments) => line().append(comments).append(expression_doc).nest(INDENT),
+                    None => " ".to_doc().append(expression_doc),
+                }
+            }
 
             UntypedExpr::Case { .. } => line().append(self.expr(expr)).nest(INDENT),
 
@@ -2108,11 +2158,9 @@ impl<'comments> Formatter<'comments> {
     }
 
     fn pattern_call_arg<'a>(&mut self, arg: &'a CallArg<UntypedPattern>) -> Document<'a> {
-        arg.label
-            .as_ref()
-            .map(|s| s.to_doc().append(": "))
-            .unwrap_or_else(nil)
-            .append(self.pattern(&arg.value))
+        self.format_call_arg(arg, pattern_call_arg_formatting, |this, value| {
+            this.pattern(value)
+        })
     }
 
     pub fn clause_guard_bin_op<'a>(
@@ -2247,10 +2295,9 @@ impl<'comments> Formatter<'comments> {
     }
 
     fn constant_call_arg<'a, A, B>(&mut self, arg: &'a CallArg<Constant<A, B>>) -> Document<'a> {
-        match &arg.label {
-            None => self.const_expr(&arg.value),
-            Some(s) => s.to_doc().append(": ").append(self.const_expr(&arg.value)),
-        }
+        self.format_call_arg(arg, constant_call_arg_formatting, |this, value| {
+            this.const_expr(value)
+        })
     }
 
     fn negate_bool<'a>(&mut self, expr: &'a UntypedExpr) -> Document<'a> {
@@ -2519,6 +2566,63 @@ impl<'comments> Formatter<'comments> {
                 .append(")"),
         }
     }
+
+    /// Given some regular comments it pretty prints those with any respective
+    /// doc comment that might be preceding those.
+    /// For example:
+    ///
+    /// ```gleam
+    /// /// Doc
+    /// // comment
+    ///
+    /// /// Doc
+    /// pub fn wibble() {}
+    /// ```
+    ///
+    /// We don't want the first doc comment to be merged together with
+    /// `wibble`'s doc comment, so when we run into comments like `// comment`
+    /// we need to first print all documentation comments that come before it.
+    ///
+    fn printed_documented_comments<'a, 'b>(
+        &mut self,
+        comments: impl IntoIterator<Item = (u32, Option<&'b str>)>,
+    ) -> Option<Document<'a>> {
+        let mut comments = comments.into_iter().peekable();
+        let _ = comments.peek()?;
+
+        let mut doc = Vec::new();
+        while let Some(c) = comments.next() {
+            let (is_doc_commented, c) = match c {
+                (comment_start, Some(c)) => {
+                    let doc_comment = self.doc_comments(comment_start);
+                    let is_doc_commented = !doc_comment.is_empty();
+                    doc.push(doc_comment);
+                    (is_doc_commented, c)
+                }
+                (_, None) => continue,
+            };
+            doc.push("//".to_doc().append(Document::String(c.to_string())));
+            match comments.peek() {
+                // Next line is a comment
+                Some((_, Some(_))) => doc.push(line()),
+                // Next line is empty
+                Some((_, None)) => {
+                    let _ = comments.next();
+                    doc.push(lines(2));
+                }
+                // We've reached the end, there are no more lines
+                None => {
+                    if is_doc_commented {
+                        doc.push(lines(2));
+                    } else {
+                        doc.push(line());
+                    }
+                }
+            }
+        }
+        let doc = concat(doc);
+        Some(doc.force_break())
+    }
 }
 
 fn init_and_last<T>(vec: &[T]) -> Option<(&[T], &T)> {
@@ -2534,8 +2638,9 @@ fn init_and_last<T>(vec: &[T]) -> Option<(&[T], &T)> {
 impl<'a> Documentable<'a> for &'a ArgNames {
     fn to_doc(self) -> Document<'a> {
         match self {
-            ArgNames::Named { name } | ArgNames::Discard { name } => name.to_doc(),
-            ArgNames::LabelledDiscard { label, name } | ArgNames::NamedLabelled { label, name } => {
+            ArgNames::Named { name, .. } | ArgNames::Discard { name, .. } => name.to_doc(),
+            ArgNames::LabelledDiscard { label, name, .. }
+            | ArgNames::NamedLabelled { label, name, .. } => {
                 docvec![label, " ", name]
             }
         }
@@ -2544,9 +2649,8 @@ impl<'a> Documentable<'a> for &'a ArgNames {
 
 fn pub_(publicity: Publicity) -> Document<'static> {
     match publicity {
-        Publicity::Public => "pub ".to_doc(),
+        Publicity::Public | Publicity::Internal => "pub ".to_doc(),
         Publicity::Private => nil(),
-        Publicity::Internal => "@internal".to_doc().append(line()).append("pub "),
     }
 }
 
@@ -2728,7 +2832,7 @@ pub fn comments_before<'a>(
     limit: u32,
     retain_empty_lines: bool,
 ) -> (
-    impl Iterator<Item = Option<&'a str>>,
+    impl Iterator<Item = (u32, Option<&'a str>)>,
     &'a [Comment<'a>],
     &'a [u32],
 ) {
@@ -2761,8 +2865,7 @@ pub fn comments_before<'a>(
         .map(|l| (*l.0, None));
     let popped = popped_comments
         .merge_by(popped_empty_lines, |(a, _), (b, _)| a < b)
-        .skip_while(|(_, comment_or_line)| comment_or_line.is_none())
-        .map(|(_, comment_or_line)| comment_or_line);
+        .skip_while(|(_, comment_or_line)| comment_or_line.is_none());
     (
         popped,
         comments.get(end_comments..).expect("in bounds"),
@@ -2795,5 +2898,146 @@ fn is_breakable_argument(expr: &UntypedExpr, arity: usize) -> bool {
         | UntypedExpr::Tuple { .. }
         | UntypedExpr::BitArray { .. } => true,
         _ => false,
+    }
+}
+
+enum CallArgFormatting<'a, A> {
+    ShorthandLabelled(&'a EcoString),
+    Unlabelled(&'a A),
+    Labelled(&'a EcoString, &'a A),
+}
+
+fn expr_call_arg_formatting(arg: &CallArg<UntypedExpr>) -> CallArgFormatting<'_, UntypedExpr> {
+    match arg {
+        // An argument supplied using label shorthand syntax.
+        _ if arg.uses_label_shorthand() => CallArgFormatting::ShorthandLabelled(
+            arg.label.as_ref().expect("label shorthand with no label"),
+        ),
+        // A labelled argument.
+        CallArg {
+            label: Some(label),
+            value,
+            ..
+        } => CallArgFormatting::Labelled(label, value),
+        // An unlabelled argument.
+        CallArg { value, .. } => CallArgFormatting::Unlabelled(value),
+    }
+}
+
+fn pattern_call_arg_formatting(
+    arg: &CallArg<UntypedPattern>,
+) -> CallArgFormatting<'_, UntypedPattern> {
+    match arg {
+        // An argument supplied using label shorthand syntax.
+        _ if arg.uses_label_shorthand() => CallArgFormatting::ShorthandLabelled(
+            arg.label.as_ref().expect("label shorthand with no label"),
+        ),
+        // A labelled argument.
+        CallArg {
+            label: Some(label),
+            value,
+            ..
+        } => CallArgFormatting::Labelled(label, value),
+        // An unlabelled argument.
+        CallArg { value, .. } => CallArgFormatting::Unlabelled(value),
+    }
+}
+
+fn constant_call_arg_formatting<A, B>(
+    arg: &CallArg<Constant<A, B>>,
+) -> CallArgFormatting<'_, Constant<A, B>> {
+    match arg {
+        // An argument supplied using label shorthand syntax.
+        _ if arg.uses_label_shorthand() => CallArgFormatting::ShorthandLabelled(
+            arg.label.as_ref().expect("label shorthand with no label"),
+        ),
+        // A labelled argument.
+        CallArg {
+            label: Some(label),
+            value,
+            ..
+        } => CallArgFormatting::Labelled(label, value),
+        // An unlabelled argument.
+        CallArg { value, .. } => CallArgFormatting::Unlabelled(value),
+    }
+}
+
+struct AttributesPrinter<'a> {
+    external_erlang: &'a Option<(EcoString, EcoString)>,
+    external_javascript: &'a Option<(EcoString, EcoString)>,
+    external_nix: &'a Option<(EcoString, EcoString)>,
+    deprecation: &'a Deprecation,
+    internal: bool,
+}
+
+impl<'a> AttributesPrinter<'a> {
+    pub fn new() -> Self {
+        Self {
+            external_erlang: &None,
+            external_javascript: &None,
+            external_nix: &None,
+            deprecation: &Deprecation::NotDeprecated,
+            internal: false,
+        }
+    }
+
+    pub fn set_external_erlang(mut self, external: &'a Option<(EcoString, EcoString)>) -> Self {
+        self.external_erlang = external;
+        self
+    }
+
+    pub fn set_external_javascript(mut self, external: &'a Option<(EcoString, EcoString)>) -> Self {
+        self.external_javascript = external;
+        self
+    }
+
+    pub fn set_external_nix(mut self, external: &'a Option<(EcoString, EcoString)>) -> Self {
+        self.external_nix = external;
+        self
+    }
+
+    pub fn set_internal(mut self, publicity: Publicity) -> Self {
+        self.internal = publicity.is_internal();
+        self
+    }
+
+    pub fn set_deprecation(mut self, deprecation: &'a Deprecation) -> Self {
+        self.deprecation = deprecation;
+        self
+    }
+}
+
+impl<'a> Documentable<'a> for AttributesPrinter<'a> {
+    fn to_doc(self) -> Document<'a> {
+        let mut attributes = vec![];
+
+        // @deprecated attribute
+        if let Deprecation::Deprecated { message } = self.deprecation {
+            attributes.push(docvec!["@deprecated(\"", message, "\")"])
+        };
+
+        // @external attributes
+        if let Some((m, f)) = self.external_erlang {
+            attributes.push(docvec!["@external(erlang, \"", m, "\", \"", f, "\")"])
+        };
+
+        if let Some((m, f)) = self.external_javascript {
+            attributes.push(docvec!["@external(javascript, \"", m, "\", \"", f, "\")"])
+        };
+
+        if let Some((m, f)) = self.external_nix {
+            attributes.push(docvec!["@external(nix, \"", m, "\", \"", f, "\")"])
+        };
+
+        // @internal attribute
+        if self.internal {
+            attributes.push("@internal".to_doc());
+        };
+
+        if attributes.is_empty() {
+            nil()
+        } else {
+            join(attributes, line()).append(line())
+        }
     }
 }

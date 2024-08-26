@@ -2583,12 +2583,12 @@ fn breakable_pattern() {
     assert_format!(
         r#"fn main() {
   let Ok(Thingybob(
-    one: one,
-    two: two,
-    three: three,
-    four: four,
-    five: five,
-    six: six,
+    one: _one,
+    two: _two,
+    three: _three,
+    four: _four,
+    five: _five,
+    six: _six,
   )) = 1
   Nil
 }
@@ -2711,7 +2711,7 @@ fn pattern_constructor() {
 
     assert_format!(
         r#"fn main() {
-  let Person(name, age: age) = 1
+  let Person(name, age: the_age) = 1
   Nil
 }
 "#
@@ -2719,7 +2719,7 @@ fn pattern_constructor() {
 
     assert_format!(
         r#"fn main() {
-  let Person(name: name, age: age) = 1
+  let Person(name: the_name, age: the_age) = 1
   Nil
 }
 "#
@@ -6152,6 +6152,274 @@ fn newlines_are_not_stripped_if_two_consecutive_anonymous_function_are_passed_as
     },
     fn() { wibble },
   )
+}
+"#
+    );
+}
+
+#[test]
+fn const_long_concat_string() {
+    assert_format_rewrite!(
+        r#"const long_string = "some" <> " very" <> " long" <> " string" <> " indeed" <> " please" <> " break"
+"#,
+        r#"const long_string = "some"
+  <> " very"
+  <> " long"
+  <> " string"
+  <> " indeed"
+  <> " please"
+  <> " break"
+"#
+    );
+}
+
+#[test]
+fn const_concat_short_unbroken() {
+    assert_format!(
+        r#"const x = "some" <> "short" <> "string"
+"#
+    );
+}
+
+#[test]
+fn const_concat_long_including_list() {
+    assert_format_rewrite!(
+        r#"const x = "some long string 1" <> "some long string 2" <> ["here is a list", "with several elements", "in order to make it be too long to fit on one line", "so we can see how it breaks", "onto multiple lines"] <> "and a last string"
+"#,
+        r#"const x = "some long string 1"
+  <> "some long string 2"
+  <> [
+    "here is a list", "with several elements",
+    "in order to make it be too long to fit on one line",
+    "so we can see how it breaks", "onto multiple lines",
+  ]
+  <> "and a last string"
+"#,
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/3397
+#[test]
+fn comment_after_case_branch() {
+    assert_format!(
+        r#"pub fn main() {
+  case x {
+    _ ->
+      // comment
+      [123]
+  }
+}
+"#
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/3397
+#[test]
+fn comment_after_case_branch_case() {
+    assert_format!(
+        r#"pub fn main() {
+  case x {
+    _ ->
+      // comment
+      case y {
+        _ -> todo
+      }
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn label_shorthand_call_arg_is_split_like_regular_labelled_args() {
+    assert_format!(
+        r#"pub fn main() {
+  wibble(
+    a_punned_arg_that_is_super_long:,
+    another_punned_arg:,
+    yet_another_pun:,
+    ok_thats_enough: wibble,
+  )
+}
+"#
+    );
+}
+
+#[test]
+fn commented_label_shorthand_call_arg_is_split_like_regular_labelled_args() {
+    assert_format!(
+        r#"pub fn main() {
+  wibble(
+    // A comment here
+    a_punned_arg_that_is_super_long:,
+    another_punned_arg:,
+    // And a comment there
+    yet_another_pun:,
+    ok_thats_enough: wibble,
+  )
+}
+"#
+    );
+}
+
+#[test]
+fn label_shorthand_pattern_arg_is_split_like_regular_labelled_patterns() {
+    assert_format!(
+        r#"pub fn main() {
+  let Wibble(
+    a_punned_arg_that_is_super_long:,
+    another_punned_arg:,
+    yet_another_pun:,
+    ok_thats_enough: wibble,
+  ) = todo
+}
+"#
+    );
+}
+
+#[test]
+fn record_pattern_with_no_label_shorthand() {
+    assert_format!(
+        r#"pub fn main() {
+  let Wibble(x: x) = todo
+}
+"#
+    );
+}
+
+#[test]
+fn record_with_no_label_shorthand() {
+    assert_format!(
+        r#"pub fn main() {
+  Wibble(x: x)
+}
+"#
+    );
+}
+
+#[test]
+fn function_without_label_shorthand() {
+    assert_format!(
+        r#"pub fn main() {
+  wibble(x: x)
+}
+"#
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/2015
+#[test]
+fn doc_comments_are_split_by_regular_comments() {
+    assert_format!(
+        r#"/// Doc comment
+// Commented function
+// fn wibble() {}
+
+/// Other doc comment
+pub fn main() {
+  todo
+}
+"#
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/2015
+#[test]
+fn it_is_easy_to_tell_two_different_doc_comments_apart_when_a_regular_comment_is_separating_those()
+{
+    assert_format_rewrite!(
+        r#"/// Doc comment
+// regular comment
+/// Other doc comment
+pub fn main() {
+  todo
+}
+"#,
+        r#"/// Doc comment
+// regular comment
+
+/// Other doc comment
+pub fn main() {
+  todo
+}
+"#
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/2015
+#[test]
+fn multiple_commented_definitions_in_a_row_2() {
+    assert_format!(
+        r#"/// Stray comment
+// regular comment
+
+/// Stray comment
+// regular comment
+
+/// Doc comment
+pub fn wibble() {
+  todo
+}
+"#
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/2015
+#[test]
+fn only_stray_comments_and_definition_with_no_doc_comments() {
+    assert_format!(
+        r#"/// Stray comment
+// regular comment
+
+/// Stray comment
+// regular comment
+
+pub fn wibble() {
+  todo
+}
+"#
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/2015
+#[test]
+fn only_stray_comments_and_definition_with_no_doc_comments_2() {
+    assert_format_rewrite!(
+        r#"/// Stray comment
+// regular comment
+pub fn wibble () {
+  todo
+}
+"#,
+        r#"/// Stray comment
+// regular comment
+
+pub fn wibble() {
+  todo
+}
+"#
+    );
+}
+
+#[test]
+fn discard_in_pipe_is_not_turned_into_shorthand_label() {
+    assert_format!(
+        r#"pub fn main() {
+  wibble |> wobble(one: 1, label: _, two: 2)
+}
+"#
+    );
+}
+
+// Bug found by Louis
+#[test]
+fn internal_attribute_does_not_change_formatting_of_a_function() {
+    assert_format!(
+        r#"@internal
+pub fn init(
+  start: #(SupervisorFlags, List(ChildSpecification)),
+) -> Result(#(Dynamic, Dynamic), never) {
+  todo
 }
 "#
     );

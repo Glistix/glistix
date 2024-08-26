@@ -21,9 +21,9 @@ pub fn main() {
       suite("strings", strings_tests()),
       suite("equality", equality_tests()),
       suite("constants", constants_tests()),
-      suite("bit strings target", bit_array_target_tests()),
-      suite("bit strings", bit_array_tests()),
-      suite("sized bit strings", sized_bit_array_tests()),
+      suite("bit arrays target", bit_array_target_tests()),
+      suite("bit arrays", bit_array_tests()),
+      suite("sized bit arrays", sized_bit_array_tests()),
       suite("list spread", list_spread_tests()),
       suite("clause guards", clause_guard_tests()),
       suite("imported custom types", imported_custom_types_test()),
@@ -42,7 +42,7 @@ pub fn main() {
       suite("unicode overflow", unicode_overflow_tests()),
       suite("bool negation", bool_negation_tests()),
       suite("number negation", int_negation_tests()),
-      suite("bit string match", bit_array_match_tests()),
+      suite("bit array match", bit_array_match_tests()),
       suite("anonymous functions", anonymous_function_tests()),
       suite("string pattern matching", string_pattern_matching_tests()),
       suite("typescript file inclusion", typescript_file_included_tests()),
@@ -1007,6 +1007,8 @@ fn bit_array_tests() -> List(Test) {
     }),
     "<<\"abc\":utf8>> == <<97, 98, 99>>"
     |> example(fn() { assert_equal(True, <<"abc":utf8>> == <<97, 98, 99>>) }),
+    "<<\"😀\":utf8>> == <<\"\u{1F600}\":utf8>>"
+    |> example(fn() { assert_equal(True, <<"😀":utf8>> == <<"\u{1F600}":utf8>>) }),
     "<<<<1>>:bit_array, 2>> == <<1, 2>>"
     |> example(fn() { assert_equal(True, <<<<1>>:bits, 2>> == <<1, 2>>) }),
     "<<1>> == <<1:int>>"
@@ -1015,6 +1017,25 @@ fn bit_array_tests() -> List(Test) {
     |> example(fn() {
       assert_equal(True, <<63, 240, 0, 0, 0, 0, 0, 0>> == <<1.0:float>>)
     }),
+    "<<63, 128, 0, 0>> == <<1.0:float-32>>"
+    |> example(fn() {
+      assert_equal(True, <<63, 128, 0, 0>> == <<1.0:float-32>>)
+    }),
+    "<<0, 0, 0, 0, 0, 0, 240, 63>> == <<1.0:float-64-little>>"
+    |> example(fn() {
+      assert_equal(True, <<0, 0, 0, 0, 0, 0, 240, 63>> == <<1.0:float-64-little>>)
+    }),
+    "<<63, 240, 0, 0, 0, 0, 0, 0>> == <<1.0:float-64-big>>"
+    |> example(fn() {
+      assert_equal(True, <<63, 240, 0, 0, 0, 0, 0, 0>> == <<1.0:float-64-big>>)
+    }),
+    "pattern match on bit array containing utf8"
+    |> example(fn() {
+      assert_equal(True, case <<0x20, "😀👍":utf8, 0x20>> {
+        <<" ":utf8, "😀👍":utf8, 0x20>> -> True
+        _ -> False
+      })
+    })
   ]
 }
 
@@ -1034,6 +1055,8 @@ fn bit_array_tests() -> List(Test) {
     }),
     "<<\"abc\":utf8>> == <<97, 98, 99>>"
     |> example(fn() { assert_equal(True, <<"abc":utf8>> == <<97, 98, 99>>) }),
+    "<<\"😀\":utf8>> == <<\"\u{1F600}\":utf8>>"
+    |> example(fn() { assert_equal(True, <<"😀":utf8>> == <<"\u{1F600}":utf8>>) }),
     "<<<<1>>:bit_array, 2>> == <<1, 2>>"
     |> example(fn() { assert_equal(True, <<<<1>>:bits, 2>> == <<1, 2>>) }),
     "<<1>> == <<1:int>>"
@@ -1042,6 +1065,25 @@ fn bit_array_tests() -> List(Test) {
     |> example(fn() {
       assert_equal(True, <<63, 240, 0, 0, 0, 0, 0, 0>> == <<1.0:float>>)
     }),
+    "<<63, 128, 0, 0>> == <<1.0:float-32>>"
+    |> example(fn() {
+      assert_equal(True, <<63, 128, 0, 0>> == <<1.0:float-32>>)
+    }),
+    "<<0, 0, 0, 0, 0, 0, 240, 63>> == <<1.0:float-64-little>>"
+    |> example(fn() {
+      assert_equal(True, <<0, 0, 0, 0, 0, 0, 240, 63>> == <<1.0:float-64-little>>)
+    }),
+    "<<63, 240, 0, 0, 0, 0, 0, 0>> == <<1.0:float-64-big>>"
+    |> example(fn() {
+      assert_equal(True, <<63, 240, 0, 0, 0, 0, 0, 0>> == <<1.0:float-64-big>>)
+    }),
+    "pattern match on bit array containing utf8"
+    |> example(fn() {
+      assert_equal(True, case <<0x20, "😀👍":utf8, 0x20>> {
+        <<" ":utf8, "😀👍":utf8, 0x20>> -> True
+        _ -> False
+      })
+    })
   ]
 }
 
@@ -1072,14 +1114,8 @@ fn bit_array_tests() -> List(Test) {
 @target(erlang)
 fn bit_array_target_tests() -> List(Test) {
   [
-    "<<60,0>> == <<1.0:float-size(16)>>"
+    "<<60, 0>> == <<1.0:float-16>>"
     |> example(fn() { assert_equal(True, <<60, 0>> == <<1.0:float-16>>) }),
-    "<<63,128,0,0>> == <<1.0:float-32>>"
-    |> example(fn() {
-      assert_equal(True, <<63, 128, 0, 0>> == <<1.0:float-32>>)
-    }),
-    "<<\"😀\":utf8>> == <<\"\u{1F600}\":utf8>>"
-    |> example(fn() { assert_equal(True, <<"😀":utf8>> == <<"\u{1F600}":utf8>>) }),
   ]
 }
 
@@ -1094,6 +1130,92 @@ fn bit_array_target_tests() -> List(Test) {
 }
 
 fn sized_bit_array_tests() -> List(Test) {
+  sized_bit_array_target_tests()
+}
+
+@target(erlang)
+fn sized_bit_array_target_tests() -> List(Test) {
+  [
+    "<<1>> == <<257:size(8)>>"
+    |> example(fn() { assert_equal(True, <<1>> == <<257:size(8)>>) }),
+    "<<1, 1>> == <<257:size(16)>>"
+    |> example(fn() { assert_equal(True, <<1, 1>> == <<257:size(16)>>) }),
+    "<<1, 1>> == <<257:size(24)>>"
+    |> example(fn() { assert_equal(True, <<0, 1, 1>> == <<257:size(24)>>) }),
+    "<<1, 0, 0, 0, 1>> == <<4294967297:size(40)>>"
+    |> example(fn() {
+      assert_equal(True, <<1, 0, 0, 0, 1>> == <<4_294_967_297:size(40)>>)
+    }),
+    "<<100_000:24-little>> == <<160, 134, 1>>"
+    |> example(fn() {
+      assert_equal(True, <<100_000:24-little>> == <<160, 134, 1>>)
+    }),
+    "<<-1:32-big>> == <<255, 255, 255, 255>>"
+    |> example(fn() {
+      assert_equal(True, <<-1:32-big>> == <<255, 255, 255, 255>>)
+    }),
+    "<<100_000_000_000:32-little>> == <<0, 232, 118, 72>>"
+    |> example(fn() {
+      assert_equal(True, <<100_000_000_000:32-little>> == <<0, 232, 118, 72>>)
+    }),
+    "<<>> == <<256:size(-1)>>"
+    |> example(fn() { assert_equal(True, <<>> == <<256:size(-1)>>) }),
+    // JS Number.MAX_SAFE_INTEGER
+    "<<0, 31, 255, 255, 255, 255, 255, 255>> == <<9007199254740991:size(64)>>"
+    |> example(fn() {
+      assert_equal(
+        True,
+        <<0, 31, 255, 255, 255, 255, 255, 255>> == <<
+          9_007_199_254_740_991:size(64),
+        >>,
+      )
+    }),
+  ]
+}
+
+@target(javascript)
+fn sized_bit_array_target_tests() -> List(Test) {
+  [
+    "<<1>> == <<257:size(8)>>"
+    |> example(fn() { assert_equal(True, <<1>> == <<257:size(8)>>) }),
+    "<<1, 1>> == <<257:size(16)>>"
+    |> example(fn() { assert_equal(True, <<1, 1>> == <<257:size(16)>>) }),
+    "<<1, 1>> == <<257:size(24)>>"
+    |> example(fn() { assert_equal(True, <<0, 1, 1>> == <<257:size(24)>>) }),
+    "<<1, 0, 0, 0, 1>> == <<4294967297:size(40)>>"
+    |> example(fn() {
+      assert_equal(True, <<1, 0, 0, 0, 1>> == <<4_294_967_297:size(40)>>)
+    }),
+    "<<100_000:24-little>> == <<160, 134, 1>>"
+    |> example(fn() {
+      assert_equal(True, <<100_000:24-little>> == <<160, 134, 1>>)
+    }),
+    "<<-1:32-big>> == <<255, 255, 255, 255>>"
+    |> example(fn() {
+      assert_equal(True, <<-1:32-big>> == <<255, 255, 255, 255>>)
+    }),
+    "<<100_000_000_000:32-little>> == <<0, 232, 118, 72>>"
+    |> example(fn() {
+      assert_equal(True, <<100_000_000_000:32-little>> == <<0, 232, 118, 72>>)
+    }),
+    "<<>> == <<256:size(-1)>>"
+    |> example(fn() { assert_equal(True, <<>> == <<256:size(-1)>>) }),
+    // JS Number.MAX_SAFE_INTEGER
+    "<<0, 31, 255, 255, 255, 255, 255, 255>> == <<9007199254740991:size(64)>>"
+    |> example(fn() {
+      assert_equal(
+        True,
+        <<0, 31, 255, 255, 255, 255, 255, 255>> == <<
+          9_007_199_254_740_991:size(64),
+        >>,
+      )
+    }),
+  ]
+}
+
+// TODO: Endianness
+@target(nix)
+fn sized_bit_array_target_tests() -> List(Test) {
   [
     "<<1>> == <<257:size(8)>>"
     |> example(fn() { assert_equal(True, <<1>> == <<257:size(8)>>) }),
@@ -1440,6 +1562,24 @@ fn bit_array_match_tests() {
         #(a, b)
       })
     }),
+    "let <<a:int-32-little-signed, b:signed-big-24>> = <<255, 255, 255, 255, 240, 216, 255>>"
+    |> example(fn() {
+      assert_equal(#(-1, -10000), {
+        let assert <<a:int-32-little-signed, b:signed-big-24>> = <<
+          255, 255, 255, 255, 255, 216, 240
+        >>
+        #(a, b)
+      })
+    }),
+    "let <<a:16-unsigned, b:40-signed-little>> = <<255, 255, 255, 255, 240, 216, 255>>"
+    |> example(fn() {
+      assert_equal(#(65535, -655294465), {
+        let assert <<a:16-unsigned, b:40-signed-little>> = <<
+          255, 255, 255, 255, 240, 216, 255
+        >>
+        #(a, b)
+      })
+    }),
     "let <<a:float, b:int>> = <<63,240,0,0,0,0,0,0,1>>"
     |> example(fn() {
       assert_equal(#(1.0, 1), {
@@ -1451,6 +1591,20 @@ fn bit_array_match_tests() {
     |> example(fn() {
       assert_equal(1.23, {
         let assert <<a:float>> = <<1.23:float>>
+        a
+      })
+    }),
+    "let <<a:float-32>> = <<63, 176, 0, 0>>"
+    |> example(fn() {
+      assert_equal(1.375, {
+        let assert <<a:float-32>> = <<63, 176, 0, 0>>
+        a
+      })
+    }),
+    "let <<a:64-float-little>> = <<61, 10, 215, 163, 112, 61, 18, 64>>"
+    |> example(fn() {
+      assert_equal(4.56, {
+        let assert <<a:64-float-little>> = <<61, 10, 215, 163, 112, 61, 18, 64>>
         a
       })
     }),
@@ -1536,6 +1690,24 @@ fn bit_array_match_tests() {
         #(a, b)
       })
     }),
+    "let <<a:int-32-little-signed, b:signed-big-24>> = <<255, 255, 255, 255, 240, 216, 255>>"
+    |> example(fn() {
+      assert_equal(#(-1, -10000), {
+        let assert <<a:int-32-little-signed, b:signed-big-24>> = <<
+          255, 255, 255, 255, 255, 216, 240
+        >>
+        #(a, b)
+      })
+    }),
+    "let <<a:16-unsigned, b:40-signed-little>> = <<255, 255, 255, 255, 240, 216, 255>>"
+    |> example(fn() {
+      assert_equal(#(65535, -655294465), {
+        let assert <<a:16-unsigned, b:40-signed-little>> = <<
+          255, 255, 255, 255, 240, 216, 255
+        >>
+        #(a, b)
+      })
+    }),
     "let <<a:float, b:int>> = <<63,240,0,0,0,0,0,0,1>>"
     |> example(fn() {
       assert_equal(#(1.0, 1), {
@@ -1547,6 +1719,20 @@ fn bit_array_match_tests() {
     |> example(fn() {
       assert_equal(1.23, {
         let assert <<a:float>> = <<1.23:float>>
+        a
+      })
+    }),
+    "let <<a:float-32>> = <<63, 176, 0, 0>>"
+    |> example(fn() {
+      assert_equal(1.375, {
+        let assert <<a:float-32>> = <<63, 176, 0, 0>>
+        a
+      })
+    }),
+    "let <<a:64-float-little>> = <<61, 10, 215, 163, 112, 61, 18, 64>>"
+    |> example(fn() {
+      assert_equal(4.56, {
+        let assert <<a:64-float-little>> = <<61, 10, 215, 163, 112, 61, 18, 64>>
         a
       })
     }),
@@ -1608,7 +1794,7 @@ fn bit_array_match_tests() {
   ]
 }
 
-// TODO: impl :float on bitarrays so we can keep one test for all targets
+// TODO: impl :float, endianness on bitarrays so we can keep one test for all targets
 @target(nix)
 fn bit_array_match_tests() {
   [

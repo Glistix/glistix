@@ -1,7 +1,14 @@
 ---
 source: compiler-core/src/language_server/tests/completion.rs
-expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
+expression: "\n@internal pub type Alias = Result(Int, String)\n@internal pub type AnotherType {\n  Wibble\n}\n"
 ---
+@internal pub type Alias = Result(Int, String)
+@internal pub type AnotherType {
+|  Wibble
+}
+
+
+----- Completion content -----
 [
     CompletionItem {
         label: "Alias",
@@ -15,7 +22,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "2_Alias",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -55,7 +64,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "2_AnotherType",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -95,7 +106,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_BitArray",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -119,7 +132,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Bool",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -143,7 +158,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Float",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -167,7 +184,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Int",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -191,7 +210,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_List",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -215,7 +236,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Nil",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -239,7 +262,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_Result",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -263,7 +288,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_String",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
@@ -287,7 +314,9 @@ expression: "completion(TestProject::for_source(code), Position::new(3, 0))"
         documentation: None,
         deprecated: None,
         preselect: None,
-        sort_text: None,
+        sort_text: Some(
+            "4_UtfCodepoint",
+        ),
         filter_text: None,
         insert_text: None,
         insert_text_format: None,
