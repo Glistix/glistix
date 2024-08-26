@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/numbers.rs
+expression: "\nfn go() {\n  case 1 >= 0 {\n    True -> 2\n    False -> 4\n  } / 2\n}\n"
+---
+let
+  inherit (builtins.import ./../gleam.nix) divideInt;
+  
+  go = { }: divideInt (let _pat' = 1 >= 0; in if _pat' then 2 else 4) 2;
+in
+{ }
