@@ -997,6 +997,7 @@ pub enum UnknownValueConstructorError {
 pub fn convert_get_value_constructor_error(
     e: UnknownValueConstructorError,
     location: SrcSpan,
+    module_location: Option<SrcSpan>,
 ) -> Error {
     match e {
         UnknownValueConstructorError::Variable {
@@ -1011,7 +1012,7 @@ pub fn convert_get_value_constructor_error(
         },
 
         UnknownValueConstructorError::Module { name, suggestions } => Error::UnknownModule {
-            location,
+            location: module_location.unwrap_or(location),
             name,
             suggestions,
         },
