@@ -3546,7 +3546,7 @@ functions are declared separately from types.";
             "erlang" => Target::Erlang,
             "javascript" => Target::JavaScript,
             "nix" => Target::Nix,
-            _ => return parse_error(ParseErrorType::UnknownAttribute, SrcSpan::new(start, end)),
+            _ => return parse_error(ParseErrorType::UnknownTarget, SrcSpan::new(start, end)),
         };
 
         let _ = self.expect_one(&Token::Comma)?;
