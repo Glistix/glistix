@@ -41,9 +41,9 @@ Glistix officially supports **Linux, MacOS and Windows.** (Note, however, that N
 
 You can install Glistix in one of the following ways.
 
-1. **From GitHub Releases (non-NixOS):** If you're using Linux (not NixOS), MacOS or Windows, you can install Glistix by downloading the latest precompiled binary for your platform at [https://github.com/glistix/glistix/releases](https://github.com/glistix/glistix/releases).
+1. **From GitHub Releases:** If you're using Linux (any distro, including NixOS), MacOS or Windows, you can install Glistix by downloading the latest precompiled binary for your platform at [https://github.com/glistix/glistix/releases](https://github.com/glistix/glistix/releases).
 
-2. **With Nix flakes (NixOS):** Invoke the command below in the command line to download, compile and run a specific release of Glistix - here the latest at the time of writing (v0.4.0).
+2. **With Nix flakes:** Invoke the command below in the command line to download, compile and run a specific release of Glistix - here the latest at the time of writing (v0.4.0).
 
     ```sh
     nix run 'github:Glistix/glistix/v0.4.0' -- --help
