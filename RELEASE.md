@@ -12,6 +12,7 @@ Additional instructions for Glistix:
 5. Add changelog to the Glistix book (initially with "(Unreleased)" as the release date).
 6. Update the book as needed (there are several compiler internals documented there, including which patches we applied on top of the base Gleam compiler).
 7. Update the Glistix version in the book's installation instructions in "Getting Started".
+8. Ensure the Zulip invite is up-to-date in the README and book (if present).
 
 After release:
 
