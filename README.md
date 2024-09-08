@@ -33,18 +33,18 @@ For more information on Gleam, including tutorials, please check [the Gleam lang
 
 1. **Codegen (Gleam -> Nix):** Pretty much done (only a few bit array options aren't supported)
 2. **FFI (use Nix in Gleam and vice-versa):** Done
-  - Use `@external(nix, "file.nix", "function_name")` to import a Nix function in Gleam
-  - Use `(import ./glistix/project/dir).lib.loadGlistixPackage { module = ... }` to import a Gleam module in Nix
+   - Use `@external(nix, "file.nix", "function_name")` to import a Nix function in Gleam
+   - Use `(import ./glistix/project/dir).lib.loadGlistixPackage { module = ... }` to import a Gleam module in Nix
 3. **Gleam package support:** Basic packages OK, other packages may need manual porting
-  - **Gleam stdlib:** Basic functionality ported to Nix (maintained under [`glistix/stdlib`](https://github.com/glistix/stdlib)), still missing important functions
-  - **Gleeunit, Json, Birl:** Maintained under the [Glistix org](https://github.com/glistix)
+   - **Gleam stdlib:** Basic functionality ported to Nix (maintained under [`glistix/stdlib`](https://github.com/glistix/stdlib)), still missing important functions
+   - **Gleeunit, Json, Birl:** Maintained under the [Glistix org](https://github.com/glistix)
 4. **Bindings:** Lacking
-  - Basic Nix language bindings available on Hex: [`glistix_nix`](https://hexdocs.pm/glistix_nix/)
-  - No Nixpkgs bindings
-  - No NixOS module system bindings
-  - No NixOS config bindings
-  - No Home Manager bindings
-  - No bindings for Flakes
+   - Basic Nix language bindings available on Hex: [`glistix_nix`](https://hexdocs.pm/glistix_nix/)
+   - No Nixpkgs bindings
+   - No NixOS module system bindings
+   - No NixOS config bindings
+   - No Home Manager bindings
+   - No bindings for Flakes
 
 ## Sponsors
 
