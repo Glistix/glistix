@@ -27,6 +27,25 @@ For more information on Gleam, including tutorials, please check [the Gleam lang
 
 **NOTE:** Glistix is **an unofficial project** and is therefore **not affiliated with the Gleam project**.
 
+## Project Status
+
+- **Overall status:** Usable, but still missing easy bindings (to Nixpkgs, NixOS, Home Manager) and usage examples. **Please contribute!**
+
+1. **Codegen (Gleam -> Nix):** Pretty much done (only a few bit array options aren't supported)
+2. **FFI (use Nix in Gleam and vice-versa):** Done
+  - Use `@external(nix, "file.nix", "function_name")` to import a Nix function in Gleam
+  - Use `(import ./glistix/project/dir).lib.loadGlistixPackage { module = ... }` to import a Gleam module in Nix
+3. **Gleam package support:** Basic packages OK, other packages may need manual porting
+  - **Gleam stdlib:** Basic functionality ported to Nix (maintained under [`glistix/stdlib`](https://github.com/glistix/stdlib)), still missing important functions
+  - **Gleeunit, Json, Birl:** Maintained under the [Glistix org](https://github.com/glistix)
+4. **Bindings:** Lacking
+  - Basic Nix language bindings available on Hex: [`glistix_nix`](https://hexdocs.pm/glistix_nix/)
+  - No Nixpkgs bindings
+  - No NixOS module system bindings
+  - No NixOS config bindings
+  - No Home Manager bindings
+  - No bindings for Flakes
+
 ## Sponsors
 
 Please consider [supporting the team behind Gleam on GitHub](https://github.com/sponsors/lpil). Without their awesome project, Glistix wouldn't exist!
@@ -308,7 +327,9 @@ For more details on the topics above, see the ["Limitations" page of the Glistix
 
 ## Contributing
 
-Please **discuss first** (open an issue) before opening a large PR. Additionally, make sure to [check out the book](https://glistix.github.io/book/) for useful information on how the compiler works.
+Please **discuss first** before working on a major contribution. The ideal channels for this are [**GitHub issues**](https://github.com/Glistix/glistix/issues) and [**our Zulip**](https://glistix.zulipchat.com/) (there is a sign up invite link at the top of this README).
+
+Additionally, make sure to [check out the book](https://glistix.github.io/book/) for useful information on how the compiler works.
 
 Please note that we generally try to follow an **upstream-first policy**. This means that **any feature ideas which are not related to Nix should generally be brought to the [the upstream Gleam repository](https://github.com/gleam-lang/gleam) first**; if accepted there, the feature should be implemented (/contributed) upstream. Otherwise, we can consider implementing it on Glistix if it would significantly improve the experience of using Glistix, especially regarding usage with Nix, but not before proper discussions. The idea is to not only keep up with the Gleam ecosystem at large, but also to **ensure most improvements to the Glistix compiler also benefit users of the upstream Gleam compiler.**
 
