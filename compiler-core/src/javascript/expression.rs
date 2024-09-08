@@ -1643,9 +1643,8 @@ fn construct_record<'a>(
 ) -> Document<'a> {
     let mut any_arguments = false;
     let arguments = join(
-        arguments.into_iter().map(|a| {
+        arguments.into_iter().inspect(|_| {
             any_arguments = true;
-            a
         }),
         break_(",", ", "),
     );
