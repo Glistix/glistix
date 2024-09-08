@@ -247,7 +247,7 @@ where
             documentation: vec![],
             type_info: (),
             definitions,
-            extra: (),
+            names: (),
         };
         Ok(Parsed {
             module,
