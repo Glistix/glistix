@@ -65,7 +65,7 @@ fn constant_module(constant: TypedConstant) -> ModuleInterface {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     }
 }
 
@@ -98,7 +98,7 @@ fn empty_module() {
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -121,7 +121,7 @@ fn with_line_numbers() {
         const c = 3",
         ),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -152,7 +152,7 @@ fn module_with_private_type() {
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -183,7 +183,7 @@ fn module_with_app_type() {
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -214,7 +214,7 @@ fn module_with_fn_type() {
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -245,7 +245,7 @@ fn module_with_tuple_type() {
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -282,7 +282,7 @@ fn module_with_generic_type() {
             accessors: HashMap::new(),
             line_numbers: LineNumbers::new(""),
             src_path: "some_path".into(),
-            required_version: Version::new(1, 0, 0),
+            minimum_required_version: Version::new(1, 0, 0),
         }
     }
 
@@ -319,7 +319,7 @@ fn module_with_type_links() {
             accessors: HashMap::new(),
             line_numbers: LineNumbers::new(""),
             src_path: "some_path".into(),
-            required_version: Version::new(1, 0, 0),
+            minimum_required_version: Version::new(1, 0, 0),
         }
     }
 
@@ -356,7 +356,7 @@ fn module_with_type_constructor_documentation() {
             accessors: HashMap::new(),
             line_numbers: LineNumbers::new(""),
             src_path: "some_path".into(),
-            required_version: Version::new(1, 0, 0),
+            minimum_required_version: Version::new(1, 0, 0),
         }
     }
 
@@ -396,7 +396,7 @@ fn module_with_type_constructor_origin() {
             accessors: HashMap::new(),
             line_numbers: LineNumbers::new(""),
             src_path: "some_path".into(),
-            required_version: Version::new(1, 0, 0),
+            minimum_required_version: Version::new(1, 0, 0),
         }
     }
 
@@ -427,7 +427,7 @@ fn module_type_to_constructors_mapping() {
         values: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -475,7 +475,7 @@ fn module_fn_value() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -524,7 +524,7 @@ fn deprecated_module_fn_value() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -571,7 +571,7 @@ fn private_module_fn_value() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -620,7 +620,7 @@ fn module_fn_value_regression() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -668,7 +668,7 @@ fn module_fn_value_with_field_map() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -711,7 +711,7 @@ fn record_value() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -757,7 +757,7 @@ fn record_value_with_field_map() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -821,7 +821,7 @@ fn accessors() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -1041,7 +1041,7 @@ fn constant_var() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -1231,7 +1231,7 @@ fn deprecated_type() {
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -1278,7 +1278,7 @@ fn module_fn_value_with_external_implementations() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -1328,7 +1328,7 @@ fn internal_module_fn() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -1379,7 +1379,7 @@ fn internal_annotated_module_fn() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -1419,7 +1419,7 @@ fn type_variable_ids_in_constructors_are_shared() {
         values: [].into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-        required_version: Version::new(1, 0, 0),
+        minimum_required_version: Version::new(1, 0, 0),
     };
 
     let expected = HashMap::from([(
