@@ -117,9 +117,9 @@ enum InternalAttribute {
 struct Attributes {
     target: Option<Target>,
     deprecated: Deprecation,
-    external_erlang: Option<(EcoString, EcoString)>,
-    external_javascript: Option<(EcoString, EcoString)>,
-    external_nix: Option<(EcoString, EcoString)>,
+    external_erlang: Option<(EcoString, EcoString, SrcSpan)>,
+    external_javascript: Option<(EcoString, EcoString, SrcSpan)>,
+    external_nix: Option<(EcoString, EcoString, SrcSpan)>,
     internal: InternalAttribute,
 }
 
@@ -138,7 +138,7 @@ impl Attributes {
         }
     }
 
-    fn set_external_for(&mut self, target: Target, ext: Option<(EcoString, EcoString)>) {
+    fn set_external_for(&mut self, target: Target, ext: Option<(EcoString, EcoString, SrcSpan)>) {
         match target {
             Target::Erlang => self.external_erlang = ext,
             Target::JavaScript => self.external_javascript = ext,
@@ -3566,7 +3566,7 @@ functions are declared separately from types.";
             return parse_error(ParseErrorType::DuplicateAttribute, SrcSpan { start, end });
         }
 
-        attributes.set_external_for(target, Some((module, function)));
+        attributes.set_external_for(target, Some((module, function, SrcSpan { start, end })));
         Ok(end)
     }
 
