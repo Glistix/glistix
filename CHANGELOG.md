@@ -19,7 +19,7 @@
   ```gleam
   import gleam/option.{type Option as Maybe}
 
-  const none = option.Some(1)
+  const value = option.Some(1)
   //    ^ hovering here shows `Maybe(Int)`
   ```
 
