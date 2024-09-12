@@ -617,8 +617,12 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         let variant = ValueConstructorVariant::ModuleFn {
             documentation: doc.as_ref().map(|(_, doc)| doc.clone()),
             name: name.clone(),
-            external_erlang: external_erlang.clone().map(|(m, f, _)| (m, f)),
-            external_javascript: external_javascript.clone().map(|(m, f, _)| (m, f)),
+            external_erlang: external_erlang
+                .as_ref()
+                .map(|(m, f, _)| (m.clone(), f.clone())),
+            external_javascript: external_javascript
+                .as_ref()
+                .map(|(m, f, _)| (m.clone(), f.clone())),
             field_map,
             module: environment.current_module.clone(),
             arity: typed_args.len(),
@@ -1349,8 +1353,12 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             documentation: documentation.as_ref().map(|(_, doc)| doc.clone()),
             name: name.clone(),
             field_map,
-            external_erlang: external_erlang.clone().map(|(m, f, _)| (m, f)),
-            external_javascript: external_javascript.clone().map(|(m, f, _)| (m, f)),
+            external_erlang: external_erlang
+                .as_ref()
+                .map(|(m, f, _)| (m.clone(), f.clone())),
+            external_javascript: external_javascript
+                .as_ref()
+                .map(|(m, f, _)| (m.clone(), f.clone())),
             module: environment.current_module.clone(),
             arity: args.len(),
             location: *location,
@@ -1652,8 +1660,12 @@ fn generalise_function(
         documentation: doc.as_ref().map(|(_, doc)| doc.clone()),
         name: name.clone(),
         field_map,
-        external_erlang: external_erlang.clone().map(|(m, f, _)| (m, f)),
-        external_javascript: external_javascript.clone().map(|(m, f, _)| (m, f)),
+        external_erlang: external_erlang
+            .as_ref()
+            .map(|(m, f, _)| (m.clone(), f.clone())),
+        external_javascript: external_javascript
+            .as_ref()
+            .map(|(m, f, _)| (m.clone(), f.clone())),
         module: module_name.clone(),
         arity: args.len(),
         location,
