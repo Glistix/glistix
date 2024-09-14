@@ -1,6 +1,6 @@
 # Gleam's Changelog
 
-## Unreleased
+## v1.5.0-rc1 - 2024-09-14
 
 ### Build tool
 
