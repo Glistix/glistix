@@ -1,5 +1,7 @@
 # Gleam's Changelog
 
+## v1.5.0 - 2024-09-19
+
 ## v1.5.0-rc2 - 2024-09-18
 
 ### Bug Fixes
