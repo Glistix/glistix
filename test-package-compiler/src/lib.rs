@@ -140,7 +140,7 @@ impl TestCompileOutput {
                                 .as_str()
                                 .replace("\\\\", "/");
                             let line_number = caps.get(2).expect("line number").as_str();
-                            format!("-file(\"{}\", {}).", path, line_number)
+                            format!("-file(\"{path}\", {line_number}).")
                         });
                     buffer.push_str(&text)
                 }

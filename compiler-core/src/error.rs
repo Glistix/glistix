@@ -412,7 +412,7 @@ The conflicting packages are:
 
 {}
 ",
-                    conflicting_packages.into_iter().map(|s| format!("- {}", s)).join("\n"))
+                    conflicting_packages.into_iter().map(|s| format!("- {s}")).join("\n"))
             }
 
             ResolutionError::ErrorRetrievingDependencies {
@@ -700,7 +700,7 @@ fn did_you_mean(name: &str, options: &[EcoString]) -> Option<String> {
     if options.len() == 1 {
         return options
             .first()
-            .map(|option| format!("Did you mean `{}`?", option));
+            .map(|option| format!("Did you mean `{option}`?"));
     }
 
     // Check for case-insensitive matches.
@@ -710,7 +710,7 @@ fn did_you_mean(name: &str, options: &[EcoString]) -> Option<String> {
         .iter()
         .find(|&option| option.eq_ignore_ascii_case(name))
     {
-        return Some(format!("Did you mean `{}`?", exact_match));
+        return Some(format!("Did you mean `{exact_match}`?"));
     }
 
     // Calculate the threshold as one third of the name's length, with a minimum of 1.
@@ -726,7 +726,7 @@ fn did_you_mean(name: &str, options: &[EcoString]) -> Option<String> {
                 .map(|distance| (option, distance))
         })
         .min_by_key(|&(_, distance)| distance)
-        .map(|(option, _)| format!("Did you mean `{}`?", option))
+        .map(|(option, _)| format!("Did you mean `{option}`?"))
 }
 
 impl Error {
@@ -958,8 +958,7 @@ resulting in compilation errors!"
                 hint: Some(format!(
                     "Remove the version constraint from your `gleam.toml` or update it to be:
 
-    gleam = \">= {}\"",
-                    minimum_required_version
+    gleam = \">= {minimum_required_version}\""
                 )),
                 location: None,
             }],

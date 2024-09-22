@@ -187,9 +187,9 @@ fn parse_gleam_add_specifier_default() {
     let (package, version) = parse_gleam_add_specifier(provided).unwrap();
     match &version {
         Requirement::Hex { version: v } => {
-            assert!(v.to_pubgrub().is_ok(), "failed pubgrub parse: {}", v);
+            assert!(v.to_pubgrub().is_ok(), "failed pubgrub parse: {v}");
         }
-        _ => assert!(false, "failed hexpm version parse: {}", provided),
+        _ => assert!(false, "failed hexpm version parse: {provided}"),
     }
     assert_eq!(version, Requirement::hex(expected));
     assert_eq!("some_package", package);
@@ -202,9 +202,9 @@ fn parse_gleam_add_specifier_major_only() {
     let (package, version) = parse_gleam_add_specifier(provided).unwrap();
     match &version {
         Requirement::Hex { version: v } => {
-            assert!(v.to_pubgrub().is_ok(), "failed pubgrub parse: {}", v);
+            assert!(v.to_pubgrub().is_ok(), "failed pubgrub parse: {v}");
         }
-        _ => assert!(false, "failed hexpm version parse: {}", provided),
+        _ => assert!(false, "failed hexpm version parse: {provided}"),
     }
     assert_eq!(version, Requirement::hex(expected));
     assert_eq!("wobble", package);
@@ -217,9 +217,9 @@ fn parse_gleam_add_specifier_major_and_minor() {
     let (package, version) = parse_gleam_add_specifier(provided).unwrap();
     match &version {
         Requirement::Hex { version: v } => {
-            assert!(v.to_pubgrub().is_ok(), "failed pubgrub parse: {}", v);
+            assert!(v.to_pubgrub().is_ok(), "failed pubgrub parse: {v}");
         }
-        _ => assert!(false, "failed hexpm version parse: {}", provided),
+        _ => assert!(false, "failed hexpm version parse: {provided}"),
     }
     assert_eq!(version, Requirement::hex(expected));
     assert_eq!("wibble", package);
@@ -232,9 +232,9 @@ fn parse_gleam_add_specifier_major_minor_and_patch() {
     let (package, version) = parse_gleam_add_specifier(provided).unwrap();
     match &version {
         Requirement::Hex { version: v } => {
-            assert!(v.to_pubgrub().is_ok(), "failed pubgrub parse: {}", v);
+            assert!(v.to_pubgrub().is_ok(), "failed pubgrub parse: {v}");
         }
-        _ => assert!(false, "failed hexpm version parse: {}", provided),
+        _ => assert!(false, "failed hexpm version parse: {provided}"),
     }
     assert_eq!(version, Requirement::hex(expected));
     assert_eq!("bobble", package);
@@ -750,10 +750,10 @@ impl ProvidedPackageSource {
     fn to_toml(&self) -> String {
         match self {
             Self::Git { repo, commit } => {
-                format!(r#"{{ repo: "{}", commit: "{}" }}"#, repo, commit)
+                format!(r#"{{ repo: "{repo}", commit: "{commit}" }}"#)
             }
             Self::Local { path } => {
-                format!(r#"{{ path: "{}" }}"#, path)
+                format!(r#"{{ path: "{path}" }}"#)
             }
         }
     }

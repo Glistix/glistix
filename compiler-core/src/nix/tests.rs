@@ -160,7 +160,7 @@ pub fn compile_nix(src: &str, deps: Vec<(&str, &str, &str)>) -> Result<String, c
 
 pub fn expect_nix_error(src: &str, deps: Vec<(&str, &str, &str)>) -> String {
     let error = compile_nix(src, deps).expect_err("should not compile");
-    println!("er: {:#?}", error);
+    println!("er: {error:#?}");
     let better_error = match error {
         crate::Error::Nix {
             error: inner_error, ..
@@ -169,7 +169,7 @@ pub fn expect_nix_error(src: &str, deps: Vec<(&str, &str, &str)>) -> String {
             path: Utf8PathBuf::from("/src/nix/error.gleam"),
             error: inner_error,
         },
-        _ => panic!("expected nix error, got {:#?}", error),
+        _ => panic!("expected nix error, got {error:#?}"),
     };
     better_error.pretty_string()
 }
