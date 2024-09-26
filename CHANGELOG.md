@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Build tool
+
+### Compiler
+
 ### Formatter
 
 ### Language Server
@@ -33,4 +37,3 @@
 
 - Fixed a bug where Erlang file paths would not be escaped on Windows.
   ([Louis Pilfold](https://github.com/lpil))
-
