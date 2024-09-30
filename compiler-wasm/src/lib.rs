@@ -116,8 +116,10 @@ pub fn compile_package(project_id: usize, target: &str) -> Result<(), String> {
     let target = match target.to_lowercase().as_str() {
         "erl" | "erlang" => Target::Erlang,
         "js" | "javascript" => Target::JavaScript,
+        "nix" => Target::Nix,
         _ => {
-            let msg = format!("Unknown target `{target}`, expected `erlang` or `javascript`");
+            let msg =
+                format!("Unknown target `{target}`, expected `erlang`, `javascript` or `nix`");
             return Err(msg);
         }
     };
@@ -147,6 +149,17 @@ pub fn read_compiled_erlang(project_id: usize, module_name: &str) -> Option<Stri
         "/build/_gleam_artefacts/{}.erl",
         module_name.replace('/', "@")
     );
+    fs.read(&Utf8PathBuf::from(path)).ok()
+}
+
+/// Get the compiled Nix output for a given module.
+///
+/// You need to call `compile_package` before calling this function.
+///
+#[wasm_bindgen]
+pub fn read_compiled_nix(project_id: usize, module_name: &str) -> Option<String> {
+    let fs = get_filesystem(project_id);
+    let path = format!("/build/{}.nix", module_name);
     fs.read(&Utf8PathBuf::from(path)).ok()
 }
 
