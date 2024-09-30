@@ -29,9 +29,14 @@ const GLISTIX_STDLIB_URL: &str = "https://github.com/glistix/stdlib";
 #[derive(
     Debug, Serialize, Deserialize, Display, EnumString, VariantNames, ValueEnum, Clone, Copy,
 )]
-#[strum(serialize_all = "kebab_case")]
+#[strum(serialize_all = "lowercase")]
+#[clap(rename_all = "lower")]
 pub enum Template {
+    #[clap(skip)]
     Lib,
+    Erlang,
+    JavaScript,
+    Nix,
 }
 
 #[derive(Debug)]
@@ -87,6 +92,11 @@ impl FileToCreate {
         let project_name = &creator.project_name;
         let skip_git = creator.options.skip_git;
         let skip_github = creator.options.skip_github;
+        let target = match creator.options.template {
+            Template::JavaScript => "target = \"javascript\"\n",
+            Template::Lib | Template::Nix => "target = \"nix\"\n",
+            Template::Erlang => "target = \"erlang\"\n",
+        };
 
         match self {
             Self::Readme => Some(format!(
@@ -177,8 +187,7 @@ pub fn hello_world_test() {
             Self::GleamToml => Some(format!(
                 r#"name = "{project_name}"
 version = "1.0.0"
-target = "nix"
-
+{target}
 # Fill out these fields if you intend to generate HTML documentation or publish
 # your project to the Hex package manager.
 #
@@ -544,7 +553,7 @@ Otherwise, you can use 'git clone' instead of 'git submodule add --name stdlib'.
         }
 
         match self.options.template {
-            Template::Lib => {
+            Template::Lib | Template::Erlang | Template::JavaScript | Template::Nix => {
                 for file in FileToCreate::iter() {
                     let path = file.location(self);
                     if let Some(contents) = file.contents(self) {
