@@ -118,7 +118,8 @@ pub fn compile_package(project_id: usize, target: &str) -> Result<(), String> {
         "js" | "javascript" => Target::JavaScript,
         "nix" => Target::Nix,
         _ => {
-            let msg = format!("Unknown target `{target}`, expected `erlang`, `javascript` or `nix`");
+            let msg =
+                format!("Unknown target `{target}`, expected `erlang`, `javascript` or `nix`");
             return Err(msg);
         }
     };
