@@ -823,8 +823,8 @@ fn accessors() {
                 AccessorsMap {
                     publicity: Publicity::Public,
                     type_: type_::int(),
-                    accessors: accessors1.clone().into(),
-                    constructor_accessors: vec![accessors1.into()],
+                    shared_accessors: accessors1.clone().into(),
+                    variant_specific_accessors: vec![accessors1.into()],
                 },
             ),
             (
@@ -832,8 +832,8 @@ fn accessors() {
                 AccessorsMap {
                     publicity: Publicity::Public,
                     type_: type_::int(),
-                    accessors: accessors2.clone().into(),
-                    constructor_accessors: vec![accessors2.into()],
+                    shared_accessors: accessors2.clone().into(),
+                    variant_specific_accessors: vec![accessors2.into()],
                 },
             ),
         ]
