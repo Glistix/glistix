@@ -1212,7 +1212,7 @@ Second: {second}"
                     }
                     None => "".into(),
                 };
-                let text = format!(
+                let mut text = format!(
                     "An error occurred while trying to {} this {}:
 
     {}
@@ -1222,6 +1222,14 @@ Second: {second}"
                     path,
                     err,
                 );
+                if cfg!(target_family = "windows") && action == &FileIoAction::Link {
+                    text.push_str("
+
+Windows does not support symbolic links without developer mode
+or admin privileges. Please enable developer mode and try again.
+
+https://learn.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development#activate-developer-mode");
+                }
                 vec![Diagnostic {
                     title: "File IO failure".into(),
                     text,
