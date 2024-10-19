@@ -2286,10 +2286,7 @@ where
         {
             return parse_error(
                 ParseErrorType::AllVariantRecordConstructorDeprecated,
-                SrcSpan {
-                    start,
-                    end: end_position,
-                },
+                SrcSpan { start, end },
             );
         }
 
