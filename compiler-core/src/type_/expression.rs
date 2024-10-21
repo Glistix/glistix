@@ -755,6 +755,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn infer_fn(
         &mut self,
         args: Vec<UntypedArg>,
@@ -2994,6 +2995,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         (fun, args, type_)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn infer_fn_with_call_context(
         &mut self,
         args: Vec<UntypedArg>,
