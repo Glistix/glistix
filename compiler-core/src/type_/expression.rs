@@ -3,10 +3,10 @@ use crate::{
     analyse::{infer_bit_array_option, name::check_argument_names},
     ast::{
         Arg, Assignment, AssignmentKind, BinOp, BitArrayOption, BitArraySegment, CallArg, Clause,
-        ClauseGuard, Constant, HasLocation, ImplicitCallArgOrigin, Layer, RecordUpdateSpread,
-        SrcSpan, Statement, TodoKind, TypeAst, TypedArg, TypedAssignment, TypedClause,
-        TypedClauseGuard, TypedConstant, TypedExpr, TypedMultiPattern, TypedStatement, UntypedArg,
-        UntypedAssignment, UntypedClause, UntypedClauseGuard, UntypedConstant,
+        ClauseGuard, Constant, FunctionLiteralKind, HasLocation, ImplicitCallArgOrigin, Layer,
+        RecordUpdateSpread, SrcSpan, Statement, TodoKind, TypeAst, TypedArg, TypedAssignment,
+        TypedClause, TypedClauseGuard, TypedConstant, TypedExpr, TypedMultiPattern, TypedStatement,
+        UntypedArg, UntypedAssignment, UntypedClause, UntypedClauseGuard, UntypedConstant,
         UntypedConstantBitArraySegment, UntypedExpr, UntypedExprBitArraySegment,
         UntypedMultiPattern, UntypedStatement, Use, UseAssignment, USE_ASSIGNMENT_VARIABLE,
     },
@@ -351,21 +351,12 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
             UntypedExpr::Fn {
                 location,
-                head_location,
-                is_capture,
+                kind,
                 arguments: args,
                 body,
                 return_annotation,
                 ..
-            } => self.infer_fn(
-                args,
-                &[],
-                body,
-                is_capture,
-                return_annotation,
-                location,
-                head_location,
-            ),
+            } => self.infer_fn(args, &[], body, kind, return_annotation, location),
 
             UntypedExpr::Case {
                 location,
@@ -672,10 +663,11 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let callback = UntypedExpr::Fn {
             arguments: assignments.function_arguments,
             location: SrcSpan::new(first.start, sequence_location.end),
-            head_location: None,
             end_of_head_byte_index: sequence_location.end,
             return_annotation: None,
-            is_capture: false,
+            kind: FunctionLiteralKind::Use {
+                location: use_.location,
+            },
             body: statements,
         };
 
@@ -755,16 +747,14 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn infer_fn(
         &mut self,
         args: Vec<UntypedArg>,
         expected_args: &[Arc<Type>],
         body: Vec1<UntypedStatement>,
-        is_capture: bool,
+        kind: FunctionLiteralKind,
         return_annotation: Option<TypeAst>,
         location: SrcSpan,
-        head_location: Option<SrcSpan>,
     ) -> Result<TypedExpr, Error> {
         for Arg { names, .. } in args.iter() {
             check_argument_names(names, self.problems);
@@ -784,9 +774,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
         Ok(TypedExpr::Fn {
             location,
-            head_location,
             type_,
-            is_capture,
+            kind,
             args,
             body,
             return_annotation,
@@ -2964,8 +2953,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
             UntypedExpr::Fn {
                 location,
-                head_location,
-                is_capture,
+                kind,
                 arguments,
                 body,
                 return_annotation,
@@ -2974,10 +2962,9 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 arguments,
                 &args,
                 body,
-                is_capture,
+                kind,
                 return_annotation,
                 location,
-                head_location,
             ),
 
             fun => self.infer(fun),
@@ -2995,16 +2982,14 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         (fun, args, type_)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn infer_fn_with_call_context(
         &mut self,
         args: Vec<UntypedArg>,
         call_args: &[CallArg<UntypedExpr>],
         body: Vec1<UntypedStatement>,
-        is_capture: bool,
+        kind: FunctionLiteralKind,
         return_annotation: Option<TypeAst>,
         location: SrcSpan,
-        head_location: Option<SrcSpan>,
     ) -> Result<TypedExpr, Error> {
         let typed_call_args: Vec<Arc<Type>> = call_args
             .iter()
@@ -3020,10 +3005,9 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             args,
             &typed_call_args,
             body,
-            is_capture,
+            kind,
             return_annotation,
             location,
-            head_location,
         )
     }
 
@@ -3274,18 +3258,16 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     body,
                     return_annotation,
                     location,
-                    head_location,
-                    is_capture: false,
+                    kind,
                     ..
                 },
             ) if expected_arguments.len() == arguments.len() => self.infer_fn(
                 arguments,
                 expected_arguments,
                 body,
-                false,
+                kind,
                 return_annotation,
                 location,
-                head_location,
             ),
 
             // Otherwise just perform normal type inference.
