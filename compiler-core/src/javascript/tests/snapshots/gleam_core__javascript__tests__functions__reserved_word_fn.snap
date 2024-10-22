@@ -1,0 +1,14 @@
+---
+source: compiler-core/src/javascript/tests/functions.rs
+expression: "pub fn class() {\n  Nil\n}\n"
+---
+----- SOURCE CODE
+pub fn class() {
+  Nil
+}
+
+
+----- COMPILED JAVASCRIPT
+export function class$() {
+  return undefined;
+}
