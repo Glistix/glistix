@@ -723,8 +723,10 @@ fn release_metadata_as_erlang() {
 
 #[test]
 fn prevent_publish_local_dependency() {
-    let mut config = PackageConfig::default();
-    config.dependencies = [("provided".into(), Requirement::path("./path/to/package"))].into();
+    let config = PackageConfig {
+        dependencies: [("provided".into(), Requirement::path("./path/to/package"))].into(),
+        ..Default::default()
+    };
     assert_eq!(
         metadata_config(&config, &[], &[]),
         Err(Error::PublishNonHexDependencies {
@@ -767,12 +769,14 @@ fn glistix_patch_published_local_dependency() {
 
 #[test]
 fn prevent_publish_git_dependency() {
-    let mut config = PackageConfig::default();
-    config.dependencies = [(
-        "provided".into(),
-        Requirement::git("https://github.com/gleam-lang/gleam.git"),
-    )]
-    .into();
+    let config = PackageConfig {
+        dependencies: [(
+            "provided".into(),
+            Requirement::git("https://github.com/gleam-lang/gleam.git"),
+        )]
+        .into(),
+        ..Default::default()
+    };
     assert_eq!(
         metadata_config(&config, &[], &[]),
         Err(Error::PublishNonHexDependencies {
