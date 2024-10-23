@@ -2221,7 +2221,8 @@ where
                             || attributes.target.is_some()
                             || attributes.internal != InternalAttribute::Missing)
                     {
-                        let attr_span = attr_loc.unwrap();
+                        let attr_span = attr_loc
+                            .expect("RecordConstructor musn't be None already checked if None");
                         return parse_error(
                             ParseErrorType::UnknownAttributeRecordConstructor,
                             attr_span,
