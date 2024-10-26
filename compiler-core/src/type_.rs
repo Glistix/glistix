@@ -1286,6 +1286,9 @@ pub fn generalise(t: Arc<Type>) -> Arc<Type> {
 pub enum FieldAccessUsage {
     /// Used as `thing.field()`
     MethodCall,
+    /// Used internally when trying to access a field when
+    /// performing record updates
+    RecordUpdate,
     /// Used as `thing.field`
     Other,
 }
