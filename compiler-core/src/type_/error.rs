@@ -857,7 +857,8 @@ pub enum FeatureKind {
     NestedTupleAccess,
     InternalAnnotation,
     AtInJavascriptModules,
-    TypeNarrowing,
+    RecordUpdateNarrowing,
+    RecordAccessNarrowing,
 }
 
 impl FeatureKind {
@@ -870,7 +871,9 @@ impl FeatureKind {
             FeatureKind::LabelShorthandSyntax => Version::new(1, 4, 0),
             FeatureKind::ConstantStringConcatenation => Version::new(1, 4, 0),
             FeatureKind::UnannotatedUtf8StringSegment => Version::new(1, 5, 0),
-            FeatureKind::TypeNarrowing => Version::new(1, 6, 0),
+            FeatureKind::RecordUpdateNarrowing | FeatureKind::RecordAccessNarrowing => {
+                Version::new(1, 6, 0)
+            }
         }
     }
 }

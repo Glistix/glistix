@@ -2330,10 +2330,11 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         if !accessors_map.shared_accessors.contains_key(&label) {
             match usage {
                 FieldAccessUsage::MethodCall | FieldAccessUsage::Other => {
-                    self.track_feature_usage(FeatureKind::TypeNarrowing, location);
+                    self.track_feature_usage(FeatureKind::RecordAccessNarrowing, location);
                 }
                 // This feature for record updates should be tracked in
-                // `infer_record_update`, so we avoid duplicating that here.
+                // `infer_record_update`, so we don't track it here as it would lead
+                // to a duplicate warning with a confusing message.
                 FieldAccessUsage::RecordUpdate => {}
             }
         }
@@ -2456,7 +2457,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             }
             // This means we can perform a safe record update due to type narrowing.
             else {
-                self.track_feature_usage(FeatureKind::TypeNarrowing, location);
+                self.track_feature_usage(FeatureKind::RecordUpdateNarrowing, location);
             }
         }
 
