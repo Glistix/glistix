@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [stable]
+        toolchain: [1.81.0]
         target:
           - x86_64-unknown-linux-gnu
           - x86_64-unknown-linux-musl
@@ -65,7 +65,7 @@ jobs:
             run-integration-tests: true
             supports-nix: true
           - os: macos-latest # aarch64
-            toolchain: stable
+            toolchain: 1.81.0
             target: aarch64-apple-darwin
             use-cross: false
             run-integration-tests: true
@@ -88,7 +88,7 @@ jobs:
         if: ${{ matrix.target == 'x86_64-unknown-linux-musl'}}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.81.0
         with:
           toolchain: ${{ matrix.toolchain }}
           target: ${{ matrix.target }}
@@ -429,9 +429,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.81.0
         with:
-          toolchain: stable
+          toolchain: 1.81.0
           target: wasm32-unknown-unknown
 
       - uses: actions/setup-node@v4
@@ -454,9 +454,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.81.0
         with:
-          toolchain: stable
+          toolchain: 1.81.0
           components: rustfmt
 
       - run: cargo fmt --all -- --check
@@ -470,9 +470,9 @@ jobs:
   #        uses: actions/checkout@v4
   #
   #      - name: Install Rust toolchain
-  #        uses: dtolnay/rust-toolchain@stable
+  #        uses: dtolnay/rust-toolchain@1.81.0
   #        with:
-  #          toolchain: stable
+  #          toolchain: 1.81.0
   #
   #      - name: Install cargo-deny
   #        run: |
@@ -493,9 +493,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.81.0
         with:
-          toolchain: stable
+          toolchain: 1.81.0
           components: clippy
 
       - name: Handle Rust dependencies caching
