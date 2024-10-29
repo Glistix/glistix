@@ -61,6 +61,7 @@ jobs:
         uses: clechasseur/rs-cargo@v2
         with:
           command: build
+          toolchain: ${{ matrix.toolchain }}
           args: --release --target ${{ matrix.target }}
           use-cross: ${{ matrix.use-cross }}
 
