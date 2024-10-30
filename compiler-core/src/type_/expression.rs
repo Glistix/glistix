@@ -2279,13 +2279,13 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             Type::Named {
                 module,
                 name,
-                narrowed_variant,
+                inferred_variant,
                 ..
             } if module == &self.environment.current_module => {
                 self.environment.accessors.get(name).map(|accessors_map| {
                     (
                         accessors_map,
-                        accessors_map.accessors_for_variant(*narrowed_variant),
+                        accessors_map.accessors_for_variant(*inferred_variant),
                     )
                 })
             }
@@ -2294,7 +2294,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             Type::Named {
                 module,
                 name,
-                narrowed_variant,
+                inferred_variant,
                 ..
             } => self
                 .environment
@@ -2307,7 +2307,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 .map(|accessors_map| {
                     (
                         accessors_map,
-                        accessors_map.accessors_for_variant(*narrowed_variant),
+                        accessors_map.accessors_for_variant(*inferred_variant),
                     )
                 }),
 
@@ -2326,11 +2326,11 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
         let accessor_record_type = accessors_map.type_.clone();
 
-        // If the accessor isn't shared across variants, this requires type narrowing
+        // If the accessor isn't shared across variants, this requires variant inference
         if !accessors_map.shared_accessors.contains_key(&label) {
             match usage {
                 FieldAccessUsage::MethodCall | FieldAccessUsage::Other => {
-                    self.track_feature_usage(FeatureKind::RecordAccessNarrowing, location);
+                    self.track_feature_usage(FeatureKind::RecordAccessVariantInference, location);
                 }
                 // This feature for record updates should be tracked in
                 // `infer_record_update`, so we don't track it here as it would lead
@@ -2416,7 +2416,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         unify(return_type, record_type.clone())
             .map_err(|e| convert_unify_error(e, record.location()))?;
 
-        let record_index = record_type.custom_type_narrowed_variant();
+        let record_index = record_type.custom_type_inferred_variant();
 
         // Updating a record with only one variant is always safe
         if variants_count != 1 {
@@ -2426,7 +2426,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 let Type::Named {
                     module: record_module,
                     name: record_name,
-                    narrowed_variant: Some(record_index),
+                    inferred_variant: Some(record_index),
                     ..
                 } = record_type.deref()
                 else {
@@ -2455,9 +2455,9 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     },
                 });
             }
-            // This means we can perform a safe record update due to type narrowing.
+            // This means we can perform a safe record update due to variant inference.
             else {
-                self.track_feature_usage(FeatureKind::RecordUpdateNarrowing, location);
+                self.track_feature_usage(FeatureKind::RecordUpdateVariantInference, location);
             }
         }
 

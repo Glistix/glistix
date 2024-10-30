@@ -1823,7 +1823,7 @@ fn record_update_generic_unannotated() {
 }
 
 #[test]
-fn record_update_type_narrowing() {
+fn record_update_variant_inference() {
     assert_module_infer!(
         "
 pub type Shape {
@@ -1847,7 +1847,7 @@ pub fn grow(shape) {
 }
 
 #[test]
-fn record_access_type_narrowing() {
+fn record_access_variant_inference() {
     assert_module_infer!(
         "
 pub type Wibble {
@@ -1871,7 +1871,7 @@ pub fn get(wibble) {
 }
 
 #[test]
-fn local_variable_type_narrowing() {
+fn local_variable_variant_inference() {
     assert_module_infer!(
         "
 pub type Wibble {
@@ -1893,7 +1893,7 @@ pub fn main() {
 }
 
 #[test]
-fn record_update_type_narrowing_for_original_variable() {
+fn record_update_variant_inference_for_original_variable() {
     assert_module_infer!(
         r#"
 pub type Wibble {
@@ -1917,7 +1917,7 @@ pub fn update(wibble: Wibble) -> Wibble {
 }
 
 #[test]
-fn record_access_type_narrowing_for_original_variable() {
+fn record_access_variant_inference_for_original_variable() {
     assert_module_infer!(
         "
 pub type Wibble {
@@ -1941,7 +1941,7 @@ pub fn get(wibble) {
 }
 
 #[test]
-fn type_narrowing_for_imported_type() {
+fn variant_inference_for_imported_type() {
     assert_infer_with_module!(
         (
             "wibble",
@@ -1967,7 +1967,7 @@ pub fn main(wibble) {
 }
 
 #[test]
-fn local_variable_type_narrowing_for_imported_type() {
+fn local_variable_variant_inference_for_imported_type() {
     assert_infer_with_module!(
         (
             "wibble",
@@ -1991,7 +1991,7 @@ pub fn main() {
 }
 
 #[test]
-fn record_update_type_narrowing_fails_for_several_possible_variants() {
+fn record_update_variant_inference_fails_for_several_possible_variants() {
     assert_module_error!(
         "
 pub type Vector {
@@ -2010,7 +2010,7 @@ pub fn increase_y(vector, by increase) {
 }
 
 #[test]
-fn record_update_type_narrowing_fails_for_several_possible_variants_on_subject_variable() {
+fn record_update_variant_inference_fails_for_several_possible_variants_on_subject_variable() {
     assert_module_error!(
         r#"
 pub type Wibble {
@@ -2072,7 +2072,7 @@ pub fn main() {
 }
 
 #[test]
-fn record_update_type_narrowing_in_alternate_pattern_with_all_same_variants() {
+fn record_update_variant_inference_in_alternate_pattern_with_all_same_variants() {
     assert_module_infer!(
         r#"
 pub type Vector {
@@ -2098,7 +2098,7 @@ pub fn increase_y(vector, by increase) {
 }
 
 #[test]
-fn type_narrowing_does_not_escape_clause_scope() {
+fn variant_inference_does_not_escape_clause_scope() {
     assert_module_error!(
         "
 pub type Thingy {
@@ -2845,7 +2845,7 @@ pub fn main() {
 }
 
 #[test]
-fn type_narrowing_allows_inference() {
+fn variant_inference_allows_inference() {
     // https://github.com/gleam-lang/gleam/pull/3647#issuecomment-2423146977
     assert_module_infer!(
         "
@@ -2871,7 +2871,7 @@ pub fn do_a_thing(wibble) {
 }
 
 #[test]
-fn type_narrowing_allows_inference2() {
+fn variant_inference_allows_inference2() {
     // https://github.com/gleam-lang/gleam/pull/3647#issuecomment-2423146977
     assert_module_infer!(
         "

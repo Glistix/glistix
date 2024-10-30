@@ -517,7 +517,7 @@ impl Environment<'_> {
                 package,
                 module,
                 args,
-                narrowed_variant,
+                inferred_variant,
             } => {
                 let args = args
                     .iter()
@@ -529,7 +529,7 @@ impl Environment<'_> {
                     package: package.clone(),
                     module: module.clone(),
                     args,
-                    narrowed_variant: *narrowed_variant,
+                    inferred_variant: *inferred_variant,
                 })
             }
 
