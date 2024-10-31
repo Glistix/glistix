@@ -855,6 +855,13 @@ pub enum Warning {
         wrongfully_allowed_version: Version,
         feature_kind: FeatureKind,
     },
+
+    /// When targeting JavaScript and an `Int` value is specified that lies
+    /// outside the range `Number.MIN_SAFE_INTEGER` - `Number.MAX_SAFE_INTEGER`.
+    ///
+    JavaScriptIntUnsafe {
+        location: SrcSpan,
+    },
 }
 
 #[derive(Debug, Eq, Copy, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
@@ -1043,7 +1050,8 @@ impl Warning {
             | Warning::TodoOrPanicUsedAsFunction { location, .. }
             | Warning::UnreachableCodeAfterPanic { location, .. }
             | Warning::RedundantPipeFunctionCapture { location, .. }
-            | Warning::FeatureRequiresHigherGleamVersion { location, .. } => *location,
+            | Warning::FeatureRequiresHigherGleamVersion { location, .. }
+            | Warning::JavaScriptIntUnsafe { location, .. } => *location,
         }
     }
 
