@@ -2491,7 +2491,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let args: Vec<TypedRecordUpdateArg> = args
             .iter()
             .map(
-                |UntypedRecordUpdateArg {
+                |arg @ UntypedRecordUpdateArg {
                      label,
                      value,
                      location,
@@ -2503,6 +2503,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         *location,
                         FieldAccessUsage::RecordUpdate,
                     )?;
+
+                    if arg.uses_label_shorthand() {
+                        self.track_feature_usage(FeatureKind::LabelShorthandSyntax, *location);
+                    }
 
                     // Check that the update argument unifies with the corresponding
                     // field in the record contained within the record variable. We
