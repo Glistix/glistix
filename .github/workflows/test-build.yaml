@@ -19,7 +19,7 @@ jobs:
           - x86_64-apple-darwin
           - aarch64-apple-darwin
           - x86_64-pc-windows-msvc
-        toolchain: [1.81.0]
+        toolchain: [stable]
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
@@ -44,7 +44,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.81.0
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.toolchain }}
           target: ${{ matrix.target }}
@@ -121,7 +121,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.81.0
+          toolchain: stable
           target: wasm32-unknown-unknown
           profile: minimal
           override: true
