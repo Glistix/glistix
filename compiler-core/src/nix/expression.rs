@@ -440,7 +440,9 @@ impl<'module> Generator<'module> {
                 constant_expression(self.tracker, literal)
             }
             ValueConstructorVariant::Record { .. } => {
-                Ok(self.record_constructor(constructor.type_.clone(), None, name))
+                let type_ = constructor.type_.clone();
+                let tracker = &mut self.tracker;
+                Ok(record_constructor(type_, None, name, tracker))
             }
             ValueConstructorVariant::ModuleFn { .. }
             | ValueConstructorVariant::ModuleConstant { .. }
@@ -988,35 +990,6 @@ impl Generator<'_> {
         Ok(docvec![record, " // ", set])
     }
 
-    fn record_constructor<'a>(
-        &mut self,
-        type_: Arc<Type>,
-        qualifier: Option<&'a str>,
-        name: &'a str,
-    ) -> Document<'a> {
-        if qualifier.is_none() && type_.is_result_constructor() {
-            if name == "Ok" {
-                self.tracker.ok_used = true;
-            } else if name == "Error" {
-                self.tracker.error_used = true;
-            }
-        }
-        if type_.is_bool() && name == "True" {
-            "true".to_doc()
-        } else if type_.is_bool() {
-            "false".to_doc()
-        } else if type_.is_nil() {
-            "null".to_doc()
-        } else {
-            // Use the record constructor directly.
-            // No need to escape the name as it must start with an uppercase letter.
-            match qualifier {
-                Some(module) => docvec![module_var_name_doc(module), ".", name],
-                None => name.to_doc(),
-            }
-        }
-    }
-
     fn module_select<'a>(
         &mut self,
         module: &'a str,
@@ -1036,7 +1009,7 @@ impl Generator<'_> {
             }
 
             ModuleValueConstructor::Record { name, type_, .. } => {
-                self.record_constructor(type_.clone(), Some(module), name)
+                record_constructor(type_.clone(), Some(module), name, &mut self.tracker)
             }
         }
     }
@@ -1318,6 +1291,16 @@ pub(crate) fn constant_expression<'a>(
                     tracker.error_used = true;
                 }
             }
+
+            // If there's no arguments and the type is a function that takes
+            // arguments then this is the constructor being referenced, not the
+            // function being called.
+            if let Some(arity) = type_.fn_arity() {
+                if args.len() == 0 && arity != 0 {
+                    return Ok(record_constructor(type_.clone(), None, name, tracker));
+                }
+            }
+
             let field_values = args
                 .iter()
                 .map(|arg| wrap_child_constant_expression(tracker, &arg.value))
@@ -1730,5 +1713,35 @@ fn owned_local_var<'a>(name: EcoString, next: usize) -> Document<'a> {
         0 => Document::String(maybe_escape_identifier_string(&name)),
         n if name == ANONYMOUS_VAR_NAME => Document::String(format!("_'{n}")),
         n => Document::String(format!("{name}'{n}")),
+    }
+}
+
+/// A record constructor: `Ok`, `Some`, `True`, `Nil`
+fn record_constructor<'a>(
+    type_: Arc<Type>,
+    qualifier: Option<&'a str>,
+    name: &'a str,
+    tracker: &mut UsageTracker,
+) -> Document<'a> {
+    if qualifier.is_none() && type_.is_result_constructor() {
+        if name == "Ok" {
+            tracker.ok_used = true;
+        } else if name == "Error" {
+            tracker.error_used = true;
+        }
+    }
+    if type_.is_bool() && name == "True" {
+        "true".to_doc()
+    } else if type_.is_bool() {
+        "false".to_doc()
+    } else if type_.is_nil() {
+        "null".to_doc()
+    } else {
+        // Use the record constructor directly.
+        // No need to escape the name as it must start with an uppercase letter.
+        match qualifier {
+            Some(module) => docvec![module_var_name_doc(module), ".", name],
+            None => name.to_doc(),
+        }
     }
 }
