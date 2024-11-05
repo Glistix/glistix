@@ -1,4 +1,4 @@
-use crate::assert_nix;
+use crate::{assert_nix, assert_nix_error};
 
 #[test]
 fn empty() {
@@ -260,7 +260,7 @@ fn go() {
 // https://github.com/gleam-lang/gleam/issues/1591
 #[test]
 fn not_byte_aligned() {
-    assert_nix!(
+    assert_nix_error!(
         r#"
 fn thing() {
   4
@@ -274,7 +274,7 @@ fn go() {
 
 #[test]
 fn not_byte_aligned_explicit_sized() {
-    assert_nix!(
+    assert_nix_error!(
         r#"
 fn go() {
   <<256:size(4)>>
