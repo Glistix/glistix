@@ -1011,7 +1011,7 @@ impl Generator<'_> {
             }
 
             ModuleValueConstructor::Record { name, type_, .. } => {
-                record_constructor(type_.clone(), Some(module), name, &mut self.tracker)
+                record_constructor(type_.clone(), Some(module), name, self.tracker)
             }
         }
     }
@@ -1298,7 +1298,7 @@ pub(crate) fn constant_expression<'a>(
             // arguments then this is the constructor being referenced, not the
             // function being called.
             if let Some(arity) = type_.fn_arity() {
-                if args.len() == 0 && arity != 0 {
+                if args.is_empty() && arity != 0 {
                     return Ok(record_constructor(type_.clone(), None, name, tracker));
                 }
             }
