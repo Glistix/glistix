@@ -1,7 +1,7 @@
 use crate::ast::{
-    Arg, BinOp, BitArrayOption, BitArraySegment, CallArg, Constant, SrcSpan, Statement, TypedArg,
-    TypedAssignment, TypedClause, TypedConstant, TypedExpr, TypedExprBitArraySegment, TypedModule,
-    TypedPattern, TypedRecordUpdateArg, TypedStatement,
+    Arg, BinOp, BitArrayOption, CallArg, Constant, SrcSpan, Statement, TypedArg, TypedAssignment,
+    TypedClause, TypedConstant, TypedConstantBitArraySegment, TypedExpr, TypedExprBitArraySegment,
+    TypedModule, TypedPattern, TypedRecordUpdateArg, TypedStatement,
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
@@ -1057,7 +1057,7 @@ impl Generator<'_> {
                         let size_int = match *size.clone() {
                             TypedExpr::Int {
                                 location: _,
-                                typ: _,
+                                type_: _,
                                 value,
                             } => value.parse().unwrap_or(0),
                             _ => 0,
@@ -1218,23 +1218,23 @@ pub(crate) fn guard_constant_expression<'a>(
                     .map(|e| wrap_child_guard_constant_expression(assignments, tracker, e)),
             )
         }
-        Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
+        Constant::Record { type_, name, .. } if type_.is_bool() && name == "True" => {
             Ok("true".to_doc())
         }
-        Constant::Record { typ, name, .. } if typ.is_bool() && name == "False" => {
+        Constant::Record { type_, name, .. } if type_.is_bool() && name == "False" => {
             Ok("false".to_doc())
         }
-        Constant::Record { typ, .. } if typ.is_nil() => Ok("null".to_doc()),
+        Constant::Record { type_, .. } if type_.is_nil() => Ok("null".to_doc()),
 
         Constant::Record {
             args,
             module,
             name,
             tag,
-            typ,
+            type_,
             ..
         } => {
-            if typ.is_result() {
+            if type_.is_result() {
                 if tag == "Ok" {
                     tracker.ok_used = true;
                 } else {
@@ -1245,7 +1245,11 @@ pub(crate) fn guard_constant_expression<'a>(
                 .iter()
                 .map(|arg| wrap_child_guard_constant_expression(assignments, tracker, &arg.value))
                 .try_collect()?;
-            Ok(construct_record(module.as_deref(), name, field_values))
+            Ok(construct_record(
+                module.as_ref().map(|(module, _)| module.as_str()),
+                name,
+                field_values,
+            ))
         }
 
         Constant::BitArray { segments, .. } => {
@@ -1291,23 +1295,23 @@ pub(crate) fn constant_expression<'a>(
             )
         }
 
-        Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
+        Constant::Record { type_, name, .. } if type_.is_bool() && name == "True" => {
             Ok("true".to_doc())
         }
-        Constant::Record { typ, name, .. } if typ.is_bool() && name == "False" => {
+        Constant::Record { type_, name, .. } if type_.is_bool() && name == "False" => {
             Ok("false".to_doc())
         }
-        Constant::Record { typ, .. } if typ.is_nil() => Ok("null".to_doc()),
+        Constant::Record { type_, .. } if type_.is_nil() => Ok("null".to_doc()),
 
         Constant::Record {
             args,
             module,
             name,
             tag,
-            typ,
+            type_,
             ..
         } => {
-            if typ.is_result() {
+            if type_.is_result() {
                 if tag == "Ok" {
                     tracker.ok_used = true;
                 } else {
@@ -1319,7 +1323,11 @@ pub(crate) fn constant_expression<'a>(
                 .map(|arg| wrap_child_constant_expression(tracker, &arg.value))
                 .try_collect()?;
 
-            Ok(construct_record(module.as_deref(), name, field_values))
+            Ok(construct_record(
+                module.as_ref().map(|(module, _)| module.as_str()),
+                name,
+                field_values,
+            ))
         }
 
         Constant::BitArray { segments, .. } => {
@@ -1329,7 +1337,7 @@ pub(crate) fn constant_expression<'a>(
         Constant::Var { name, module, .. } => Ok({
             match module {
                 None => maybe_escape_identifier_doc(name),
-                Some(module) => docvec![
+                Some((module, _)) => docvec![
                     module_var_name_doc(module),
                     ".",
                     maybe_escape_identifier_doc(name)
@@ -1590,7 +1598,7 @@ pub fn list<'a, Elements: IntoIterator<Item = Output<'a>>>(elements: Elements) -
 
 fn constant_bit_array<'a>(
     tracker: &mut UsageTracker,
-    segments: &'a [BitArraySegment<TypedConstant, Arc<Type>>],
+    segments: &'a [TypedConstantBitArraySegment],
     mut wrap_child_constant_expr_fun: impl FnMut(&mut UsageTracker, &'a TypedConstant) -> Output<'a>,
 ) -> Output<'a> {
     tracker.bit_array_literal_used = true;
