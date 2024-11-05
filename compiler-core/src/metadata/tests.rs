@@ -462,6 +462,7 @@ fn module_fn_value() {
                     },
                     external_erlang: None,
                     external_javascript: None,
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: true,
                         uses_erlang_externals: false,
@@ -513,6 +514,7 @@ fn deprecated_module_fn_value() {
                     },
                     external_erlang: None,
                     external_javascript: None,
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: true,
                         uses_erlang_externals: false,
@@ -562,6 +564,7 @@ fn private_module_fn_value() {
                     },
                     external_erlang: None,
                     external_javascript: None,
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: true,
                         uses_erlang_externals: false,
@@ -613,6 +616,7 @@ fn module_fn_value_regression() {
                     },
                     external_erlang: None,
                     external_javascript: None,
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: true,
                         uses_erlang_externals: false,
@@ -660,6 +664,7 @@ fn module_fn_value_with_field_map() {
                     }),
                     external_erlang: None,
                     external_javascript: None,
+                    external_nix: None,
                     module: "a".into(),
                     arity: 5,
                     location: SrcSpan { start: 2, end: 11 },
@@ -1275,6 +1280,7 @@ fn module_fn_value_with_external_implementations() {
                     },
                     external_erlang: Some(("wibble".into(), "wobble".into())),
                     external_javascript: Some(("wobble".into(), "wibble".into())),
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: false,
                         uses_erlang_externals: true,
@@ -1327,6 +1333,7 @@ fn internal_module_fn() {
                     },
                     external_erlang: Some(("wibble".into(), "wobble".into())),
                     external_javascript: Some(("wobble".into(), "wibble".into())),
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: false,
                         uses_erlang_externals: true,
@@ -1382,6 +1389,7 @@ fn internal_annotated_module_fn() {
                     },
                     external_erlang: Some(("wibble".into(), "wobble".into())),
                     external_javascript: Some(("wobble".into(), "wibble".into())),
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: false,
                         uses_erlang_externals: true,

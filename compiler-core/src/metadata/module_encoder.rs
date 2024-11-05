@@ -310,6 +310,7 @@ impl<'a> ModuleEncoder<'a> {
                 implementations,
                 external_erlang,
                 external_javascript,
+                external_nix,
             } => {
                 let mut builder = builder.init_module_fn();
                 builder.set_name(name);
@@ -321,6 +322,7 @@ impl<'a> ModuleEncoder<'a> {
                     builder.reborrow().init_external_javascript(),
                     external_javascript,
                 );
+                self.build_external(builder.reborrow().init_external_nix(), external_nix);
                 self.build_optional_field_map(builder.reborrow().init_field_map(), field_map);
                 self.build_src_span(builder.reborrow().init_location(), *location);
                 self.build_implementations(builder.init_implementations(), *implementations);

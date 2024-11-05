@@ -491,6 +491,7 @@ impl ModuleDecoder {
             implementations: self.implementations(reader.get_implementations()?),
             external_erlang: self.optional_external(reader.get_external_erlang()?)?,
             external_javascript: self.optional_external(reader.get_external_javascript()?)?,
+            external_nix: self.optional_external(reader.get_external_nix()?)?,
         })
     }
 

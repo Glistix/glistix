@@ -145,6 +145,7 @@ struct ValueConstructorVariant {
       implementations @18 :Implementations;
       externalErlang @20 :Option(External);
       externalJavascript @21 :Option(External);
+      externalNix @22 :Option(External);
     }
 
     record :group {

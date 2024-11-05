@@ -2266,6 +2266,7 @@ fn assert_suitable_main_function_wrong_arity() {
             module: "module".into(),
             external_erlang: None,
             external_javascript: None,
+            external_nix: None,
             implementations: Implementations {
                 gleam: true,
                 uses_erlang_externals: false,
@@ -2295,6 +2296,7 @@ fn assert_suitable_main_function_ok() {
             module: "module".into(),
             external_erlang: None,
             external_javascript: None,
+            external_nix: None,
             implementations: Implementations {
                 gleam: true,
                 uses_erlang_externals: false,
@@ -2324,6 +2326,7 @@ fn assert_suitable_main_function_erlang_not_supported() {
             module: "module".into(),
             external_erlang: Some(("wibble".into(), "wobble".into())),
             external_javascript: Some(("wobble".into(), "wibble".into())),
+            external_nix: None,
             implementations: Implementations {
                 gleam: false,
                 uses_erlang_externals: true,
@@ -2353,6 +2356,7 @@ fn assert_suitable_main_function_javascript_not_supported() {
             module: "module".into(),
             external_erlang: Some(("wibble".into(), "wobble".into())),
             external_javascript: Some(("wobble".into(), "wibble".into())),
+            external_nix: None,
             implementations: Implementations {
                 gleam: false,
                 uses_erlang_externals: true,
