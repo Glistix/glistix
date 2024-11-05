@@ -1,0 +1,12 @@
+---
+source: compiler-core/src/nix/tests/bit_arrays.rs
+expression: "\nfn go(x) {\n  let assert <<a:float-size(16)>> = x\n}\n"
+snapshot_kind: text
+---
+error: Unsupported feature for compilation target
+  ┌─ /src/nix/error.gleam:3:16
+  │
+3 │   let assert <<a:float-size(16)>> = x
+  │                ^^^^^^^^^^^^^^^^
+
+This bit array segment option in patterns is not supported for Nix compilation.
