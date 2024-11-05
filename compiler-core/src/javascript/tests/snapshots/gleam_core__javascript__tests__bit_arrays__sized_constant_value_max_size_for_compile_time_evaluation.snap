@@ -1,0 +1,17 @@
+---
+source: compiler-core/src/javascript/tests/bit_arrays.rs
+expression: "\nfn go() {\n  <<-1:48>>\n}\n"
+---
+----- SOURCE CODE
+
+fn go() {
+  <<-1:48>>
+}
+
+
+----- COMPILED JAVASCRIPT
+import { toBitArray } from "../gleam.mjs";
+
+function go() {
+  return toBitArray([255, 255, 255, 255, 255, 255]);
+}
