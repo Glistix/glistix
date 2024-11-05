@@ -10,6 +10,7 @@ use crate::{
 
 use camino::Utf8PathBuf;
 use ecow::EcoString;
+use hexpm::version::Version;
 #[cfg(test)]
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
@@ -40,7 +41,7 @@ impl Problems {
         self.errors.push(error)
     }
 
-    /// Register an warning.
+    /// Register a warning.
     ///
     pub fn warning(&mut self, warning: Warning) {
         self.warnings.push(warning)
@@ -69,6 +70,47 @@ pub struct UnknownType {
 pub enum RecordVariants {
     HasVariants,
     NoVariants,
+}
+
+/// A suggestion for an unknown module
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ModuleSuggestion {
+    /// A module which which has a similar name, and an
+    /// exported value matching the one being accessed
+    Importable(EcoString),
+    /// A module already imported in the current scope
+    Imported(EcoString),
+}
+
+impl ModuleSuggestion {
+    pub fn suggestion(&self, module: &str) -> String {
+        match self {
+            ModuleSuggestion::Importable(name) => {
+                // Add a little extra information if the names don't match
+                let imported_name = self.last_name_component();
+                if module == imported_name {
+                    format!("Did you mean to import `{name}`?")
+                } else {
+                    format!("Did you mean to import `{name}` and reference `{imported_name}`?")
+                }
+            }
+            ModuleSuggestion::Imported(name) => format!("Did you mean `{name}`?"),
+        }
+    }
+
+    pub fn name(&self) -> &EcoString {
+        match self {
+            ModuleSuggestion::Imported(name) | ModuleSuggestion::Importable(name) => name,
+        }
+    }
+
+    pub fn last_name_component(&self) -> &str {
+        match self {
+            ModuleSuggestion::Imported(name) | ModuleSuggestion::Importable(name) => {
+                name.split('/').last().unwrap_or(name)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -106,7 +148,7 @@ pub enum Error {
     UnknownModule {
         location: SrcSpan,
         name: EcoString,
-        imported_modules: Vec<EcoString>,
+        suggestions: Vec<ModuleSuggestion>,
     },
 
     UnknownModuleType {
@@ -125,14 +167,19 @@ pub enum Error {
         type_with_same_name: bool,
     },
 
+    ModuleAliasUsedAsName {
+        location: SrcSpan,
+        name: EcoString,
+    },
+
     NotFn {
         location: SrcSpan,
-        typ: Arc<Type>,
+        type_: Arc<Type>,
     },
 
     UnknownRecordField {
         location: SrcSpan,
-        typ: Arc<Type>,
+        type_: Arc<Type>,
         label: EcoString,
         fields: Vec<EcoString>,
         usage: FieldAccessUsage,
@@ -437,7 +484,7 @@ pub enum Error {
     /// ```
     NotFnInUse {
         location: SrcSpan,
-        typ: Arc<Type>,
+        type_: Arc<Type>,
     },
 
     /// When the function to the right hand side of `<-` in a `use` expression
@@ -557,7 +604,7 @@ pub enum Warning {
     Todo {
         kind: TodoKind,
         location: SrcSpan,
-        typ: Arc<Type>,
+        type_: Arc<Type>,
     },
 
     ImplicitlyDiscardedResult {
@@ -755,6 +802,48 @@ pub enum Warning {
     RedundantPipeFunctionCapture {
         location: SrcSpan,
     },
+
+    /// When the `gleam` range specified in the package's `gleam.toml` is too
+    /// low and would include a version that's too low to support this feature.
+    ///
+    /// For example, let's say that a package is saying `gleam = ">=1.1.0"`
+    /// but it is using label shorthand syntax: `wibble(label:)`.
+    /// That requires a version that is `>=1.4.0`, so the constraint expressed
+    /// in the `gleam.toml` is too permissive and if someone were to run this
+    /// code with v1.1.0 they would run into compilation errors since the
+    /// compiler cannot know of label shorthands!
+    ///
+    FeatureRequiresHigherGleamVersion {
+        location: SrcSpan,
+        minimum_required_version: Version,
+        wrongfully_allowed_version: Version,
+        feature_kind: FeatureKind,
+    },
+}
+
+#[derive(Debug, Eq, Copy, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+pub enum FeatureKind {
+    LabelShorthandSyntax,
+    ConstantStringConcatenation,
+    ArithmeticInGuards,
+    UnannotatedUtf8StringSegment,
+    NestedTupleAccess,
+    InternalAnnotation,
+    AtInJavascriptModules,
+}
+
+impl FeatureKind {
+    pub fn required_version(&self) -> Version {
+        match self {
+            FeatureKind::InternalAnnotation => Version::new(1, 1, 0),
+            FeatureKind::NestedTupleAccess => Version::new(1, 1, 0),
+            FeatureKind::AtInJavascriptModules => Version::new(1, 2, 0),
+            FeatureKind::ArithmeticInGuards => Version::new(1, 3, 0),
+            FeatureKind::LabelShorthandSyntax => Version::new(1, 4, 0),
+            FeatureKind::ConstantStringConcatenation => Version::new(1, 4, 0),
+            FeatureKind::UnannotatedUtf8StringSegment => Version::new(1, 5, 0),
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -788,6 +877,7 @@ impl Error {
             | Error::UnknownModule { location, .. }
             | Error::UnknownModuleType { location, .. }
             | Error::UnknownModuleValue { location, .. }
+            | Error::ModuleAliasUsedAsName { location, .. }
             | Error::NotFn { location, .. }
             | Error::UnknownRecordField { location, .. }
             | Error::IncorrectArity { location, .. }
@@ -914,7 +1004,8 @@ impl Warning {
             | Warning::RedundantAssertAssignment { location, .. }
             | Warning::TodoOrPanicUsedAsFunction { location, .. }
             | Warning::UnreachableCodeAfterPanic { location, .. }
-            | Warning::RedundantPipeFunctionCapture { location, .. } => *location,
+            | Warning::RedundantPipeFunctionCapture { location, .. }
+            | Warning::FeatureRequiresHigherGleamVersion { location, .. } => *location,
         }
     }
 
@@ -936,7 +1027,7 @@ pub enum UnknownValueConstructorError {
 
     Module {
         name: EcoString,
-        imported_modules: Vec<EcoString>,
+        suggestions: Vec<ModuleSuggestion>,
     },
 
     ModuleValue {
@@ -950,6 +1041,7 @@ pub enum UnknownValueConstructorError {
 pub fn convert_get_value_constructor_error(
     e: UnknownValueConstructorError,
     location: SrcSpan,
+    module_location: Option<SrcSpan>,
 ) -> Error {
     match e {
         UnknownValueConstructorError::Variable {
@@ -963,13 +1055,10 @@ pub fn convert_get_value_constructor_error(
             type_with_name_in_scope,
         },
 
-        UnknownValueConstructorError::Module {
+        UnknownValueConstructorError::Module { name, suggestions } => Error::UnknownModule {
+            location: module_location.unwrap_or(location),
             name,
-            imported_modules,
-        } => Error::UnknownModule {
-            location,
-            name,
-            imported_modules,
+            suggestions,
         },
 
         UnknownValueConstructorError::ModuleValue {
@@ -1002,7 +1091,7 @@ pub enum UnknownTypeConstructorError {
 
     Module {
         name: EcoString,
-        imported_modules: Vec<EcoString>,
+        suggestions: Vec<ModuleSuggestion>,
     },
 
     ModuleType {
@@ -1016,6 +1105,7 @@ pub enum UnknownTypeConstructorError {
 pub fn convert_get_type_constructor_error(
     e: UnknownTypeConstructorError,
     location: &SrcSpan,
+    module_location: Option<SrcSpan>,
 ) -> Error {
     match e {
         UnknownTypeConstructorError::Type { name, hint } => Error::UnknownType {
@@ -1024,13 +1114,10 @@ pub fn convert_get_type_constructor_error(
             hint,
         },
 
-        UnknownTypeConstructorError::Module {
+        UnknownTypeConstructorError::Module { name, suggestions } => Error::UnknownModule {
+            location: module_location.unwrap_or(*location),
             name,
-            imported_modules,
-        } => Error::UnknownModule {
-            location: *location,
-            name,
-            imported_modules,
+            suggestions,
         },
 
         UnknownTypeConstructorError::ModuleType {
@@ -1057,7 +1144,7 @@ pub enum MatchFunTypeError {
         return_type: Arc<Type>,
     },
     NotFn {
-        typ: Arc<Type>,
+        type_: Arc<Type>,
     },
 }
 
@@ -1080,9 +1167,9 @@ pub fn convert_not_fun_error(
             given,
         },
 
-        (CallKind::Function, MatchFunTypeError::NotFn { typ }) => Error::NotFn {
+        (CallKind::Function, MatchFunTypeError::NotFn { type_ }) => Error::NotFn {
             location: fn_location,
-            typ,
+            type_,
         },
 
         (
@@ -1096,10 +1183,10 @@ pub fn convert_not_fun_error(
             given,
         },
 
-        (CallKind::Use { call_location, .. }, MatchFunTypeError::NotFn { typ }) => {
+        (CallKind::Use { call_location, .. }, MatchFunTypeError::NotFn { type_ }) => {
             Error::NotFnInUse {
                 location: call_location,
-                typ,
+                type_,
             }
         }
     }

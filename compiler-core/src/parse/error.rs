@@ -239,7 +239,10 @@ utf16_codepoint, utf32_codepoint, signed, unsigned, big, little, native, size, u
                 "Duplicate attribute",
                 vec!["This attribute has already been given.".into()],
             ),
-            ParseErrorType::UnknownTarget => ("I don't know what this attribute is", vec![]),
+            ParseErrorType::UnknownTarget => (
+                "I don't recognise this target",
+                vec!["Try `erlang`, `javascript`, `nix`.".into()],
+            ),
             ParseErrorType::ExpectedFunctionBody => ("This function does not have a body", vec![]),
             ParseErrorType::RedundantInternalAttribute => (
                 "Redundant internal attribute",
@@ -291,6 +294,19 @@ utf16_codepoint, utf32_codepoint, signed, unsigned, big, little, native, size, u
             ParseErrorType::CallInClauseGuard => (
                 "Unsupported expression",
                 vec!["Functions cannot be called in clause guards.".into()],
+            ),
+            ParseErrorType::IfExpression => (
+                "Gleam doesn't have if expressions",
+                vec![
+                    "If you want to write a conditional expression you can use a `case`:".into(),
+                    "".into(),
+                    "    case condition {".into(),
+                    "      True -> todo".into(),
+                    "      False -> todo".into(),
+                    "    }".into(),
+                    "".into(),
+                    "See: https://tour.gleam.run/flow-control/case-expressions/".into(),
+                ],
             ),
         }
     }
@@ -358,6 +374,7 @@ pub enum ParseErrorType {
         field_type: Option<TypeAst>,
     },
     CallInClauseGuard, // case x { _ if f() -> 1 }
+    IfExpression,
 }
 
 impl LexicalError {

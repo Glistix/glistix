@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/numbers.rs
 expression: "\nfn main(x) {\n  let assert 09_179 = x\n}\n"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError;
@@ -10,11 +11,11 @@ let
     if x != 9179 then
       builtins.throw
         (makeError
-          "assignment_no_match"
+          "let_assert"
           "my/mod"
           3
           "main"
-          "Assignment pattern did not match"
+          "Pattern match failed, no pattern matched the value."
           { value = x; })
     else x;
 in

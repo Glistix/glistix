@@ -9,54 +9,30 @@ pub fn main() {
 
 
 ----- Completion content -----
-[
-    CompletionItem {
-        label: "main",
-        label_details: Some(
-            CompletionItemLabelDetails {
-                detail: None,
-                description: Some(
-                    "app",
-                ),
-            },
-        ),
-        kind: Some(
-            Function,
-        ),
-        detail: Some(
-            "fn() -> Int",
-        ),
-        documentation: None,
-        deprecated: None,
-        preselect: None,
-        sort_text: Some(
-            "2_main",
-        ),
-        filter_text: None,
-        insert_text: None,
-        insert_text_format: None,
-        insert_text_mode: None,
-        text_edit: Some(
-            Edit(
-                TextEdit {
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            character: 0,
-                        },
-                        end: Position {
-                            line: 1,
-                            character: 0,
-                        },
-                    },
-                    new_text: "main",
-                },
-            ),
-        ),
-        additional_text_edits: None,
-        command: None,
-        commit_characters: None,
-        data: None,
-        tags: None,
-    },
-]
+Error
+  kind:   Constructor
+  detail: gleam
+  sort:   4_Error
+False
+  kind:   EnumMember
+  detail: gleam
+  sort:   4_False
+Nil
+  kind:   EnumMember
+  detail: gleam
+  sort:   4_Nil
+Ok
+  kind:   Constructor
+  detail: gleam
+  sort:   4_Ok
+True
+  kind:   EnumMember
+  detail: gleam
+  sort:   4_True
+main
+  kind:   Function
+  detail: fn() -> Int
+  sort:   2_main
+  desc:   app
+  edits:
+    [1:0-1:0]: "main"

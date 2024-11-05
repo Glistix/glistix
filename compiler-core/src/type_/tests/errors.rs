@@ -2172,3 +2172,84 @@ pub fn main() {
 "
     );
 }
+
+#[test]
+fn no_crash_on_duplicate_definition() {
+    // This previous caused the compiler to crash
+    assert_module_error!(
+        "
+pub type Wibble {
+  Wobble
+  Wobble
+}
+
+pub fn main() {
+  let wibble = Wobble
+  case wibble {
+    Wobble -> Nil
+  }
+}
+"
+    );
+}
+
+#[test]
+fn no_crash_on_duplicate_definition2() {
+    // This also caused a compiler crash, separate to the above test
+    assert_module_error!(
+        "
+pub type Wibble {
+  Wibble
+  Wobble
+  Wobble
+  Wubble
+}
+
+pub fn main() {
+  let wibble = Wobble
+  case wibble {
+    Wibble -> Nil
+    Wobble -> Nil
+    Wubble -> Nil
+  }
+}
+"
+    );
+}
+
+#[test]
+fn unknown_module_suggest_import() {
+    assert_with_module_error!(
+        ("utils", "pub fn helpful() {}"),
+        "
+pub fn main() {
+  utils.helpful()
+}
+",
+    );
+}
+
+#[test]
+fn unknown_module_suggest_typo_for_imported_module() {
+    assert_with_module_error!(
+        ("wibble", "pub fn wobble() {}"),
+        "
+import wibble
+pub fn main() {
+  wible.wobble()
+}
+",
+    );
+}
+
+#[test]
+fn unknown_module_suggest_typo_for_unimported_module() {
+    assert_with_module_error!(
+        ("wibble/wobble", "pub fn wubble() {}"),
+        "
+pub fn main() {
+  woble.wubble()
+}
+",
+    );
+}

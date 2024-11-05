@@ -343,8 +343,8 @@ fn triple_equals_with_whitespace() {
         "let wobble:Int = 32
         wobble ==     = 42",
         ParseError {
-            error: ParseErrorType::NoLetBinding,
-            location: SrcSpan { start: 42, end: 43 },
+            error: ParseErrorType::OpNakedRight,
+            location: SrcSpan { start: 35, end: 37 },
         }
     );
 }
@@ -430,6 +430,17 @@ fn no_let_binding3() {
             error: ParseErrorType::NoLetBinding
         }
     );
+}
+
+#[test]
+fn with_let_binding3() {
+    // The same with `let assert` must parse:
+    assert_parse!("let assert [x] = [2]");
+}
+
+#[test]
+fn with_let_binding3_and_annotation() {
+    assert_parse!("let assert [x]: List(Int) = [2]");
 }
 
 #[test]
@@ -576,6 +587,17 @@ pub fn one(x: Int) -> Int {
   todo
 }
 "#
+    );
+}
+
+#[test]
+fn unknown_external_target() {
+    assert_module_error!(
+        r#"
+@external(erl, "one", "two")
+pub fn one(x: Int) -> Int {
+  todo
+}"#
     );
 }
 
@@ -1401,5 +1423,86 @@ fn doc_comment_before_comment_is_not_attached_to_following_constant() {
 "#
         ),
         " Doc!\n"
+    );
+}
+
+#[test]
+fn non_module_level_function_with_a_name() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+  fn my() { 1 }
+}
+"#
+    );
+}
+
+#[test]
+fn error_message_on_variable_starting_with_underscore() {
+    // https://github.com/gleam-lang/gleam/issues/3504
+    assert_module_error!(
+        "
+  pub fn main() {
+    let val = _func_starting_with_underscore(1)
+  }"
+    );
+}
+
+#[test]
+fn non_module_level_function_with_not_a_name() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+  fn @() { 1 }  // wrong token and not a name
+}
+"#
+    );
+}
+
+#[test]
+fn error_message_on_variable_starting_with_underscore2() {
+    // https://github.com/gleam-lang/gleam/issues/3504
+    assert_module_error!(
+        "
+  pub fn main() {
+    case 1 {
+      1 -> _with_underscore(1)
+    }
+  }"
+    );
+}
+
+#[test]
+fn function_inside_a_type() {
+    assert_module_error!(
+        r#"
+type Wibble {
+  fn wobble() {}
+}
+"#
+    );
+}
+
+#[test]
+fn pub_function_inside_a_type() {
+    assert_module_error!(
+        r#"
+type Wibble {
+  pub fn wobble() {}
+}
+"#
+    );
+}
+
+#[test]
+fn if_like_expression() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+  let a = if wibble {
+    wobble
+  }
+}
+"#
     );
 }

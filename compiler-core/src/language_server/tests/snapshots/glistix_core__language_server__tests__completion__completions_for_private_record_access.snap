@@ -14,31 +14,27 @@ fn fun() {
 
 
 ----- Completion content -----
-[
-    CompletionItem {
-        label: "wobble",
-        label_details: None,
-        kind: Some(
-            Field,
-        ),
-        detail: Some(
-            "Int",
-        ),
-        documentation: None,
-        deprecated: None,
-        preselect: None,
-        sort_text: Some(
-            "1_wobble",
-        ),
-        filter_text: None,
-        insert_text: None,
-        insert_text_format: None,
-        insert_text_mode: None,
-        text_edit: None,
-        additional_text_edits: None,
-        command: None,
-        commit_characters: None,
-        data: None,
-        tags: None,
-    },
-]
+Error
+  kind:   Constructor
+  detail: gleam
+  sort:   4_Error
+False
+  kind:   EnumMember
+  detail: gleam
+  sort:   4_False
+Nil
+  kind:   EnumMember
+  detail: gleam
+  sort:   4_Nil
+Ok
+  kind:   Constructor
+  detail: gleam
+  sort:   4_Ok
+True
+  kind:   EnumMember
+  detail: gleam
+  sort:   4_True
+wobble
+  kind:   Field
+  detail: Int
+  sort:   1_wobble

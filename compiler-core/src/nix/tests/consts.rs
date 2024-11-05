@@ -33,3 +33,9 @@ pub const y = gleam.Ok
 "#,
     );
 }
+
+// https://github.com/lpil/decode/pull/6
+#[test]
+fn constructor_function_in_constant() {
+    assert_nix!("pub const a = Ok");
+}

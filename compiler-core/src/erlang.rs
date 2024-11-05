@@ -215,11 +215,13 @@ fn module_document<'a>(
         join(type_defs, lines(2)).append(lines(2))
     };
 
+    let src_path = EcoString::from(module.type_info.src_path.as_str());
+
     let statements = join(
         module
             .definitions
             .iter()
-            .flat_map(|s| module_statement(s, &module.name, line_numbers)),
+            .flat_map(|s| module_statement(s, &module.name, line_numbers, &src_path)),
         lines(2),
     );
 
@@ -350,6 +352,7 @@ fn module_statement<'a>(
     statement: &'a TypedDefinition,
     module: &'a str,
     line_numbers: &'a LineNumbers,
+    src_path: &EcoString,
 ) -> Option<Document<'a>> {
     match statement {
         Definition::TypeAlias(TypeAlias { .. })
@@ -357,7 +360,9 @@ fn module_statement<'a>(
         | Definition::Import(Import { .. })
         | Definition::ModuleConstant(ModuleConstant { .. }) => None,
 
-        Definition::Function(function) => module_function(function, module, line_numbers),
+        Definition::Function(function) => {
+            module_function(function, module, line_numbers, src_path.clone())
+        }
     }
 }
 
@@ -365,6 +370,7 @@ fn module_function<'a>(
     function: &'a TypedFunction,
     module: &'a str,
     line_numbers: &'a LineNumbers,
+    src_path: EcoString,
 ) -> Option<Document<'a>> {
     // Private external functions don't need to render anything, the underlying
     // Erlang implementation is used directly at the call site.
@@ -383,6 +389,7 @@ fn module_function<'a>(
         .as_ref()
         .expect("A module's function must be named");
     let function_name = escape_erlang_existing_name(function_name);
+    let file_attribute = file_attribute(src_path, function, line_numbers);
 
     let mut env = Env::new(module, function_name, line_numbers);
     let var_usages = collect_type_var_usages(
@@ -395,13 +402,14 @@ fn module_function<'a>(
         .iter()
         .map(|a| type_printer.print(&a.type_));
     let return_spec = type_printer.print(&function.return_type);
+
     let spec = fun_spec(function_name, args_spec, return_spec);
     let arguments = fun_args(&function.arguments, &mut env);
 
     let body = function
         .external_erlang
         .as_ref()
-        .map(|(module, function)| {
+        .map(|(module, function, _location)| {
             docvec![
                 atom(module),
                 ":",
@@ -411,15 +419,25 @@ fn module_function<'a>(
         })
         .unwrap_or_else(|| statement_sequence(&function.body, &mut env));
 
-    let doc = spec
-        .append(atom_string(
-            escape_erlang_existing_name(function_name).to_string(),
-        ))
-        .append(arguments)
-        .append(" ->")
-        .append(line().append(body).nest(INDENT).group())
-        .append(".");
-    Some(doc)
+    Some(docvec![
+        file_attribute,
+        line(),
+        spec,
+        atom_string(escape_erlang_existing_name(function_name).to_string()),
+        arguments,
+        " ->",
+        line().append(body).nest(INDENT).group(),
+        ".",
+    ])
+}
+
+fn file_attribute<'a>(
+    path: EcoString,
+    function: &'a TypedFunction,
+    line_numbers: &'a LineNumbers,
+) -> Document<'a> {
+    let line = line_numbers.line_number(function.location.start);
+    docvec!["-file(\"", path, "\", ", line, ")."]
 }
 
 fn fun_args<'a>(args: &'a [TypedArg], env: &mut Env<'a>) -> Document<'a> {
@@ -647,12 +665,16 @@ fn bit_array<'a>(elems: impl IntoIterator<Item = Document<'a>>) -> Document<'a> 
 
 fn const_segment<'a>(
     value: &'a TypedConstant,
-    options: &'a [BitArrayOption<TypedConstant>],
+    options: &'a [TypedConstantBitArraySegmentOption],
     env: &mut Env<'a>,
 ) -> Document<'a> {
+    let mut value_is_a_string_literal = false;
     let document = match value {
         // Skip the normal <<value/utf8>> surrounds
-        Constant::String { value, .. } => value.to_doc().surround("\"", "\""),
+        Constant::String { value, .. } => {
+            value_is_a_string_literal = true;
+            value.to_doc().surround("\"", "\"")
+        }
 
         // As normal
         Constant::Int { .. } | Constant::Float { .. } | Constant::BitArray { .. } => {
@@ -673,7 +695,15 @@ fn const_segment<'a>(
 
     let unit = |value: &'a u8| Some(Document::String(format!("unit:{value}")));
 
-    bit_array_segment(document, options, size, unit, true, env)
+    bit_array_segment(
+        document,
+        options,
+        size,
+        unit,
+        value_is_a_string_literal,
+        false,
+        env,
+    )
 }
 
 fn statement<'a>(statement: &'a TypedStatement, env: &mut Env<'a>) -> Document<'a> {
@@ -738,6 +768,7 @@ fn expr_segment<'a>(
         size,
         unit,
         value_is_a_string_literal,
+        false,
         env,
     )
 }
@@ -748,6 +779,7 @@ fn bit_array_segment<'a, Value: 'a, SizeToDoc, UnitToDoc>(
     mut size_to_doc: SizeToDoc,
     mut unit_to_doc: UnitToDoc,
     value_is_a_string_literal: bool,
+    value_is_a_discard: bool,
     env: &mut Env<'a>,
 ) -> Document<'a>
 where
@@ -761,7 +793,7 @@ where
     // Erlang only allows valid codepoint integers to be used as values for utf segments
     // We want to support <<string_var:utf8>> for all string variables, but <<StringVar/utf8>> is invalid
     // To work around this we use the binary type specifier for these segments instead
-    let override_type = if !value_is_a_string_literal {
+    let override_type = if !value_is_a_string_literal && !value_is_a_discard {
         Some("binary")
     } else {
         None
@@ -973,7 +1005,7 @@ fn let_assert<'a>(value: &'a TypedExpr, pat: &'a TypedPattern, env: &mut Env<'a>
             line(),
             erlang_error(
                 "let_assert",
-                &string("Assertion pattern match failed"),
+                &string("Pattern match failed, no pattern matched the value."),
                 pat.location(),
                 vec![("value", env.local_var_name(ASSERT_FAIL_VARIABLE))],
                 env,
@@ -1064,26 +1096,38 @@ fn var<'a>(name: &'a str, constructor: &'a ValueConstructor, env: &mut Env<'a>) 
         | ValueConstructorVariant::LocalConstant { literal } => const_inline(literal, env),
 
         ValueConstructorVariant::ModuleFn {
+            arity,
+            external_erlang: Some((module, name)),
+            ..
+        } if module == env.module => function_reference(None, name, *arity),
+
+        ValueConstructorVariant::ModuleFn {
+            arity,
+            external_erlang: Some((module, name)),
+            ..
+        } => function_reference(Some(module), name, *arity),
+
+        ValueConstructorVariant::ModuleFn {
             arity, ref module, ..
-        } if module == env.module => "fun "
-            .to_doc()
-            .append(atom(escape_erlang_existing_name(name)))
-            .append("/")
-            .append(*arity),
+        } if module == env.module => function_reference(None, name, *arity),
 
         ValueConstructorVariant::ModuleFn {
             arity,
             module,
             name,
             ..
-        } => "fun "
-            .to_doc()
-            .append(module_name_atom(module))
-            .append(":")
-            .append(atom(escape_erlang_existing_name(name)))
-            .append("/")
-            .append(*arity),
+        } => function_reference(Some(module), name, *arity),
     }
+}
+
+fn function_reference<'a>(module: Option<&'a str>, name: &'a str, arity: usize) -> Document<'a> {
+    match module {
+        None => "fun ".to_doc(),
+        Some(module) => "fun ".to_doc().append(module_name_atom(module)).append(":"),
+    }
+    .append(atom(escape_erlang_existing_name(name)))
+    .append("/")
+    .append(arity)
 }
 
 fn int<'a>(value: &str) -> Document<'a> {
@@ -1120,7 +1164,9 @@ fn const_inline<'a>(literal: &'a TypedConstant, env: &mut Env<'a>) -> Document<'
                 .map(|s| const_segment(&s.value, &s.options, env)),
         ),
 
-        Constant::Record { tag, typ, args, .. } if args.is_empty() => match typ.deref() {
+        Constant::Record {
+            tag, type_, args, ..
+        } if args.is_empty() => match type_.deref() {
             Type::Fn { args, .. } => record_constructor_function(tag, args.len()),
             _ => atom_string(tag.to_snake_case()),
         },
@@ -1480,7 +1526,12 @@ fn docs_args_call<'a>(
         TypedExpr::Var {
             constructor:
                 ValueConstructor {
-                    variant: ValueConstructorVariant::ModuleFn { module, name, .. },
+                    variant:
+                        ValueConstructorVariant::ModuleFn {
+                            external_erlang: Some((module, name)),
+                            ..
+                        }
+                        | ValueConstructorVariant::ModuleFn { module, name, .. },
                     ..
                 },
             ..
@@ -1505,7 +1556,12 @@ fn docs_args_call<'a>(
                 },
             ..
         } if constructor.variant.is_module_fn() => {
-            if let ValueConstructorVariant::ModuleFn { module, name, .. } = &constructor.variant {
+            if let ValueConstructorVariant::ModuleFn {
+                external_erlang: Some((module, name)),
+                ..
+            }
+            | ValueConstructorVariant::ModuleFn { module, name, .. } = &constructor.variant
+            {
                 module_fn_with_args(module, name, args, env)
             } else {
                 unreachable!("The above clause guard ensures that this is a module fn")
@@ -1513,7 +1569,12 @@ fn docs_args_call<'a>(
         }
 
         TypedExpr::ModuleSelect {
-            constructor: ModuleValueConstructor::Fn { module, name, .. },
+            constructor:
+                ModuleValueConstructor::Fn {
+                    external_erlang: Some((module, name)),
+                    ..
+                }
+                | ModuleValueConstructor::Fn { module, name, .. },
             ..
         } => {
             let args = wrap_args(args);
@@ -1639,7 +1700,7 @@ fn needs_begin_end_wrapping(expression: &TypedExpr) -> bool {
 fn todo<'a>(message: Option<&'a TypedExpr>, location: SrcSpan, env: &mut Env<'a>) -> Document<'a> {
     let message = match message {
         Some(m) => expr(m, env),
-        None => string("This has not yet been implemented"),
+        None => string("`todo` expression evaluated. This code has not yet been implemented."),
     };
     erlang_error("todo", &message, location, vec![], env)
 }
@@ -1647,7 +1708,7 @@ fn todo<'a>(message: Option<&'a TypedExpr>, location: SrcSpan, env: &mut Env<'a>
 fn panic<'a>(location: SrcSpan, message: Option<&'a TypedExpr>, env: &mut Env<'a>) -> Document<'a> {
     let message = match message {
         Some(m) => expr(m, env),
-        None => string("panic expression evaluated"),
+        None => string("`panic` expression evaluated."),
     };
     erlang_error("panic", &message, location, vec![], env)
 }
@@ -1752,10 +1813,15 @@ fn expr<'a>(expression: &'a TypedExpr, env: &mut Env<'a>) -> Document<'a> {
         } => record_constructor_function(name, *arity as usize),
 
         TypedExpr::ModuleSelect {
-            typ,
-            constructor: ModuleValueConstructor::Fn { module, name, .. },
+            type_,
+            constructor:
+                ModuleValueConstructor::Fn {
+                    external_erlang: Some((module, name)),
+                    ..
+                }
+                | ModuleValueConstructor::Fn { module, name, .. },
             ..
-        } => module_select_fn(typ.clone(), module, name),
+        } => module_select_fn(type_.clone(), module, name),
 
         TypedExpr::RecordAccess { record, index, .. } => tuple_index(record, index + 1, env),
 
@@ -1782,7 +1848,7 @@ fn expr<'a>(expression: &'a TypedExpr, env: &mut Env<'a>) -> Document<'a> {
 }
 
 fn pipeline<'a>(
-    assignments: &'a [Assignment<Arc<Type>, TypedExpr>],
+    assignments: &'a [TypedAssignment],
     finally: &'a TypedExpr,
     env: &mut Env<'a>,
 ) -> Document<'a> {
@@ -1817,8 +1883,8 @@ fn tuple_index<'a>(tuple: &'a TypedExpr, index: u64, env: &mut Env<'a>) -> Docum
         .append(wrap_args([index_doc, tuple_doc]))
 }
 
-fn module_select_fn<'a>(typ: Arc<Type>, module_name: &'a str, label: &'a str) -> Document<'a> {
-    match crate::type_::collapse_links(typ).as_ref() {
+fn module_select_fn<'a>(type_: Arc<Type>, module_name: &'a str, label: &'a str) -> Document<'a> {
+    match crate::type_::collapse_links(type_).as_ref() {
         Type::Fn { args, .. } => "fun "
             .to_doc()
             .append(module_name_to_erlang(module_name))
@@ -2012,8 +2078,8 @@ fn collect_type_var_usages<'a>(
     mut ids: HashMap<u64, u64>,
     types: impl IntoIterator<Item = &'a Arc<Type>>,
 ) -> HashMap<u64, u64> {
-    for typ in types {
-        type_var_ids(typ, &mut ids);
+    for type_ in types {
+        type_var_ids(type_, &mut ids);
     }
     ids
 }
@@ -2048,12 +2114,12 @@ fn result_type_var_ids(ids: &mut HashMap<u64, u64>, arg_ok: &Type, arg_err: &Typ
 
 fn type_var_ids(type_: &Type, ids: &mut HashMap<u64, u64>) {
     match type_ {
-        Type::Var { type_: typ } => match typ.borrow().deref() {
+        Type::Var { type_ } => match type_.borrow().deref() {
             TypeVar::Generic { id, .. } | TypeVar::Unbound { id, .. } => {
                 let count = ids.entry(*id).or_insert(0);
                 *count += 1;
             }
-            TypeVar::Link { type_: typ } => type_var_ids(typ, ids),
+            TypeVar::Link { type_ } => type_var_ids(type_, ids),
         },
         Type::Named {
             args, module, name, ..
@@ -2153,7 +2219,7 @@ impl<'a> TypePrinter<'a> {
 
     pub fn print(&self, type_: &Type) -> Document<'static> {
         match type_ {
-            Type::Var { type_: typ } => self.print_var(&typ.borrow()),
+            Type::Var { type_ } => self.print_var(&type_.borrow()),
 
             Type::Named {
                 name, module, args, ..
@@ -2182,7 +2248,7 @@ impl<'a> TypePrinter<'a> {
                 },
                 None => id_to_type_var(*id),
             },
-            TypeVar::Link { type_: typ } => self.print(typ),
+            TypeVar::Link { type_ } => self.print(type_),
         }
     }
 

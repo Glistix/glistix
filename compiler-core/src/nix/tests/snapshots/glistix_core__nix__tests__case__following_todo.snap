@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/case.rs
 expression: "\nfn go(x) {\n  case x {\n    True -> todo\n    _ -> 1\n  }\n}\n"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError;
@@ -14,7 +15,7 @@ let
           "my/mod"
           4
           "go"
-          "This has not yet been implemented"
+          "`todo` expression evaluated. This code has not yet been implemented."
           { })
     else 1;
 in

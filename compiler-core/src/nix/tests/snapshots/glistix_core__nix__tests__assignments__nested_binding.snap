@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/assignments.rs
 expression: "\nfn go(x) {\n  let assert #(a, #(b, c, 2) as t, _, 1) = x\n}\n"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError;
@@ -13,11 +14,11 @@ let
     then
       builtins.throw
         (makeError
-          "assignment_no_match"
+          "let_assert"
           "my/mod"
           3
           "go"
-          "Assignment pattern did not match"
+          "Pattern match failed, no pattern matched the value."
           { value = x; })
     else x;
 in

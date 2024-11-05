@@ -1,4 +1,4 @@
-use crate::{assert_module_error, assert_nix};
+use crate::{assert_module_error, assert_nix, assert_nix_error};
 
 #[test]
 fn type_() {
@@ -374,7 +374,7 @@ pub fn should_not_be_generated(x: Int) -> Int
 
 #[test]
 fn erlang_bit_patterns() {
-    assert_nix!(
+    assert_nix_error!(
         r#"
 pub fn should_not_be_generated(x) {
   case x {

@@ -20,7 +20,7 @@ use pubgrub::report::DerivationTree;
 use pubgrub::version::Version;
 use std::collections::HashSet;
 use std::env;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::io::Write;
 use std::path::PathBuf;
 use termcolor::Buffer;
@@ -259,7 +259,10 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     #[error("Opening docs at {path} failed: {error}")]
     FailedToOpenDocs { path: Utf8PathBuf, error: String },
 
-    #[error("The package {package} requires a Gleam version satisfying {required_version} and you are using v{gleam_version}")]
+    #[error(
+        "The package {package} requires a Gleam version satisfying \
+{required_version} and you are using v{gleam_version}"
+    )]
     IncompatibleCompilerVersion {
         package: String,
         required_version: String,
@@ -299,6 +302,40 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
 
     #[error("Version already published")]
     HexPublishReplaceRequired { version: String },
+
+    #[error("The gleam version constraint is wrong and so cannot be published")]
+    CannotPublishWrongVersion {
+        minimum_required_version: SmallVersion,
+        wrongfully_allowed_version: SmallVersion,
+    },
+}
+
+/// This is to make clippy happy and not make the error variant too big by
+/// storing an entire `hexpm::version::Version` in the error.
+///
+/// This is enough to report wrong Gleam compiler versions.
+///
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct SmallVersion {
+    major: u8,
+    minor: u8,
+    patch: u8,
+}
+
+impl Display for SmallVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!("{}.{}.{}", self.major, self.minor, self.patch))
+    }
+}
+
+impl SmallVersion {
+    pub fn from_hexpm(version: hexpm::version::Version) -> Self {
+        Self {
+            major: version.major as u8,
+            minor: version.minor as u8,
+            patch: version.patch as u8,
+        }
+    }
 }
 
 impl Error {
@@ -369,10 +406,13 @@ impl Error {
                 let mut conflicting_packages = HashSet::new();
                 collect_conflicting_packages(&derivation_tree, &mut conflicting_packages);
 
-                let report = format!("{}\n\n{}",
-                    String::from("Unable to find compatible versions for the version constraints in your gleam.toml. The conflicting packages are:"),
-                    conflicting_packages.into_iter().map(|s| format!("- {}", s)).join("\n"));
-                wrap(&report)
+                wrap_format!("Unable to find compatible versions for \
+the version constraints in your gleam.toml. \
+The conflicting packages are:
+
+{}
+",
+                    conflicting_packages.into_iter().map(|s| format!("- {}", s)).join("\n"))
             }
 
             ResolutionError::ErrorRetrievingDependencies {
@@ -519,7 +559,7 @@ impl FileKind {
 }
 
 // https://github.com/rust-lang/rust/blob/03994e498df79aa1f97f7bbcfd52d57c8e865049/compiler/rustc_span/src/edit_distance.rs
-fn edit_distance(a: &str, b: &str, limit: usize) -> Option<usize> {
+pub fn edit_distance(a: &str, b: &str, limit: usize) -> Option<usize> {
     let mut a = &a.chars().collect::<Vec<_>>()[..];
     let mut b = &b.chars().collect::<Vec<_>>()[..];
 
@@ -906,6 +946,24 @@ Please remove them and try again.
                 location: None,
             }],
 
+            Error::CannotPublishWrongVersion { minimum_required_version, wrongfully_allowed_version } => vec![Diagnostic {
+                title: "Cannot publish package with wrong Gleam version range".into(),
+                text: wrap(&format!(
+                    "Your package uses features that require at least v{minimum_required_version}.
+But the Gleam version range specified in your `gleam.toml` would allow this \
+code to run on an earlier version like v{wrongfully_allowed_version}, \
+resulting in compilation errors!"
+                )),
+                level: Level::Error,
+                hint: Some(format!(
+                    "Remove the version constraint from your `gleam.toml` or update it to be:
+
+    gleam = \">= {}\"",
+                    minimum_required_version
+                )),
+                location: None,
+            }],
+
             Error::CannotPublishLeakedInternalType { unfinished } => vec![Diagnostic {
                 title: "Cannot publish unfinished code".into(),
                 text: format!(
@@ -1214,11 +1272,13 @@ Second: {second}"
                     test_module,
                 } => {
                     let text = wrap_format!(
-                        "The application module `{src_module}` is importing the test module `{test_module}`.
+                        "The application module `{src_module}` \
+is importing the test module `{test_module}`.
 
 Test modules are not included in production builds so test \
-modules cannot import them. Perhaps move the `{test_module}` module to the src directory.",
-                    );
+modules cannot import them. Perhaps move the `{test_module}` \
+module to the src directory.",
+                        );
 
                     Diagnostic {
                         title: "App importing test module".into(),
@@ -1319,10 +1379,11 @@ not expect any. Please remove the label `{label}`."
                 }
 
                 TypeError::PositionalArgumentAfterLabelled { location } => {
-                    let text = "This unlabeled argument has been supplied after a labelled argument.
+                    let text = wrap("This unlabeled argument has been \
+supplied after a labelled argument.
 Once a labelled argument has been supplied all following arguments must
-also be labelled."
-                        .into();
+also be labelled.");
+
                     Diagnostic {
                         title: "Unexpected positional argument".into(),
                         text,
@@ -1483,11 +1544,11 @@ Names in a Gleam module must be unique so one will need to be renamed."
                 }
 
                 TypeError::RecursiveType { location } => {
-                    let text = "I don't know how to work out what type this value has. It seems
-to be defined in terms of itself.
+                    let text = wrap("I don't know how to work out what type this \
+value has. It seems to be defined in terms of itself.
 
-Hint: Add some type annotations and try again."
-                        .into();
+Hint: Add some type annotations and try again.")
+                        ;
                     Diagnostic {
                         title: "Recursive type".into(),
                         text,
@@ -1505,11 +1566,11 @@ Hint: Add some type annotations and try again."
                     }
                 }
 
-                TypeError::NotFn { location, typ } => {
+                TypeError::NotFn { location, type_ } => {
                     let mut printer = Printer::new();
                     let text = format!(
                         "This value is being called as a function but its type is:\n\n{}",
-                        printer.pretty_print(typ, 4)
+                        printer.pretty_print(type_, 4)
                     );
                     Diagnostic {
                         title: "Type mismatch".into(),
@@ -1531,7 +1592,7 @@ Hint: Add some type annotations and try again."
                 TypeError::UnknownRecordField {
                     usage,
                     location,
-                    typ,
+                    type_,
                     label,
                     fields,
                     variants,
@@ -1541,7 +1602,7 @@ Hint: Add some type annotations and try again."
                     // Give a hint about what type this value has.
                     let mut text = format!(
                         "The value being accessed has this type:\n\n{}\n",
-                        printer.pretty_print(typ, 4)
+                        printer.pretty_print(type_, 4)
                     );
 
                     // Give a hint about what record fields this value has, if any.
@@ -1743,9 +1804,8 @@ But function expects:
                     given,
                     ..
                 } => {
-                    let text = "Functions and constructors have to be called with their expected
-number of arguments."
-                        .into();
+                    let text = wrap("Functions and constructors have to be \
+called with their expected number of arguments.");
                     let expected = match expected {
                         0 => "no arguments".into(),
                         1 => "1 argument".into(),
@@ -1830,13 +1890,13 @@ assigned variables to all of them."
                 }
 
                 TypeError::UpdateMultiConstructorType { location } => {
-                    let text = "This type has multiple constructors so it cannot be safely updated.
-If this value was one of the other variants then the update would be
-produce incorrect results.
+                    let text = wrap("This type has multiple constructors \
+so it cannot be safely updated. If this value was one of the other variants \
+then the update would be produce incorrect results.
 
-Consider pattern matching on it with a case expression and then
+Consider pattern matching on it with a case expression and then\
 constructing a new record with its values."
-                        .into();
+                );
 
                     Diagnostic {
                         title: "Unsafe record update".into(),
@@ -1871,8 +1931,9 @@ constructing a new record with its values."
                     match hint {
                         UnknownTypeHint::ValueInScopeWithSameName => {
                             let hint = wrap_format!(
-                                    "There is a value in scope with the name `{name}`, but no type in scope with that name."
-                                );
+                                "There is a value in scope with the name `{name}`, \
+but no type in scope with that name."
+                        );
                             text.push('\n');
                             text.push_str(hint.as_str());
                         }
@@ -1932,8 +1993,9 @@ constructing a new record with its values."
                     // - is taken as an argument by this public function
                     // - is taken as an argument by this public enum constructor
                     // etc
-                    let text = format!(
-                        "The following type is private, but is being used by this public export.
+                    let text = wrap_format!(
+                        "The following type is private, but is \
+being used by this public export.
 
 {}
 
@@ -1960,15 +2022,15 @@ Private types can only be used within the module that defines them.",
                 TypeError::UnknownModule {
                     location,
                     name,
-                    imported_modules,
+                    suggestions
                 } => Diagnostic {
                     title: "Unknown module".into(),
                     text: format!("No module has been found with the name `{name}`."),
-                    hint: None,
+                    hint: suggestions.first().map(|suggestion| suggestion.suggestion(name)),
                     level: Level::Error,
                     location: Some(Location {
                         label: Label {
-                            text: did_you_mean(name, imported_modules),
+                            text: None,
                             span: *location,
                         },
                         path: path.clone(),
@@ -2023,7 +2085,7 @@ Private types can only be used within the module that defines them.",
                         format!("The module `{module_name}` does not have a `{name}` value.")
                     };
                     Diagnostic {
-                        title: "Unknown module field".into(),
+                        title: "Unknown module value".into(),
                         text,
                         hint: None,
                         level: Level::Error,
@@ -2043,15 +2105,41 @@ Private types can only be used within the module that defines them.",
                     }
                 }
 
+                TypeError::ModuleAliasUsedAsName {
+                    location,
+                    name
+                } => {
+                    let text = wrap(
+"Modules are not values, so you cannot assign them to variables, pass \
+them to functions, or anything else that you would do with a value."
+                        );
+                    Diagnostic {
+                        title: format!("Module `{name}` used as a value"),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: None,
+                                span: *location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![],
+                        }),
+                    }
+                }
+
                 TypeError::IncorrectNumClausePatterns {
                     location,
                     expected,
                     given,
                 } => {
                     let text = wrap_format!(
-                            "This case expression has {expected} subjects, but this pattern matches {given}.
+                            "This case expression has {expected} subjects, \
+but this pattern matches {given}.
 Each clause must have a pattern for every subject value.",
-                        );
+                            );
                     Diagnostic {
                         title: "Incorrect number of patterns".into(),
                         text,
@@ -2072,7 +2160,8 @@ Each clause must have a pattern for every subject value.",
                 TypeError::NonLocalClauseGuardVariable { location, name } => {
                     let text = wrap_format!(
                         "Variables used in guards must be either defined in the \
-function, or be an argument to the function. The variable `{name}` is not defined locally.",
+function, or be an argument to the function. The variable \
+`{name}` is not defined locally.",
                     );
                     Diagnostic {
                         title: "Invalid guard variable".into(),
@@ -2093,8 +2182,9 @@ function, or be an argument to the function. The variable `{name}` is not define
 
                 TypeError::ExtraVarInAlternativePattern { location, name } => {
                     let text = wrap_format!(
-"All alternative patterns must define the same variables as the initial pattern. \
-This variable `{name}` has not been previously defined.",
+"All alternative patterns must define the same variables as \
+the initial pattern. This variable `{name}` has not been \
+previously defined.",
                     );
                     Diagnostic {
                         title: "Extra alternative pattern variable".into(),
@@ -2233,10 +2323,10 @@ tuple has {} elements so the highest valid index is {}.",
                 }
 
                 TypeError::NotATupleUnbound { location } => {
-                    let text = "To index into a tuple we need to know it size, but we don't know
-anything about this type yet. Please add some type annotations so
-we can continue."
-                        .into();
+                    let text = wrap("To index into a tuple we need to \
+know it size, but we don't know anything about this type yet. \
+Please add some type annotations so we can continue."
+                        );
                     Diagnostic {
                         title: "Type mismatch".into(),
                         text,
@@ -2255,10 +2345,10 @@ we can continue."
                 }
 
                 TypeError::RecordAccessUnknownType { location } => {
-                    let text = "In order to access a record field we need to know what type it is,
-but I can't tell the type here. Try adding type annotations to your
-function and try again."
-                        .into();
+                    let text = wrap("In order to access a record field \
+we need to know what type it is, but I can't tell \
+the type here. Try adding type annotations to your \
+function and try again.");
                     Diagnostic {
                         title: "Unknown type for record access".into(),
                         text,
@@ -2327,17 +2417,17 @@ function and try again."
                                 vec!["Hint: This option has no effect in BitArray values.".into()],
                             ),
 
-                            bit_array::ErrorType::SignednessUsedOnNonInt { typ } => (
+                            bit_array::ErrorType::SignednessUsedOnNonInt { type_ } => (
                                 "Signedness is only valid with int types",
-                                vec![format!("Hint: This segment has a type of {typ}")],
+                                vec![format!("Hint: This segment has a type of {type_}")],
                             ),
-                            bit_array::ErrorType::TypeDoesNotAllowSize { typ } => (
+                            bit_array::ErrorType::TypeDoesNotAllowSize { type_ } => (
                                 "Size cannot be specified here",
-                                vec![format!("Hint: {typ} segments have an automatic size.")],
+                                vec![format!("Hint: {type_} segments have an automatic size.")],
                             ),
-                            bit_array::ErrorType::TypeDoesNotAllowUnit { typ } => (
+                            bit_array::ErrorType::TypeDoesNotAllowUnit { type_ } => (
                                 "Unit cannot be specified here",
-                                vec![wrap(&format!("Hint: {typ} segments are sized based on their value \
+                                vec![wrap(&format!("Hint: {type_} segments are sized based on their value \
     and cannot have a unit."))],
                             ),
                             bit_array::ErrorType::VariableUtfSegmentInPattern => (
@@ -2420,11 +2510,11 @@ Try a different name for this module."
                 }
 
                 TypeError::KeywordInModuleName { name, keyword } => {
-                    let text = wrap(&format!(
-                        "The module name `{name}` contains the keyword `{keyword}`, so importing \
-it would be a syntax error.
+                    let text = wrap_format!(
+                        "The module name `{name}` contains the keyword `{keyword}`, \
+so importing it would be a syntax error.
 Try a different name for this module."
-                    ));
+                    );
                     Diagnostic {
                         title: "Invalid module name".into(),
                         text,
@@ -2691,13 +2781,12 @@ a valid Nix identifier."
                 }
 
                 TypeError::InexhaustiveLetAssignment { location, missing } => {
-                    let mut text: String =
-                        "This assignment uses a pattern that does not match all possible
-values. If one of the other values is used then the assignment
-will crash.
+                    let mut text =wrap(
+                        "This assignment uses a pattern that does not \
+match all possible values. If one of the other values \
+is used then the assignment will crash.
 
-The missing patterns are:\n"
-                            .into();
+The missing patterns are:\n");
                     for missing in missing {
                         text.push_str("\n    ");
                         text.push_str(missing);
@@ -2722,12 +2811,13 @@ The missing patterns are:\n"
                 }
 
                 TypeError::InexhaustiveCaseExpression { location, missing } => {
-                    let mut text: String =
-                        "This case expression does not have a pattern for all possible values.
-If it is run on one of the values without a pattern then it will crash.
+                    let mut text =wrap(
+                        "This case expression does not have a pattern \
+for all possible values. If it is run on one of the \
+values without a pattern then it will crash.
 
 The missing patterns are:\n"
-                            .into();
+                        );
                     for missing in missing {
                         text.push_str("\n    ");
                         text.push_str(missing);
@@ -2855,16 +2945,16 @@ Rename or remove one of them.",
                     }
                 },
 
-                TypeError::NotFnInUse { location, typ } => {
+                TypeError::NotFnInUse { location, type_ } => {
                     let mut printer = Printer::new();
                     let text = wrap_format!(
-                        "In a use expression, there should be a function on the right hand side \
-of `<-`, but this value has type:
+                        "In a use expression, there should be a function on \
+the right hand side of `<-`, but this value has type:
 
 {}
 
 See: https://tour.gleam.run/advanced-features/use/",
-                        printer.pretty_print(typ, 4)
+                        printer.pretty_print(type_, 4)
                     );
 
                     Diagnostic {
@@ -2886,8 +2976,9 @@ See: https://tour.gleam.run/advanced-features/use/",
 
                 TypeError::UseFnDoesntTakeCallback { location, actual_type: None }
                 | TypeError::UseFnIncorrectArity { location, expected: 0, given: 1 } => {
-                    let text = wrap("The function on the right of `<-` here takes no arguments.
-But it has to take at least one argument, a callback function.
+                    let text = wrap("The function on the right of `<-` here \
+takes no arguments, but it has to take at least \
+one argument, a callback function.
 
 See: https://tour.gleam.run/advanced-features/use/");
                     Diagnostic {
@@ -2925,7 +3016,8 @@ here takes {expected_string}.\n");
 
                     if expected > given {
                         if supplied_arguments == 0 {
-                            text.push_str("The only argument that was supplied is the `use` callback function.\n")
+                            text.push_str("The only argument that was supplied is \
+the `use` callback function.\n")
                         } else {
                             text.push_str(&format!("You supplied {supplied_arguments_string} \
 and the final one is the `use` callback function.\n"));
@@ -3028,16 +3120,20 @@ See: https://tour.gleam.run/advanced-features/use/");
                     let text = match kind {
                         Named::Type |
                         Named::TypeAlias |
-                        Named::CustomTypeVariant => wrap_format!("Hint: {} names start with an uppercase letter and contain only lowercase letters, numbers, and uppercase letters.
+                        Named::CustomTypeVariant => wrap_format!("Hint: {} names start with an uppercase \
+letter and contain only lowercase letters, numbers, \
+and uppercase letters.
 Try: {}", kind_str.to_title_case(), name.to_upper_camel_case()),
                         Named::Variable |
                         Named::TypeVariable |
                         Named::Argument |
                         Named::Label |
                         Named::Constant  |
-                        Named::Function => wrap_format!("Hint: {} names start with a lowercase letter and contain a-z, 0-9, or _.
+                        Named::Function => wrap_format!("Hint: {} names start with a lowercase letter \
+and contain a-z, 0-9, or _.
 Try: {}", kind_str.to_title_case(), name.to_snake_case()),
-                        Named::Discard => wrap_format!("Hint: {} names start with _ and contain a-z, 0-9, or _.
+                        Named::Discard => wrap_format!("Hint: {} names start with _ and contain \
+a-z, 0-9, or _.
 Try: _{}", kind_str.to_title_case(), name.to_snake_case()),
                     };
 
@@ -3498,8 +3594,8 @@ issue in our tracker: https://github.com/gleam-lang/gleam/issues",
                 gleam_version,
             } => {
                 let text = format!(
-                    "The package `{package}` requires a Gleam version satisfying {required_version} \
-but you are using v{gleam_version}.",
+                    "The package `{package}` requires a Gleam version \
+satisfying {required_version} but you are using v{gleam_version}.",
                 );
                 vec![Diagnostic {
                     title: "Incompatible Gleam version".into(),

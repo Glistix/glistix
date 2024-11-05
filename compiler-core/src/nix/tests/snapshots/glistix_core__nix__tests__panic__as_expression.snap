@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/panic.rs
 expression: "\nfn go(f) {\n  let boop = panic\n  f(panic)\n}\n"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError;
@@ -10,10 +11,10 @@ let
     let
       boop =
         builtins.throw
-          (makeError "panic" "my/mod" 3 "go" "panic expression evaluated" { });
+          (makeError "panic" "my/mod" 3 "go" "`panic` expression evaluated." { });
     in
     f
       (builtins.throw
-        (makeError "panic" "my/mod" 4 "go" "panic expression evaluated" { }));
+        (makeError "panic" "my/mod" 4 "go" "`panic` expression evaluated." { }));
 in
 { }

@@ -19,17 +19,21 @@ use crate::{
     Error, Result, Warning,
 };
 use ecow::EcoString;
+use hexpm::version::Version;
 use itertools::Itertools;
+use pubgrub::range::Range;
 use std::{
+    cmp,
     collections::{HashMap, HashSet},
     fmt::Write,
     io::BufReader,
+    rc::Rc,
     sync::Arc,
     time::Instant,
 };
 
 use super::{
-    elixir_libraries::ElixirLibraries, package_compiler::CachedWarnings, Codegen,
+    elixir_libraries::ElixirLibraries, package_compiler::CachedWarnings, Codegen, Compile,
     ErlangAppCodegenConfiguration, Outcome,
 };
 
@@ -51,9 +55,11 @@ const ELIXIR_EXECUTABLE: &str = "elixir.bat";
 pub struct Options {
     pub mode: Mode,
     pub target: Option<Target>,
+    pub compile: Compile,
     pub codegen: Codegen,
     pub warnings_as_errors: bool,
     pub root_target_support: TargetSupport,
+    pub no_print_progress: bool,
 }
 
 #[derive(Debug)]
@@ -77,6 +83,15 @@ impl Built {
             }),
         }
     }
+
+    pub fn minimum_required_version(&self) -> Version {
+        self.module_interfaces
+            .values()
+            .map(|interface| &interface.minimum_required_version)
+            .reduce(|one_version, other_version| cmp::max(one_version, other_version))
+            .map(|minimum_required_version| minimum_required_version.clone())
+            .unwrap_or(Version::new(0, 1, 0))
+    }
 }
 
 #[derive(Debug)]
@@ -91,7 +106,7 @@ pub struct ProjectCompiler<IO> {
     /// successful compilation.
     incomplete_modules: HashSet<EcoString>,
     warnings: WarningEmitter,
-    telemetry: Box<dyn Telemetry>,
+    telemetry: &'static dyn Telemetry,
     options: Options,
     paths: ProjectPaths,
     ids: UniqueIdGenerator,
@@ -112,8 +127,8 @@ where
         config: PackageConfig,
         options: Options,
         packages: Vec<ManifestPackage>,
-        telemetry: Box<dyn Telemetry>,
-        warning_emitter: Arc<dyn WarningEmitterIO>,
+        telemetry: &'static dyn Telemetry,
+        warning_emitter: Rc<dyn WarningEmitterIO>,
         paths: ProjectPaths,
         io: IO,
     ) -> Self {
@@ -347,7 +362,7 @@ where
 
         let env = [
             ("ERL_LIBS", "../*/ebin".into()),
-            ("REBAR_BARE_COMPILER_OUTPUT_DIR", "./".into()),
+            ("REBAR_BARE_COMPILER_OUTPUT_DIR", package_build.to_string()),
             ("REBAR_PROFILE", "prod".into()),
             ("TERM", "dumb".into()),
         ];
@@ -559,6 +574,7 @@ where
         compiler.write_entrypoint = is_root;
         compiler.perform_codegen = self.options.codegen.should_codegen(is_root);
         compiler.compile_beam_bytecode = self.options.codegen.should_codegen(is_root);
+        compiler.compile_modules = !(self.options.compile == Compile::DepsOnly && is_root);
         compiler.subprocess_stdio = self.subprocess_stdio;
         compiler.target_support = if is_root {
             // When compiling the root package it is context specific as to whether we need to
@@ -587,7 +603,7 @@ where
             &mut self.defined_modules,
             &mut self.stale_modules,
             &mut self.incomplete_modules,
-            self.telemetry.as_ref(),
+            self.telemetry,
         )
     }
 }

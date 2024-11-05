@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/bools.rs
 expression: "\npub type True { True False Nil }\nfn go(x, y) {\n  let assert True = x\n  let assert False = x\n  let assert Nil = y\n}\n"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError seqAll;
@@ -18,11 +19,11 @@ let
         if x.__gleamTag != "True" then
           builtins.throw
             (makeError
-              "assignment_no_match"
+              "let_assert"
               "my/mod"
               4
               "go"
-              "Assignment pattern did not match"
+              "Pattern match failed, no pattern matched the value."
               { value = x; })
         else null;
       _' = builtins.seq _assert' x;
@@ -30,11 +31,11 @@ let
         if x.__gleamTag != "False" then
           builtins.throw
             (makeError
-              "assignment_no_match"
+              "let_assert"
               "my/mod"
               5
               "go"
-              "Assignment pattern did not match"
+              "Pattern match failed, no pattern matched the value."
               { value = x; })
         else null;
       _'1 = builtins.seq _assert''1 x;
@@ -44,11 +45,11 @@ let
       (if y.__gleamTag != "Nil" then
         builtins.throw
           (makeError
-            "assignment_no_match"
+            "let_assert"
             "my/mod"
             6
             "go"
-            "Assignment pattern did not match"
+            "Pattern match failed, no pattern matched the value."
             { value = y; })
       else y);
 in

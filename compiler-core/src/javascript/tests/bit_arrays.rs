@@ -1,4 +1,4 @@
-use crate::{assert_js, assert_ts_def};
+use crate::{assert_js, assert_js_error, assert_ts_def};
 
 #[test]
 fn empty() {
@@ -386,6 +386,29 @@ fn go(x) {
 }
 
 #[test]
+fn match_dynamic_size_error() {
+    assert_js_error!(
+        r#"
+fn go(x) {
+  let n = 16
+  let assert <<a:size(n)>> = x
+}
+"#
+    );
+}
+
+#[test]
+fn match_non_byte_aligned_size_error() {
+    assert_js_error!(
+        r#"
+fn go(x) {
+  let assert <<a:size(7)>> = x
+}
+"#
+    );
+}
+
+#[test]
 fn discard_sized() {
     assert_js!(
         r#"
@@ -475,6 +498,17 @@ fn go(x) {
 }
 
 #[test]
+fn match_float_16_bit_error() {
+    assert_js_error!(
+        r#"
+fn go(x) {
+  let assert <<a:float-size(16)>> = x
+}
+"#
+    );
+}
+
+#[test]
 fn match_rest() {
     assert_js!(
         r#"
@@ -545,7 +579,7 @@ fn go() {
 // https://github.com/gleam-lang/gleam/issues/1591
 #[test]
 fn not_byte_aligned() {
-    assert_js!(
+    assert_js_error!(
         r#"
 fn thing() {
   4
@@ -560,7 +594,7 @@ fn go() {
 
 #[test]
 fn not_byte_aligned_explicit_sized() {
-    assert_js!(
+    assert_js_error!(
         r#"
 fn go() {
   <<256:size(4)>>
@@ -581,5 +615,33 @@ fn go() {
   <<256:size(x)>>
 }
 "#,
+    );
+}
+
+#[test]
+fn bit_array_literal_string_constant_is_treated_as_utf8() {
+    assert_js!(r#"const a = <<"hello", " ", "world">>"#);
+}
+
+#[test]
+fn bit_array_literal_string_is_treated_as_utf8() {
+    assert_js!(
+        r#"
+pub fn main() {
+  <<"hello", " ", "world">>
+}"#
+    );
+}
+
+#[test]
+fn bit_array_literal_string_pattern_is_treated_as_utf8() {
+    assert_js!(
+        r#"
+pub fn main() {
+  case <<>> {
+    <<"a", "b", _:bytes>> -> 1
+    _ -> 2
+  }
+}"#
     );
 }

@@ -11,11 +11,13 @@ use crate::{
 };
 use ecow::EcoString;
 use itertools::Itertools;
-use std::sync::Arc;
+use pubgrub::range::Range;
+use std::rc::Rc;
 use vec1::Vec1;
 
 use camino::Utf8PathBuf;
 
+mod accessors;
 mod assert;
 mod assignments;
 mod conditional_compilation;
@@ -31,13 +33,14 @@ mod pretty;
 mod target_implementations;
 mod type_alias;
 mod use_;
+mod version_inference;
 mod warnings;
 
 #[macro_export]
 macro_rules! assert_infer {
-    ($src:expr, $typ:expr $(,)?) => {
+    ($src:expr, $type_:expr $(,)?) => {
         let t = $crate::type_::tests::infer($src);
-        assert_eq!(($src, t), ($src, $typ.to_string()),);
+        assert_eq!(($src, t), ($src, $type_.to_string()),);
     };
 }
 
@@ -172,14 +175,30 @@ macro_rules! assert_with_module_error {
     };
 }
 
-fn get_warnings(src: &str, deps: Vec<DependencyModule<'_>>) -> Vec<crate::warning::Warning> {
+fn get_warnings(
+    src: &str,
+    deps: Vec<DependencyModule<'_>>,
+    gleam_version: Option<Range<Version>>,
+) -> Vec<crate::warning::Warning> {
     let warnings = VectorWarningEmitterIO::default();
-    _ = compile_module("test_module", src, Some(Arc::new(warnings.clone())), deps).unwrap();
+    _ = compile_module_with_opts(
+        "test_module",
+        src,
+        Some(Rc::new(warnings.clone())),
+        deps,
+        Target::Erlang,
+        TargetSupport::NotEnforced,
+        gleam_version,
+    );
     warnings.take().into_iter().collect_vec()
 }
 
-fn get_printed_warnings(src: &str, deps: Vec<DependencyModule<'_>>) -> String {
-    print_warnings(get_warnings(src, deps))
+fn get_printed_warnings(
+    src: &str,
+    deps: Vec<DependencyModule<'_>>,
+    gleam_version: Option<Range<Version>>,
+) -> String {
+    print_warnings(get_warnings(src, deps, gleam_version))
 }
 
 fn print_warnings(warnings: Vec<crate::warning::Warning>) -> String {
@@ -193,14 +212,13 @@ fn print_warnings(warnings: Vec<crate::warning::Warning>) -> String {
 #[macro_export]
 macro_rules! assert_warnings_with_imports {
     ($(($name:literal, $module_src:literal)),+; $src:literal,) => {
-        let warnings = $crate::type_::tests::get_warnings(
+        let output = $crate::type_::tests::get_printed_warnings(
             $src,
             vec![
                 $(("thepackage", $name, $module_src)),*
             ],
+            None
         );
-        assert!(!warnings.is_empty());
-        let output = $crate::type_::tests::print_warnings(warnings);
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     };
 }
@@ -208,7 +226,7 @@ macro_rules! assert_warnings_with_imports {
 #[macro_export]
 macro_rules! assert_warning {
     ($src:expr) => {
-        let output = $crate::type_::tests::get_printed_warnings($src, vec![]);
+        let output = $crate::type_::tests::get_printed_warnings($src, vec![], None);
         assert!(!output.is_empty());
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     };
@@ -216,7 +234,8 @@ macro_rules! assert_warning {
     ($(($name:expr, $module_src:literal)),+, $src:expr) => {
         let output = $crate::type_::tests::get_printed_warnings(
             $src,
-            vec![$(("thepackage", $name, $module_src)),*]
+            vec![$(("thepackage", $name, $module_src)),*],
+            None
         );
         assert!(!output.is_empty());
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
@@ -225,8 +244,18 @@ macro_rules! assert_warning {
     ($(($package:expr, $name:expr, $module_src:literal)),+, $src:expr) => {
         let output = $crate::type_::tests::get_printed_warnings(
             $src,
-            vec![$(($package, $name, $module_src)),*]
+            vec![$(($package, $name, $module_src)),*],
+            None
         );
+        assert!(!output.is_empty());
+        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
+    };
+}
+
+#[macro_export]
+macro_rules! assert_warnings_with_gleam_version {
+    ($gleam_version:expr, $src:expr$(,)?) => {
+        let output = $crate::type_::tests::get_printed_warnings($src, vec![], Some($gleam_version));
         assert!(!output.is_empty());
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     };
@@ -235,13 +264,14 @@ macro_rules! assert_warning {
 #[macro_export]
 macro_rules! assert_no_warnings {
     ($src:expr $(,)?) => {
-        let warnings = $crate::type_::tests::get_warnings($src, vec![]);
+        let warnings = $crate::type_::tests::get_warnings($src, vec![], None);
         assert_eq!(warnings, vec![]);
     };
     ($(($package:expr, $name:expr, $module_src:literal)),+, $src:expr $(,)?) => {
         let warnings = $crate::type_::tests::get_warnings(
             $src,
             vec![$(($package, $name, $module_src)),*],
+            None,
         );
         assert_eq!(warnings, vec![]);
     };
@@ -263,6 +293,7 @@ fn compile_statement_sequence(
         &mut Environment::new(
             ids,
             "thepackage".into(),
+            None,
             "themodule".into(),
             Target::Erlang,
             &modules,
@@ -321,6 +352,7 @@ pub fn infer_module_with_target(
         dep,
         target,
         TargetSupport::NotEnforced,
+        None,
     )
     .expect("should successfully infer");
     ast.type_info
@@ -338,7 +370,7 @@ pub fn infer_module_with_target(
 pub fn compile_module(
     module_name: &str,
     src: &str,
-    warnings: Option<Arc<dyn WarningEmitterIO>>,
+    warnings: Option<Rc<dyn WarningEmitterIO>>,
     dep: Vec<DependencyModule<'_>>,
 ) -> Result<TypedModule, Vec<crate::type_::Error>> {
     compile_module_with_opts(
@@ -348,23 +380,24 @@ pub fn compile_module(
         dep,
         Target::Erlang,
         TargetSupport::NotEnforced,
+        None,
     )
 }
 
 pub fn compile_module_with_opts(
     module_name: &str,
     src: &str,
-    warnings: Option<Arc<dyn WarningEmitterIO>>,
+    warnings: Option<Rc<dyn WarningEmitterIO>>,
     dep: Vec<DependencyModule<'_>>,
     target: Target,
     target_support: TargetSupport,
+    gleam_version: Option<Range<Version>>,
 ) -> Result<TypedModule, Vec<crate::type_::Error>> {
     let ids = UniqueIdGenerator::new();
     let mut modules = im::HashMap::new();
 
-    let emitter = WarningEmitter::new(
-        warnings.unwrap_or_else(|| Arc::new(VectorWarningEmitterIO::default())),
-    );
+    let emitter =
+        WarningEmitter::new(warnings.unwrap_or_else(|| Rc::new(VectorWarningEmitterIO::default())));
 
     // DUPE: preludeinsertion
     // TODO: Currently we do this here and also in the tests. It would be better
@@ -407,6 +440,7 @@ pub fn compile_module_with_opts(
     ast.name = module_name.into();
     let mut config = PackageConfig::default();
     config.name = "thepackage".into();
+    config.gleam_version = gleam_version;
 
     let warnings = TypeWarningEmitter::new("/src/warning/wrn.gleam".into(), src.into(), emitter);
     let inference_result = crate::analyse::ModuleAnalyzerConstructor::<()> {
@@ -444,6 +478,7 @@ pub fn module_error_with_target(
         deps,
         target,
         TargetSupport::NotEnforced,
+        None,
     )
     .expect_err("should infer an error");
     let error = Error::Type {
@@ -470,6 +505,7 @@ pub fn internal_module_error_with_target(
         deps,
         target,
         TargetSupport::NotEnforced,
+        None,
     )
     .expect_err("should infer an error");
     let error = Error::Type {
@@ -716,9 +752,9 @@ fn infer_module_type_retention_test() {
             ]),
             values: HashMap::new(),
             accessors: HashMap::new(),
-            unused_imports: Vec::new(),
             line_numbers: LineNumbers::new(""),
             src_path: "".into(),
+            minimum_required_version: Version::new(0, 1, 0),
         }
     );
 }
@@ -2228,6 +2264,9 @@ fn assert_suitable_main_function_wrong_arity() {
             documentation: None,
             location: Default::default(),
             module: "module".into(),
+            external_erlang: None,
+            external_javascript: None,
+            external_nix: None,
             implementations: Implementations {
                 gleam: true,
                 uses_erlang_externals: false,
@@ -2255,6 +2294,9 @@ fn assert_suitable_main_function_ok() {
             documentation: None,
             location: Default::default(),
             module: "module".into(),
+            external_erlang: None,
+            external_javascript: None,
+            external_nix: None,
             implementations: Implementations {
                 gleam: true,
                 uses_erlang_externals: false,
@@ -2282,6 +2324,9 @@ fn assert_suitable_main_function_erlang_not_supported() {
             documentation: None,
             location: Default::default(),
             module: "module".into(),
+            external_erlang: Some(("wibble".into(), "wobble".into())),
+            external_javascript: Some(("wobble".into(), "wibble".into())),
+            external_nix: None,
             implementations: Implementations {
                 gleam: false,
                 uses_erlang_externals: true,
@@ -2309,6 +2354,9 @@ fn assert_suitable_main_function_javascript_not_supported() {
             documentation: None,
             location: Default::default(),
             module: "module".into(),
+            external_erlang: Some(("wibble".into(), "wobble".into())),
+            external_javascript: Some(("wobble".into(), "wibble".into())),
+            external_nix: None,
             implementations: Implementations {
                 gleam: false,
                 uses_erlang_externals: true,
@@ -2321,4 +2369,101 @@ fn assert_suitable_main_function_javascript_not_supported() {
         },
     };
     assert!(assert_suitable_main_function(&value, &"module".into(), Target::JavaScript).is_err(),);
+}
+
+#[test]
+fn pipe_with_annonymous_unannotated_functions() {
+    assert_module_infer!(
+        r#"
+pub fn main() {
+  let a = 1
+     |> fn (x) { #(x, x + 1) }
+     |> fn (x) { x.0 }
+     |> fn (x) { x }
+}
+"#,
+        vec![("main", "fn() -> Int")]
+    );
+}
+
+#[test]
+fn pipe_with_annonymous_unannotated_functions_wrong_arity1() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+  let a = 1
+     |> fn (x) { #(x, x + 1) }
+     |> fn (x, y) { x.0 }
+     |> fn (x) { x }
+}
+"#
+    );
+}
+
+#[test]
+fn pipe_with_annonymous_unannotated_functions_wrong_arity2() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+  let a = 1
+     |> fn (x) { #(x, x + 1) }
+     |> fn (x) { x.0 }
+     |> fn (x, y) { x }
+}
+"#
+    );
+}
+
+#[test]
+fn pipe_with_annonymous_unannotated_functions_wrong_arity3() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+  let a = 1
+     |> fn (x) { #(x, x + 1) }
+     |> fn (x) { x.0 }
+     |> fn () { x }
+}
+"#
+    );
+}
+
+#[test]
+fn pipe_with_annonymous_mixed_functions() {
+    assert_module_infer!(
+        r#"
+pub fn main() {
+  let a = "abc"
+     |> fn (x) { #(x, x <> "d") }
+     |> fn (x) { x.0 }
+     |> fn (x: String) { x }
+}
+"#,
+        vec![("main", "fn() -> String")]
+    );
+}
+
+#[test]
+fn pipe_with_annonymous_functions_using_structs() {
+    // https://github.com/gleam-lang/gleam/issues/2504
+    assert_module_infer!(
+        r#"
+type Date {
+  Date(day: Day)
+}
+type Day {
+  Day(year: Int)
+}
+fn now() -> Date {
+  Date(Day(2024))
+}
+fn get_day(date: Date) -> Day {
+  date.day
+}
+pub fn main() {
+  now() |> get_day() |> fn (it) { it.year }
+}
+"#,
+        vec![("main", "fn() -> Int")]
+    );
 }
