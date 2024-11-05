@@ -233,8 +233,8 @@ fn existing_directory_with_one_existing_file() {
 
     crate::fs::mkdir(&path).unwrap();
 
-    let _ = std::fs::File::create(PathBuf::from(&path).join("README.md"));
-    let _ = std::fs::File::create(PathBuf::from(&path).join("my_project.gleam"));
+    let _ = std::fs::File::create(PathBuf::from(&path).join("README.md")).unwrap();
+    let _ = std::fs::File::create(PathBuf::from(&path).join("my_project.gleam")).unwrap();
 
     assert!(super::Creator::new(
         super::NewOptions {
@@ -257,7 +257,7 @@ fn existing_directory_with_non_generated_file() {
     crate::fs::mkdir(&path).unwrap();
     let file_path = PathBuf::from(&path).join("some_fake_thing_that_is_not_generated.md");
 
-    let _ = std::fs::File::create(file_path);
+    let _ = std::fs::File::create(file_path).unwrap();
 
     let creator = super::Creator::new(
         super::NewOptions {
@@ -286,7 +286,7 @@ fn conflict_with_existing_files() {
 
     crate::fs::mkdir(&path).unwrap();
 
-    let _ = std::fs::File::create(PathBuf::from(&path).join("README.md"));
+    let _ = std::fs::File::create(PathBuf::from(&path).join("README.md")).unwrap();
 
     assert_eq!(
         super::Creator::new(
