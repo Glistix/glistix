@@ -797,7 +797,9 @@ impl Generator<'_> {
     fn todo<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
         let message = match message {
             Some(m) => self.wrap_child_expression(m)?,
-            None => "\"This has not yet been implemented\"".to_doc(),
+            None => {
+                "\"`todo` expression evaluated. This code has not yet been implemented.\"".to_doc()
+            }
         };
 
         Ok(self.throw_error("todo", &message, *location, vec![]))
@@ -806,7 +808,7 @@ impl Generator<'_> {
     fn panic<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
         let message = match message {
             Some(m) => self.wrap_child_expression(m)?,
-            None => "\"panic expression evaluated\"".to_doc(),
+            None => "\"`panic` expression evaluated.\"".to_doc(),
         };
 
         Ok(self.throw_error("panic", &message, *location, vec![]))
@@ -1163,8 +1165,8 @@ impl Generator<'_> {
         subject: Document<'a>,
     ) -> Document<'a> {
         self.throw_error(
-            "assignment_no_match",
-            &"\"Assignment pattern did not match\"".to_doc(),
+            "let_assert",
+            &"\"Pattern match failed, no pattern matched the value.\"".to_doc(),
             location,
             [("value", subject)],
         )

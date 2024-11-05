@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "\nfn go(x) {\n  let assert <<_, b:bytes>> = <<1,2,3>>\n  b\n}\n"
+snapshot_kind: text
 ---
 let
   inherit
@@ -20,11 +21,11 @@ let
         if byteSize _pat' < 1 then
           builtins.throw
             (makeError
-              "assignment_no_match"
+              "let_assert"
               "my/mod"
               3
               "go"
-              "Assignment pattern did not match"
+              "Pattern match failed, no pattern matched the value."
               { value = _pat'; })
         else null;
       b = builtins.seq _assert' (bitSliceAfter _pat' 1);

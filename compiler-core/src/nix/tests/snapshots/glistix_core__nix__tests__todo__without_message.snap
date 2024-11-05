@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/todo.rs
 expression: "\nfn go() {\n    todo\n}\n"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError;
@@ -8,6 +9,12 @@ let
   go =
     { }:
     builtins.throw
-      (makeError "todo" "my/mod" 3 "go" "This has not yet been implemented" { });
+      (makeError
+        "todo"
+        "my/mod"
+        3
+        "go"
+        "`todo` expression evaluated. This code has not yet been implemented."
+        { });
 in
 { }

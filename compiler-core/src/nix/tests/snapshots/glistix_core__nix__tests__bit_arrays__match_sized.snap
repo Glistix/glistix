@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "\nfn go(x) {\n  let assert <<a:16, b:8>> = x\n  #(a, b)\n}\n"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError byteSize intFromBitSlice;
@@ -12,11 +13,11 @@ let
         if byteSize x != 3 then
           builtins.throw
             (makeError
-              "assignment_no_match"
+              "let_assert"
               "my/mod"
               3
               "go"
-              "Assignment pattern did not match"
+              "Pattern match failed, no pattern matched the value."
               { value = x; })
         else null;
       a = builtins.seq _assert' (intFromBitSlice x 0 2);
