@@ -892,13 +892,12 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                      arguments: args,
                      documentation,
                      deprecation: constructor_deprecation,
-                     attributes_location,
                  }| {
                     self.check_name_case(name_location, &name, Named::CustomTypeVariant);
                     if constructor_deprecation.is_deprecated() {
                         self.track_feature_usage(
                             FeatureKind::ConstructorWithDeprecatedAnnotation,
-                            attributes_location.expect("Check value must exist and be deprecated"),
+                            location,
                         );
                     }
 
@@ -936,7 +935,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                         arguments: args,
                         documentation,
                         deprecation: constructor_deprecation,
-                        attributes_location,
                     }
                 },
             )
@@ -955,6 +953,26 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         {
             self.problems
                 .error(Error::AllVariantsConstructorDeprecated { location });
+        }
+
+        // if any constructor record/varient is deprecated while
+        // the type is deprecated as a whole--is considered an error.
+        if deprecation.is_deprecated()
+            && !constructors.is_empty()
+            && constructors
+                .iter()
+                .any(|record| record.deprecation.is_deprecated())
+        {
+            // report error on all variants attibuted with deprecated
+            constructors
+                .iter()
+                .filter(|record| record.deprecation.is_deprecated())
+                .for_each(|record| {
+                    self.problems
+                        .error(Error::VariantDeprecatedOnDeprecatedConstructor {
+                            location: record.location,
+                        });
+                });
         }
 
         Ok(Definition::CustomType(CustomType {
