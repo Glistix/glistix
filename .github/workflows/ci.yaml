@@ -176,7 +176,7 @@ jobs:
 
       - name: test/project_erlang export package-interface (windows)
         run: |
-          gleam export package-interface --out="interface.json"
+          glistix export package-interface --out="interface.json"
           cat interface.json
         working-directory: ./test/project_erlang_windows
         if: ${{ runner.os == 'Windows' && matrix.run-integration-tests }}
@@ -200,7 +200,7 @@ jobs:
         working-directory: ./test/root_package_not_compiled_when_running_dep
         if: ${{ matrix.run-integration-tests }}
         env:
-          GLEAM_COMMAND: gleam
+          GLEAM_COMMAND: glistix
 
       - name: test/project_javascript
         run: |
