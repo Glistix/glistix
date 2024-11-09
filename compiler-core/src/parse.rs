@@ -2222,7 +2222,7 @@ where
                             || attributes.internal != InternalAttribute::Missing
                         {
                             return parse_error(
-                                ParseErrorType::UnknownAttributeRecordConstructor,
+                                ParseErrorType::UnknownAttributeRecordVariant,
                                 attr_span,
                             );
                         }

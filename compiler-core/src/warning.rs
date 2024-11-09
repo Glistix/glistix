@@ -1089,6 +1089,9 @@ See: https://tour.gleam.run/functions/pipelines/",
                         FeatureKind::ConstructorWithDeprecatedAnnotation => {
                             "The constructor's `@deprecated` annotation was"
                         }
+                        FeatureKind::VariantWithDeprecatedAnnotation => {
+                            "Deprecating individual custom type variants was"
+                        }
                     };
 
                     Diagnostic {
