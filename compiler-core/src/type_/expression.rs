@@ -333,7 +333,9 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 int_value,
                 ..
             } => {
-                if self.environment.target == Target::JavaScript {
+                if self.environment.target == Target::JavaScript
+                    && !self.implementations.uses_javascript_externals
+                {
                     check_javascript_int_safety(&int_value, location, self.problems);
                 }
 
@@ -1327,8 +1329,12 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
         // Ensure the pattern matches the type of the value
         let pattern_location = pattern.location();
-        let mut pattern_typer =
-            pattern::PatternTyper::new(self.environment, &self.hydrator, self.problems);
+        let mut pattern_typer = pattern::PatternTyper::new(
+            self.environment,
+            &self.implementations,
+            &self.hydrator,
+            self.problems,
+        );
         let unify_result = pattern_typer.unify(pattern, value_typ.clone(), None);
 
         let minimum_required_version = pattern_typer.minimum_required_version;
@@ -1551,8 +1557,12 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         subjects: &[TypedExpr],
         location: &SrcSpan,
     ) -> Result<(TypedMultiPattern, Vec<TypedMultiPattern>), Error> {
-        let mut pattern_typer =
-            pattern::PatternTyper::new(self.environment, &self.hydrator, self.problems);
+        let mut pattern_typer = pattern::PatternTyper::new(
+            self.environment,
+            &self.implementations,
+            &self.hydrator,
+            self.problems,
+        );
         let typed_pattern = pattern_typer.infer_multi_pattern(pattern, subjects, location)?;
 
         // Each case clause has one or more patterns that may match the
