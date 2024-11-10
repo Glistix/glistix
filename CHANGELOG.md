@@ -1,6 +1,6 @@
 # Gleam's Changelog
 
-## Unreleased
+## v1.6.0-rc1 - 2024-11-10
 
 ### Build tool
 
