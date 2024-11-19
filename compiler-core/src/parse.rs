@@ -3308,7 +3308,7 @@ functions are declared separately from types.";
                     self.warnings
                         .push(DeprecatedSyntaxWarning::DeprecatedTargetShorthand {
                             location: SrcSpan { start, end },
-                            full_name: "javascript",
+                            target: Target::JavaScript,
                         });
                     Ok(Target::JavaScript)
                 }
@@ -3316,7 +3316,7 @@ functions are declared separately from types.";
                     self.warnings
                         .push(DeprecatedSyntaxWarning::DeprecatedTargetShorthand {
                             location: SrcSpan { start, end },
-                            full_name: "erlang",
+                            target: Target::Erlang,
                         });
                     Ok(Target::Erlang)
                 }
