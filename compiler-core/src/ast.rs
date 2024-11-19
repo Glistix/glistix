@@ -2141,6 +2141,7 @@ pub enum TodoKind {
     Keyword,
     EmptyFunction,
     IncompleteUse,
+    EmptyBlock,
 }
 
 #[derive(Debug, Default)]
