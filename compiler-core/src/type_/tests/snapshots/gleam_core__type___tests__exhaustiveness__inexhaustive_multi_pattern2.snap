@@ -1,0 +1,30 @@
+---
+source: compiler-core/src/type_/tests/exhaustiveness.rs
+expression: "\npub fn main(a: Result(Int, Nil), b: Bool) {\n  case a, b {\n    Ok(1), True -> Nil\n  }\n}\n"
+---
+----- SOURCE CODE
+
+pub fn main(a: Result(Int, Nil), b: Bool) {
+  case a, b {
+    Ok(1), True -> Nil
+  }
+}
+
+
+----- ERROR
+error: Inexhaustive patterns
+  ┌─ /src/one/two.gleam:3:3
+  │  
+3 │ ╭   case a, b {
+4 │ │     Ok(1), True -> Nil
+5 │ │   }
+  │ ╰───^
+
+This case expression does not have a pattern for all possible values. If it
+is run on one of the values without a pattern then it will crash.
+
+The missing patterns are:
+
+    Error(_), True
+    Ok(_), True
+    _, False

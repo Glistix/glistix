@@ -1,0 +1,28 @@
+---
+source: compiler-core/src/type_/tests/exhaustiveness.rs
+expression: "\npub fn main(result: Result(Nil, Nil)) {\n  case result {\n    Ok(Nil) -> Nil\n  }\n}\n"
+---
+----- SOURCE CODE
+
+pub fn main(result: Result(Nil, Nil)) {
+  case result {
+    Ok(Nil) -> Nil
+  }
+}
+
+
+----- ERROR
+error: Inexhaustive patterns
+  ┌─ /src/one/two.gleam:3:3
+  │  
+3 │ ╭   case result {
+4 │ │     Ok(Nil) -> Nil
+5 │ │   }
+  │ ╰───^
+
+This case expression does not have a pattern for all possible values. If it
+is run on one of the values without a pattern then it will crash.
+
+The missing patterns are:
+
+    Error(_)
