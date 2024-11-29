@@ -1783,6 +1783,7 @@ fn get_compatible_record_fields<A: std::fmt::Debug>(
             };
 
             // The labels must be the same
+            #[allow(clippy::nonminimal_bool)] // TODO: Bump to Rust 1.83
             if !argument
                 .label
                 .as_ref()
