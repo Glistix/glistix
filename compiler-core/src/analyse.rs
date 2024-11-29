@@ -140,7 +140,7 @@ pub struct ModuleAnalyzerConstructor<'a, A> {
     pub package_config: &'a PackageConfig,
 }
 
-impl<'a, A> ModuleAnalyzerConstructor<'a, A> {
+impl<A> ModuleAnalyzerConstructor<'_, A> {
     /// Crawl the AST, annotating each node with the inferred type or
     /// returning an error.
     ///

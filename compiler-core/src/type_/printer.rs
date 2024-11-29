@@ -148,7 +148,7 @@ impl TypeNames {
             return NamedTypeNames::Qualified(module, name.as_str());
         };
 
-        return NamedTypeNames::Unimported(name.as_str());
+        NamedTypeNames::Unimported(name.as_str())
     }
 
     /// A suitable name of a type variable.
