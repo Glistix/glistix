@@ -2,15 +2,18 @@ use std::collections::HashMap;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
+use hexpm::version::Version;
+use pretty_assertions::assert_eq;
+
 use glistix_core::{
+    build::Runtime,
+    config::{DenoConfig, DenoFlag, Docs, ErlangConfig, JavaScriptConfig, Repository},
     manifest::{Base16Checksum, Manifest, ManifestPackage, ManifestPackageSource},
     requirement::Requirement,
     Error,
 };
-use hexpm::version::Version;
 
 use crate::dependencies::*;
-use pretty_assertions::assert_eq;
 
 #[test]
 fn list_manifest_format() {
@@ -459,7 +462,6 @@ fn provided_recursive() {
         })
     )
 }
-
 #[test]
 fn provided_local_to_hex() {
     let provided_package = ProvidedPackage {
@@ -687,7 +689,6 @@ fn verified_requirements_equality_with_canonicalized_paths() {
     );
 }
 
-#[cfg(test)]
 fn create_testable_unlock_manifest(
     packages: Vec<(EcoString, Version, Vec<EcoString>)>,
     requirements: Vec<(EcoString, EcoString)>,
@@ -997,4 +998,179 @@ fn test_unlock_package_with_and_without_root_dep() {
     assert!(!locked.contains_key("package_a"));
     assert!(locked.contains_key("package_b"));
     assert!(!locked.contains_key("package_c"));
+}
+
+fn manifest_package(name: &str, version: &str, requirements: Vec<EcoString>) -> ManifestPackage {
+    ManifestPackage {
+        name: name.into(),
+        version: Version::parse(version).unwrap(),
+        build_tools: ["gleam".into()].into(),
+        otp_app: None,
+        requirements,
+        source: ManifestPackageSource::Hex {
+            outer_checksum: Base16Checksum(vec![1, 2, 3, 4]),
+        },
+    }
+}
+
+fn package_config(
+    dependencies: HashMap<EcoString, Requirement>,
+    dev_dependencies: HashMap<EcoString, Requirement>,
+) -> PackageConfig {
+    PackageConfig {
+        name: "the_package".into(),
+        version: Version::parse("1.0.0").unwrap(),
+        gleam_version: None,
+        licences: vec![],
+        description: "".into(),
+        documentation: Docs { pages: vec![] },
+        dependencies,
+        dev_dependencies,
+        repository: Repository::None,
+        links: vec![],
+        erlang: ErlangConfig {
+            application_start_module: None,
+            extra_applications: vec![],
+        },
+        javascript: JavaScriptConfig {
+            typescript_declarations: false,
+            runtime: Runtime::NodeJs,
+            deno: DenoConfig {
+                allow_env: DenoFlag::AllowAll,
+                allow_sys: true,
+                allow_hrtime: true,
+                allow_net: DenoFlag::AllowAll,
+                allow_ffi: true,
+                allow_read: DenoFlag::AllowAll,
+                allow_run: DenoFlag::AllowAll,
+                allow_write: DenoFlag::AllowAll,
+                allow_all: true,
+                unstable: true,
+                location: None,
+            },
+        },
+        target: Target::Erlang,
+        internal_modules: None,
+        glistix: Default::default(),
+    }
+}
+
+#[test]
+fn test_remove_do_nothing() {
+    let config = package_config(
+        HashMap::from([("a".into(), Requirement::hex("~>1"))]),
+        HashMap::from([("b".into(), Requirement::hex("~>2"))]),
+    );
+
+    let mut manifest = Manifest {
+        requirements: HashMap::from([
+            ("a".into(), Requirement::hex("~>1")),
+            ("b".into(), Requirement::hex("~>2")),
+        ]),
+        packages: vec![
+            manifest_package("a", "1.0.0", vec![]),
+            manifest_package("b", "2.0.8", vec![]),
+        ],
+    };
+
+    let manifest_copy = manifest.clone();
+
+    remove_extra_requirements(&config, &mut manifest).unwrap();
+
+    assert_eq!(manifest.requirements, manifest_copy.requirements);
+    assert_eq!(manifest.packages, manifest_copy.packages);
+}
+
+#[test]
+fn test_remove_simple() {
+    let config = package_config(HashMap::new(), HashMap::new());
+
+    let mut manifest = Manifest {
+        requirements: HashMap::from([("a".into(), Requirement::hex("~>1"))]),
+        packages: vec![manifest_package("a", "1.0.0", vec![])],
+    };
+
+    remove_extra_requirements(&config, &mut manifest).unwrap();
+
+    assert_eq!(manifest.requirements, config.dependencies);
+    assert_eq!(manifest.packages, vec![]);
+}
+
+#[test]
+fn test_remove_package_with_transitive_dependencies() {
+    let config = package_config(HashMap::new(), HashMap::new());
+
+    let mut manifest = Manifest {
+        requirements: HashMap::from([("a".into(), Requirement::hex("~>1"))]),
+        packages: vec![
+            manifest_package("a", "1.0.0", vec!["b".into()]),
+            manifest_package("b", "1.2.3", vec!["c".into()]),
+            manifest_package("c", "2.0.0", vec![]),
+        ],
+    };
+
+    remove_extra_requirements(&config, &mut manifest).unwrap();
+
+    assert_eq!(manifest.requirements, config.dependencies);
+    assert_eq!(manifest.packages, vec![]);
+}
+
+#[test]
+fn test_remove_package_with_shared_transitive_dependencies() {
+    let config = package_config(
+        HashMap::from([("a".into(), Requirement::hex("~>1"))]),
+        HashMap::new(),
+    );
+
+    let mut manifest = Manifest {
+        requirements: HashMap::from([
+            ("a".into(), Requirement::hex("~>1")),
+            ("b".into(), Requirement::hex("~>1")),
+        ]),
+        packages: vec![
+            manifest_package("a", "1.0.0", vec!["c".into()]),
+            manifest_package("b", "1.2.3", vec!["c".into(), "d".into()]),
+            manifest_package("c", "2.0.0", vec![]),
+            manifest_package("d", "0.1.0", vec![]),
+        ],
+    };
+
+    remove_extra_requirements(&config, &mut manifest).unwrap();
+
+    assert_eq!(manifest.requirements, config.dependencies);
+    assert_eq!(
+        manifest.packages,
+        vec![
+            manifest_package("a", "1.0.0", vec!["c".into()]),
+            manifest_package("c", "2.0.0", vec![]),
+        ]
+    );
+}
+
+#[test]
+fn test_remove_package_that_is_also_a_transitive_dependency() {
+    let config = package_config(
+        HashMap::from([("a".into(), Requirement::hex("~>1"))]),
+        HashMap::new(),
+    );
+
+    let mut manifest = Manifest {
+        requirements: HashMap::from([
+            ("a".into(), Requirement::hex("~>1")),
+            ("b".into(), Requirement::hex("~>1")),
+        ]),
+        packages: vec![
+            manifest_package("a", "1.0.0", vec!["b".into(), "c".into()]),
+            manifest_package("b", "1.2.3", vec!["c".into(), "d".into()]),
+            manifest_package("c", "2.0.0", vec![]),
+            manifest_package("d", "0.1.0", vec![]),
+        ],
+    };
+
+    let manifest_copy = manifest.clone();
+
+    remove_extra_requirements(&config, &mut manifest).unwrap();
+
+    assert_eq!(manifest.requirements, config.dependencies);
+    assert_eq!(manifest.packages, manifest_copy.packages);
 }
