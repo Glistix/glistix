@@ -308,7 +308,7 @@ where
     }
 
     // Get all the modules that can be imported that have not already been imported.
-    fn completable_modules_for_import(&self) -> Vec<(&EcoString, &ModuleInterface)> {
+    fn completable_modules_for_import(&'a self) -> Vec<(&'a EcoString, &'a ModuleInterface)> {
         let mut direct_dep_packages: std::collections::HashSet<&EcoString> =
             std::collections::HashSet::from_iter(
                 self.compiler.project_compiler.config.dependencies.keys(),
