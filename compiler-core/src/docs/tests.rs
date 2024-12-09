@@ -15,10 +15,16 @@ use ecow::EcoString;
 use hexpm::version::Version;
 use itertools::Itertools;
 
+#[derive(Default)]
+struct CompileWithMarkdownPagesOpts {
+    hex_publish: Option<DocContext>,
+}
+
 fn compile_with_markdown_pages(
     config: PackageConfig,
     modules: Vec<(&str, &str)>,
     markdown_pages: Vec<(&str, &str)>,
+    opts: CompileWithMarkdownPagesOpts,
 ) -> EcoString {
     let fs = InMemoryFileSystem::new();
     for (name, src) in modules {
@@ -84,7 +90,11 @@ fn compile_with_markdown_pages(
         &docs_pages,
         pages_fs,
         SystemTime::UNIX_EPOCH,
-        DocContext::HexPublish,
+        if let Some(doc_context) = opts.hex_publish {
+            doc_context
+        } else {
+            DocContext::HexPublish
+        },
     )
     .into_iter()
     .filter(|file| file.path.extension() == Some("html"))
@@ -104,7 +114,12 @@ fn compile_with_markdown_pages(
 }
 
 pub fn compile(config: PackageConfig, modules: Vec<(&str, &str)>) -> EcoString {
-    compile_with_markdown_pages(config, modules, vec![])
+    compile_with_markdown_pages(
+        config,
+        modules,
+        vec![],
+        CompileWithMarkdownPagesOpts::default(),
+    )
 }
 
 #[test]
@@ -212,6 +227,7 @@ fn discarded_arguments_are_not_shown() {
 fn docs_of_a_type_constructor_are_not_used_by_the_following_function() {
     let mut config = PackageConfig::default();
     config.version = Version::new(0, 1, 49);
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         r#"
@@ -232,6 +248,7 @@ pub fn main() { todo }
 fn markdown_code_from_standalone_pages_is_not_trimmed() {
     let mut config = PackageConfig::default();
     config.version = Version::new(0, 1, 49);
+    config.name = EcoString::from("test_project_name");
     let pages = vec![(
         "one",
         "
@@ -242,7 +259,12 @@ pub fn indentation_test() {
 }
 ```",
     )];
-    insta::assert_snapshot!(compile_with_markdown_pages(config, vec![], pages));
+    insta::assert_snapshot!(compile_with_markdown_pages(
+        config,
+        vec![],
+        pages,
+        CompileWithMarkdownPagesOpts::default()
+    ));
 }
 
 #[test]
@@ -270,6 +292,7 @@ pub fn indentation_test() {
 fn markdown_code_from_module_comment_is_trimmed() {
     let mut config = PackageConfig::default();
     config.version = Version::new(0, 1, 49);
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         "
@@ -302,7 +325,8 @@ pub const wobble = 1
 
 #[test]
 fn doc_for_commented_definitions_is_not_included_in_next_type() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         "
@@ -337,7 +361,8 @@ pub fn wobble(arg) {}
 
 #[test]
 fn doc_for_commented_definitions_is_not_included_in_next_type_alias() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         "
@@ -368,6 +393,7 @@ fn source_link_for_github_repository() {
 #[test]
 fn source_link_for_github_repository_with_path() {
     let mut config = PackageConfig::default();
+    config.name = EcoString::from("test_project_name");
     config.repository = Repository::GitHub {
         user: "wibble".to_string(),
         repo: "wobble".to_string(),
@@ -383,7 +409,7 @@ fn source_link_for_github_repository_with_path() {
 #[test]
 fn canonical_link() {
     let mut config = PackageConfig::default();
-    config.name = EcoString::from("test_canonical");
+    config.name = EcoString::from("test_project_name");
     let modules = vec![
         (
             "app.gleam",
@@ -411,5 +437,51 @@ pub fn one() {
 # LICENSE
     "#,
     )];
-    insta::assert_snapshot!(compile_with_markdown_pages(config, modules, pages));
+    insta::assert_snapshot!(compile_with_markdown_pages(
+        config,
+        modules,
+        pages,
+        CompileWithMarkdownPagesOpts::default()
+    ));
+}
+
+#[test]
+fn no_hex_publish() {
+    let mut config = PackageConfig::default();
+    config.name = EcoString::from("test_project_name");
+    let modules = vec![
+        (
+            "app.gleam",
+            r#"
+/// Here is some documentation
+pub fn one() {
+  1
+}
+"#,
+        ),
+        (
+            "gleam/otp/actor.gleam",
+            r#"
+/// Here is some documentation
+pub fn one() {
+  1
+}
+"#,
+        ),
+    ];
+
+    let pages = vec![(
+        "LICENSE",
+        r#"
+# LICENSE
+    "#,
+    )];
+    insta::assert_snapshot!(compile_with_markdown_pages(
+        config,
+        modules,
+        pages,
+        CompileWithMarkdownPagesOpts {
+            hex_publish: Some(DocContext::Build)
+        }
+    ));
 }
