@@ -129,6 +129,7 @@ fn hello_docs() {
     // so let's distinguish the package version from the
     // compiler version by setting it to v0.1.49
     config.version = Version::new(0, 1, 49);
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         r#"
@@ -146,6 +147,7 @@ pub fn one() {
 fn tables() {
     let mut config = PackageConfig::default();
     config.version = Version::new(0, 1, 49);
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         r#"
@@ -167,6 +169,7 @@ pub fn one() {
 fn long_function_wrapping() {
     let mut config = PackageConfig::default();
     config.version = Version::new(0, 1, 49);
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         r#"
@@ -194,6 +197,7 @@ pub fn lazy_or(first: Option(a), second: fn() -> Option(a)) -> Option(a) {
 fn internal_definitions_are_not_included() {
     let mut config = PackageConfig::default();
     config.version = Version::new(0, 1, 49);
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         r#"
@@ -218,6 +222,7 @@ pub fn one() { 1 }
 fn discarded_arguments_are_not_shown() {
     let mut config = PackageConfig::default();
     config.version = Version::new(0, 1, 49);
+    config.name = EcoString::from("test_project_name");
     let modules = vec![("app.gleam", "pub fn discard(_discarded: a) -> Int { 1 }")];
     insta::assert_snapshot!(compile(config, modules));
 }
@@ -271,6 +276,7 @@ pub fn indentation_test() {
 fn markdown_code_from_function_comment_is_trimmed() {
     let mut config = PackageConfig::default();
     config.version = Version::new(0, 1, 49);
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         "
@@ -309,7 +315,8 @@ fn markdown_code_from_module_comment_is_trimmed() {
 
 #[test]
 fn doc_for_commented_definitions_is_not_included_in_next_constant() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         "
@@ -345,7 +352,8 @@ pub type Wibble {
 
 #[test]
 fn doc_for_commented_definitions_is_not_included_in_next_function() {
-    let config = PackageConfig::default();
+    let mut config = PackageConfig::default();
+    config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
         "
@@ -379,6 +387,7 @@ pub type Wibble = Int
 #[test]
 fn source_link_for_github_repository() {
     let mut config = PackageConfig::default();
+    config.name = EcoString::from("test_project_name");
     config.repository = Repository::GitHub {
         user: "wibble".to_string(),
         repo: "wobble".to_string(),
