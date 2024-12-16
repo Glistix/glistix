@@ -634,7 +634,7 @@ Hint: You can safely remove it.
                 type_::Warning::UnusedVariable { location, origin } => Diagnostic {
                     title: "Unused variable".into(),
                     text: "".into(),
-                    hint: Some(origin.how_to_ignore()),
+                    hint: origin.how_to_ignore(),
                     level: diagnostic::Level::Warning,
                     location: Some(Location {
                         src: src.clone(),
