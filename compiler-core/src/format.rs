@@ -547,7 +547,7 @@ impl<'comments> Formatter<'comments> {
         }
 
         let comma = match elements.first() {
-            // If the list is made of records and it gets too long we want to
+            // If the list is made of non-simple constants and it gets too long we want to
             // have each record on its own line instead of trying to fit as much
             // as possible in each line. For example:
             //
@@ -557,8 +557,8 @@ impl<'comments> Formatter<'comments> {
             //       Some("wobble wibble"),
             //    ]
             //
-            Some(Constant::Record { .. }) => break_(",", ", "),
-            // For all other items, if we have to break the list we still try to
+            Some(el) if !el.is_simple() => break_(",", ", "),
+            // For simple constants(String, Int, Float), if we have to break the list we still try to
             // fit as much as possible into a single line instead of putting
             // each item on its own separate line. For example:
             //
@@ -569,6 +569,7 @@ impl<'comments> Formatter<'comments> {
             //
             Some(_) | None => flex_break(",", ", "),
         };
+
         let elements = join(elements.iter().map(|e| self.const_expr(e)), comma);
 
         let doc = break_("[", "[").append(elements).nest(INDENT);
