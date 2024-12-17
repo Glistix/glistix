@@ -1085,7 +1085,7 @@ https://gleam.run/getting-started/installing/",
                     "rebar3" => text.push_str(
                         "
 Documentation for installing rebar3 can be viewed here:
-https://gleam.run/getting-started/installing/",
+https://rebar3.org/docs/getting-started/",
                     ),
                     "deno" => text.push_str(
                         "
@@ -1142,7 +1142,7 @@ https://git-scm.com/book/en/v2/Getting-Started-Installing-Git",
                                     _ => (),
                                 }
                             }
-                            _ => (),
+                            Distro::Other => (),
                         }
                     }
                     _ => (),
