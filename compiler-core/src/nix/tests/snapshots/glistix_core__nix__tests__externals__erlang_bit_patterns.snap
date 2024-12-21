@@ -1,5 +1,12 @@
 ---
 source: compiler-core/src/nix/tests/externals.rs
 expression: "\npub fn should_not_be_generated(x) {\n  case x {\n    <<_, rest:bits>> -> rest\n    _ -> x\n  }\n}\n"
+snapshot_kind: text
 ---
-let inherit (builtins.import ./../gleam.nix) byteAt; in { }
+error: Unsupported feature for compilation target
+  ┌─ /src/nix/error.gleam:4:10
+  │
+4 │     <<_, rest:bits>> -> rest
+  │          ^^^^^^^^^
+
+This bit array segment option in patterns is not supported for Nix compilation.

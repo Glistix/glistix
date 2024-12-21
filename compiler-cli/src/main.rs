@@ -77,7 +77,7 @@ pub use glistix_core::error::{Error, Result};
 
 use glistix_core::{
     analyse::TargetSupport,
-    build::{Codegen, Mode, Options, Runtime, Target},
+    build::{Codegen, Compile, Mode, NullTelemetry, Options, Runtime, Target},
     hex::RetirementReason,
     paths::ProjectPaths,
     version::COMPILER_VERSION,
@@ -108,7 +108,6 @@ use strum::VariantNames;
         .usage(styling::AnsiColor::Yellow.on_default())
         .literal(styling::AnsiColor::Green.on_default())
 )]
-
 enum Command {
     /// Build the project
     Build {
@@ -118,6 +117,10 @@ enum Command {
 
         #[arg(short, long, ignore_case = true, help = target_doc())]
         target: Option<Target>,
+
+        /// Don't print progress information
+        #[clap(long)]
+        no_print_progress: bool,
     },
 
     /// Type check the project
@@ -191,6 +194,10 @@ enum Command {
         /// The module to run
         #[arg(short, long)]
         module: Option<String>,
+
+        /// Don't print progress information
+        #[clap(long)]
+        no_print_progress: bool,
 
         arguments: Vec<String>,
     },
@@ -446,7 +453,8 @@ fn main() {
         Command::Build {
             target,
             warnings_as_errors,
-        } => command_build(target, warnings_as_errors),
+            no_print_progress,
+        } => command_build(target, warnings_as_errors, no_print_progress),
 
         Command::Check { target } => command_check(target),
 
@@ -481,13 +489,21 @@ fn main() {
             arguments,
             runtime,
             module,
-        } => run::command(arguments, target, runtime, module, run::Which::Src),
+            no_print_progress,
+        } => run::command(
+            arguments,
+            target,
+            runtime,
+            module,
+            run::Which::Src,
+            no_print_progress,
+        ),
 
         Command::Test {
             target,
             arguments,
             runtime,
-        } => run::command(arguments, target, runtime, None, run::Which::Test),
+        } => run::command(arguments, target, runtime, None, run::Which::Test, false),
 
         Command::CompilePackage(opts) => compile_package::command(opts),
 
@@ -548,24 +564,37 @@ fn command_check(target: Option<Target>) -> Result<()> {
             root_target_support: TargetSupport::Enforced,
             warnings_as_errors: false,
             codegen: Codegen::DepsOnly,
+            compile: Compile::All,
             mode: Mode::Dev,
             target,
+            no_print_progress: false,
         },
-        build::download_dependencies()?,
+        build::download_dependencies(cli::Reporter::new())?,
     )?;
     Ok(())
 }
 
-fn command_build(target: Option<Target>, warnings_as_errors: bool) -> Result<()> {
+fn command_build(
+    target: Option<Target>,
+    warnings_as_errors: bool,
+    no_print_progress: bool,
+) -> Result<()> {
+    let manifest = if no_print_progress {
+        build::download_dependencies(NullTelemetry)?
+    } else {
+        build::download_dependencies(cli::Reporter::new())?
+    };
     let _ = build::main(
         Options {
             root_target_support: TargetSupport::Enforced,
             warnings_as_errors,
             codegen: Codegen::All,
+            compile: Compile::All,
             mode: Mode::Dev,
             target,
+            no_print_progress,
         },
-        build::download_dependencies()?,
+        manifest,
     )?;
     Ok(())
 }

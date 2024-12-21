@@ -26,10 +26,16 @@ struct Module {
   accessors @3 :List(Property(AccessorsMap));
   package @4 :Text;
   typesConstructors @5 :List(Property(TypesVariantConstructors));
-  unusedImports @6 :List(SrcSpan);
-  lineNumbers @7 :LineNumbers;
-  srcPath @8 :Text;
-  isInternal @9 :Bool;
+  lineNumbers @6 :LineNumbers;
+  srcPath @7 :Text;
+  isInternal @8 :Bool;
+  requiredVersion @9 :Version;
+}
+
+struct Version {
+  major @0 :UInt32;
+  minor @1 :UInt32;
+  patch @2 :UInt32;
 }
 
 struct TypesVariantConstructors {
@@ -101,10 +107,12 @@ struct ValueConstructor {
   deprecated @3 :Text;
 }
 
-enum Publicity {
-  public @0;
-  private @1;
-  internal @2;
+struct Publicity {
+  union {
+    public @0 :Void;
+    private @1 :Void;
+    internal @2 :Option(SrcSpan);
+  }
 }
 
 struct Implementations {
@@ -135,6 +143,9 @@ struct ValueConstructorVariant {
       location @7 :SrcSpan;
       documentation @15 :Text;
       implementations @18 :Implementations;
+      externalErlang @20 :Option(External);
+      externalJavascript @21 :Option(External);
+      externalNix @22 :Option(External);
     }
 
     record :group {
@@ -148,6 +159,11 @@ struct ValueConstructorVariant {
       constructorIndex @17 :UInt16;
     }
   }
+}
+
+struct External {
+  module @0 :Text;
+  function @1 :Text;
 }
 
 struct SrcSpan {
@@ -185,7 +201,7 @@ struct Constant {
     record :group {
       args @6 :List(Constant);
       tag @7 :Text;
-      typ @8 :Type;
+      type @8 :Type;
     }
 
     bitArray @9 :List(BitArraySegment);
@@ -193,7 +209,7 @@ struct Constant {
     var :group {
       module @10 :Text;
       name @11 :Text;
-      typ @12 :Type;
+      type @12 :Type;
       constructor @13 :ValueConstructor;
     }
 

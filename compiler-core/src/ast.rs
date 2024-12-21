@@ -13,6 +13,7 @@ pub use self::constant::{Constant, TypedConstant, UntypedConstant};
 
 use crate::analyse::Inferred;
 use crate::build::{Located, Target};
+use crate::parse::SpannedString;
 use crate::type_::expression::Implementations;
 use crate::type_::{
     self, Deprecation, ModuleValueConstructor, PatternConstructor, Type, ValueConstructor,
@@ -236,7 +237,7 @@ pub type TypedRecordConstructorArg = RecordConstructorArg<Arc<Type>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordConstructorArg<T> {
-    pub label: Option<(SrcSpan, EcoString)>,
+    pub label: Option<SpannedString>,
     pub ast: TypeAst,
     pub location: SrcSpan,
     pub type_: T,
@@ -252,7 +253,7 @@ impl<T: PartialEq> RecordConstructorArg<T> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeAstConstructor {
     pub location: SrcSpan,
-    pub module: Option<EcoString>,
+    pub module: Option<(EcoString, SrcSpan)>,
     pub name: EcoString,
     pub arguments: Vec<TypeAst>,
 }
@@ -316,7 +317,9 @@ impl TypeAst {
                     arguments: o_arguments,
                     location: _,
                 }) => {
-                    module == o_module
+                    let module_name =
+                        |m: &Option<(EcoString, _)>| m.as_ref().map(|(m, _)| m.clone());
+                    module_name(module) == module_name(o_module)
                         && name == o_name
                         && arguments.len() == o_arguments.len()
                         && arguments
@@ -460,7 +463,7 @@ impl TypeAst {
                 func.return_.print(buffer);
             }
             TypeAst::Constructor(constructor) => {
-                if let Some(module) = &constructor.module {
+                if let Some((module, _)) = &constructor.module {
                     buffer.push_str(module);
                     buffer.push('.');
                 }
@@ -509,7 +512,7 @@ fn type_ast_print_constructor() {
     let mut buffer = EcoString::new();
     let ast = TypeAst::Constructor(TypeAstConstructor {
         name: "SomeType".into(),
-        module: Some("some_module".into()),
+        module: Some(("some_module".into(), SrcSpan { start: 1, end: 1 })),
         location: SrcSpan { start: 1, end: 1 },
         arguments: vec![
             TypeAst::Var(TypeAstVar {
@@ -534,7 +537,7 @@ fn type_ast_print_tuple() {
         elems: vec![
             TypeAst::Constructor(TypeAstConstructor {
                 name: "SomeType".into(),
-                module: Some("some_module".into()),
+                module: Some(("some_module".into(), SrcSpan { start: 1, end: 1 })),
                 location: SrcSpan { start: 1, end: 1 },
                 arguments: vec![
                     TypeAst::Var(TypeAstVar {
@@ -577,20 +580,20 @@ fn type_ast_print_tuple() {
 pub enum Publicity {
     Public,
     Private,
-    Internal,
+    Internal { attribute_location: Option<SrcSpan> },
 }
 
 impl Publicity {
     pub fn is_private(&self) -> bool {
         match self {
             Self::Private => true,
-            Self::Public | Self::Internal => false,
+            Self::Public | Self::Internal { .. } => false,
         }
     }
 
     pub fn is_internal(&self) -> bool {
         match self {
-            Self::Internal => true,
+            Self::Internal { .. } => true,
             Self::Public | Self::Private => false,
         }
     }
@@ -598,13 +601,13 @@ impl Publicity {
     pub fn is_public(&self) -> bool {
         match self {
             Self::Public => true,
-            Self::Internal | Self::Private => false,
+            Self::Internal { .. } | Self::Private => false,
         }
     }
 
     pub fn is_importable(&self) -> bool {
         match self {
-            Self::Internal | Self::Public => true,
+            Self::Internal { .. } | Self::Public => true,
             Self::Private => false,
         }
     }
@@ -629,7 +632,7 @@ impl Publicity {
 pub struct Function<T, Expr> {
     pub location: SrcSpan,
     pub end_position: u32,
-    pub name: Option<(SrcSpan, EcoString)>,
+    pub name: Option<SpannedString>,
     pub arguments: Vec<Arg<T>>,
     pub body: Vec1<Statement<T, Expr>>,
     pub publicity: Publicity,
@@ -637,9 +640,9 @@ pub struct Function<T, Expr> {
     pub return_annotation: Option<TypeAst>,
     pub return_type: T,
     pub documentation: Option<(u32, EcoString)>,
-    pub external_erlang: Option<(EcoString, EcoString)>,
-    pub external_javascript: Option<(EcoString, EcoString)>,
-    pub external_nix: Option<(EcoString, EcoString)>,
+    pub external_erlang: Option<(EcoString, EcoString, SrcSpan)>,
+    pub external_javascript: Option<(EcoString, EcoString, SrcSpan)>,
+    pub external_nix: Option<(EcoString, EcoString, SrcSpan)>,
     pub implementations: Implementations,
 }
 
@@ -647,7 +650,7 @@ pub type TypedFunction = Function<Arc<Type>, TypedExpr>;
 pub type UntypedFunction = Function<(), UntypedExpr>;
 
 impl<T, E> Function<T, E> {
-    fn full_location(&self) -> SrcSpan {
+    pub fn full_location(&self) -> SrcSpan {
         SrcSpan::new(self.location.start, self.end_position)
     }
 }
@@ -744,7 +747,7 @@ pub struct CustomType<T> {
     pub deprecation: Deprecation,
     pub opaque: bool,
     /// The names of the type parameters.
-    pub parameters: Vec<(SrcSpan, EcoString)>,
+    pub parameters: Vec<SpannedString>,
     /// Once type checked this field will contain the type information for the
     /// type parameters.
     pub typed_parameters: Vec<T>,
@@ -774,7 +777,7 @@ pub struct TypeAlias<T> {
     pub location: SrcSpan,
     pub alias: EcoString,
     pub name_location: SrcSpan,
-    pub parameters: Vec<(SrcSpan, EcoString)>,
+    pub parameters: Vec<SpannedString>,
     pub type_ast: TypeAst,
     pub type_: T,
     pub publicity: Publicity,
@@ -1732,7 +1735,7 @@ pub enum Pattern<Type> {
         location: SrcSpan,
         name: EcoString,
         arguments: Vec<CallArg<Self>>,
-        module: Option<EcoString>,
+        module: Option<(EcoString, SrcSpan)>,
         constructor: Inferred<PatternConstructor>,
         spread: Option<SrcSpan>,
         type_: Type,
@@ -1780,7 +1783,7 @@ pub enum AssignName {
 }
 
 impl AssignName {
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> &EcoString {
         match self {
             AssignName::Variable(name) | AssignName::Discard(name) => name,
         }
@@ -2129,9 +2132,9 @@ pub enum TodoKind {
 pub struct GroupedStatements {
     pub functions: Vec<UntypedFunction>,
     pub constants: Vec<UntypedModuleConstant>,
-    pub custom_types: Vec<CustomType<()>>,
-    pub imports: Vec<Import<()>>,
-    pub type_aliases: Vec<TypeAlias<()>>,
+    pub custom_types: Vec<UntypedCustomType>,
+    pub imports: Vec<UntypedImport>,
+    pub type_aliases: Vec<UntypedTypeAlias>,
 }
 
 impl GroupedStatements {

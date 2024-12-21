@@ -17,6 +17,7 @@ pub use environment::*;
 pub use error::{Error, Problems, UnifyErrorSituation, Warning};
 pub(crate) use expression::ExprTyper;
 pub use fields::FieldMap;
+use hexpm::version::Version;
 pub use prelude::*;
 use serde::Serialize;
 
@@ -100,21 +101,21 @@ impl Type {
 
     pub fn is_unbound(&self) -> bool {
         match self {
-            Self::Var { type_: typ } => typ.borrow().is_unbound(),
+            Self::Var { type_ } => type_.borrow().is_unbound(),
             _ => false,
         }
     }
 
     pub fn is_variable(&self) -> bool {
         match self {
-            Self::Var { type_: typ } => typ.borrow().is_variable(),
+            Self::Var { type_ } => type_.borrow().is_variable(),
             _ => false,
         }
     }
 
     pub fn is_type_variable(&self) -> bool {
         match self {
-            Self::Var { type_: typ } => typ.borrow().is_variable(),
+            Self::Var { type_ } => type_.borrow().is_variable(),
             _ => false,
         }
     }
@@ -253,10 +254,10 @@ impl Type {
                 }
             }
 
-            Self::Var { type_: typ } => {
-                let args: Vec<_> = match typ.borrow().deref() {
-                    TypeVar::Link { type_: typ } => {
-                        return typ.get_app_args(
+            Self::Var { type_ } => {
+                let args: Vec<_> = match type_.borrow().deref() {
+                    TypeVar::Link { type_ } => {
+                        return type_.get_app_args(
                             publicity,
                             package,
                             module,
@@ -275,7 +276,7 @@ impl Type {
 
                 // We are an unbound type variable! So convert us to a type link
                 // to the desired type.
-                *typ.borrow_mut() = TypeVar::Link {
+                *type_.borrow_mut() = TypeVar::Link {
                     type_: Arc::new(Self::Named {
                         name: name.into(),
                         package: package.into(),
@@ -306,12 +307,12 @@ impl Type {
                 .find_private_type()
                 .or_else(|| args.iter().find_map(|t| t.find_private_type())),
 
-            Self::Var { type_: typ, .. } => match typ.borrow().deref() {
+            Self::Var { type_, .. } => match type_.borrow().deref() {
                 TypeVar::Unbound { .. } => None,
 
                 TypeVar::Generic { .. } => None,
 
-                TypeVar::Link { type_: typ, .. } => typ.find_private_type(),
+                TypeVar::Link { type_, .. } => type_.find_private_type(),
             },
         }
     }
@@ -328,9 +329,9 @@ impl Type {
                 .find_internal_type()
                 .or_else(|| args.iter().find_map(|t| t.find_internal_type())),
 
-            Self::Var { type_: typ, .. } => match typ.borrow().deref() {
+            Self::Var { type_, .. } => match type_.borrow().deref() {
                 TypeVar::Unbound { .. } | TypeVar::Generic { .. } => None,
-                TypeVar::Link { type_: typ, .. } => typ.find_internal_type(),
+                TypeVar::Link { type_, .. } => type_.find_internal_type(),
             },
         }
     }
@@ -344,9 +345,9 @@ impl Type {
 }
 
 pub fn collapse_links(t: Arc<Type>) -> Arc<Type> {
-    if let Type::Var { type_: typ } = t.deref() {
-        if let TypeVar::Link { type_: typ } = typ.borrow().deref() {
-            return collapse_links(typ.clone());
+    if let Type::Var { type_ } = t.deref() {
+        if let TypeVar::Link { type_ } = type_.borrow().deref() {
+            return collapse_links(type_.clone());
         }
     }
     t
@@ -395,6 +396,9 @@ pub enum ValueConstructorVariant {
         location: SrcSpan,
         documentation: Option<EcoString>,
         implementations: Implementations,
+        external_erlang: Option<(EcoString, EcoString)>,
+        external_javascript: Option<(EcoString, EcoString)>,
+        external_nix: Option<(EcoString, EcoString)>,
     },
 
     /// A constructor for a custom type
@@ -455,6 +459,9 @@ impl ValueConstructorVariant {
             Self::LocalVariable { location, .. } => ModuleValueConstructor::Fn {
                 name: function_name.clone(),
                 module: module_name.clone(),
+                external_erlang: None,
+                external_javascript: None,
+                external_nix: None,
                 documentation: None,
                 location: *location,
                 field_map: None,
@@ -466,11 +473,17 @@ impl ValueConstructorVariant {
                 location,
                 documentation,
                 field_map,
+                external_erlang,
+                external_javascript,
+                external_nix,
                 ..
             } => ModuleValueConstructor::Fn {
                 name: name.clone(),
                 module: module.clone(),
                 documentation: documentation.clone(),
+                external_erlang: external_erlang.clone(),
+                external_javascript: external_javascript.clone(),
+                external_nix: external_nix.clone(),
                 location: *location,
                 field_map: field_map.clone(),
             },
@@ -545,20 +558,24 @@ pub enum ModuleValueConstructor {
     Fn {
         location: SrcSpan,
         /// The name of the module and the function
-        /// Typically this will be the module that this constructor belongs to
-        /// and the name that was used for the function. However it could also
-        /// point to some other module and function when this is an `external`
-        /// function.
+        /// This will be the module that this constructor belongs to
+        /// and the name that was used for the function.
+        module: EcoString,
+        name: EcoString,
+        /// If this is an `external` function, these will hold the name of the
+        /// external module and function.
         ///
         /// This function has module "themodule" and name "wibble"
         ///     pub fn wibble() { Nil }
         ///
-        /// This function has module "other" and name "whoop"
+        /// This function has module "themodule" and name "wibble"
+        /// and erlang external "other" and "whoop".
         ///     @external(erlang, "other", "whoop")
         ///     pub fn wibble() -> Nil
         ///
-        module: EcoString,
-        name: EcoString,
+        external_erlang: Option<(EcoString, EcoString)>,
+        external_javascript: Option<(EcoString, EcoString)>,
+        external_nix: Option<(EcoString, EcoString)>,
         field_map: Option<FieldMap>,
         documentation: Option<EcoString>,
     },
@@ -602,7 +619,6 @@ pub struct ModuleInterface {
     pub types_value_constructors: HashMap<EcoString, TypeVariantConstructors>,
     pub values: HashMap<EcoString, ValueConstructor>,
     pub accessors: HashMap<EcoString, AccessorsMap>,
-    pub unused_imports: Vec<SrcSpan>,
     /// Used for mapping to original source locations on disk
     pub line_numbers: LineNumbers,
     /// Used for determining the source path of the module on disk
@@ -613,6 +629,8 @@ pub struct ModuleInterface {
     pub is_internal: bool,
     /// Warnings emitted during analysis of this module.
     pub warnings: Vec<Warning>,
+    /// The minimum Gleam version needed to use this module.
+    pub minimum_required_version: Version,
 }
 
 impl ModuleInterface {
@@ -656,7 +674,7 @@ impl TypeVariantConstructors {
                     .expect("Type parameter not found in hydrator");
                 let error = "Hydrator must not store non generic types here";
                 match t.type_.as_ref() {
-                    Type::Var { type_: typ } => match typ.borrow().deref() {
+                    Type::Var { type_ } => match type_.borrow().deref() {
                         TypeVar::Generic { id } => *id,
                         _ => panic!("{}", error),
                     },
@@ -684,29 +702,6 @@ pub struct TypeValueConstructorField {
 }
 
 impl ModuleInterface {
-    pub fn new(
-        name: EcoString,
-        origin: Origin,
-        package: EcoString,
-        line_numbers: LineNumbers,
-        src_path: Utf8PathBuf,
-    ) -> Self {
-        Self {
-            name,
-            origin,
-            package,
-            types: Default::default(),
-            types_value_constructors: Default::default(),
-            values: Default::default(),
-            accessors: Default::default(),
-            unused_imports: Default::default(),
-            is_internal: false,
-            line_numbers,
-            src_path,
-            warnings: vec![],
-        }
-    }
-
     pub fn get_public_value(&self, name: &str) -> Option<&ValueConstructor> {
         let value = self.values.get(name)?;
         if value.publicity.is_importable() {
@@ -912,7 +907,7 @@ pub struct TypeConstructor {
     pub origin: SrcSpan,
     pub module: EcoString,
     pub parameters: Vec<Arc<Type>>,
-    pub typ: Arc<Type>,
+    pub type_: Arc<Type>,
     pub deprecation: Deprecation,
     pub documentation: Option<EcoString>,
 }
@@ -965,6 +960,9 @@ impl ValueConstructor {
             }
             | ValueConstructorVariant::ModuleConstant {
                 location, module, ..
+            }
+            | ValueConstructorVariant::ModuleFn {
+                location, module, ..
             } => DefinitionLocation {
                 module: Some(module.as_str()),
                 span: *location,
@@ -975,8 +973,7 @@ impl ValueConstructor {
                 span: literal.location(),
             },
 
-            ValueConstructorVariant::ModuleFn { location, .. }
-            | ValueConstructorVariant::LocalVariable { location } => DefinitionLocation {
+            ValueConstructorVariant::LocalVariable { location } => DefinitionLocation {
                 module: None,
                 span: *location,
             },
@@ -1035,10 +1032,10 @@ fn assert_no_labelled_arguments<A>(args: &[CallArg<A>]) -> Result<(), Error> {
 /// could cause naively-implemented type checking to diverge.
 /// While traversing the type tree.
 ///
-fn unify_unbound_type(typ: Arc<Type>, own_id: u64) -> Result<(), UnifyError> {
-    if let Type::Var { type_: typ } = typ.deref() {
-        let new_value = match typ.borrow().deref() {
-            TypeVar::Link { type_: typ, .. } => return unify_unbound_type(typ.clone(), own_id),
+fn unify_unbound_type(type_: Arc<Type>, own_id: u64) -> Result<(), UnifyError> {
+    if let Type::Var { type_ } = type_.deref() {
+        let new_value = match type_.borrow().deref() {
+            TypeVar::Link { type_, .. } => return unify_unbound_type(type_.clone(), own_id),
 
             TypeVar::Unbound { id } => {
                 if id == &own_id {
@@ -1052,12 +1049,12 @@ fn unify_unbound_type(typ: Arc<Type>, own_id: u64) -> Result<(), UnifyError> {
         };
 
         if let Some(t) = new_value {
-            *typ.borrow_mut() = t;
+            *type_.borrow_mut() = t;
         }
         return Ok(());
     }
 
-    match typ.deref() {
+    match type_.deref() {
         Type::Named { args, .. } => {
             for arg in args {
                 unify_unbound_type(arg.clone(), own_id)?
@@ -1084,14 +1081,14 @@ fn unify_unbound_type(typ: Arc<Type>, own_id: u64) -> Result<(), UnifyError> {
 }
 
 fn match_fun_type(
-    typ: Arc<Type>,
+    type_: Arc<Type>,
     arity: usize,
     environment: &mut Environment<'_>,
 ) -> Result<(Vec<Arc<Type>>, Arc<Type>), MatchFunTypeError> {
-    if let Type::Var { type_: typ } = typ.deref() {
-        let new_value = match typ.borrow().deref() {
-            TypeVar::Link { type_: typ, .. } => {
-                return match_fun_type(typ.clone(), arity, environment);
+    if let Type::Var { type_ } = type_.deref() {
+        let new_value = match type_.borrow().deref() {
+            TypeVar::Link { type_, .. } => {
+                return match_fun_type(type_.clone(), arity, environment);
             }
 
             TypeVar::Unbound { .. } => {
@@ -1104,14 +1101,14 @@ fn match_fun_type(
         };
 
         if let Some((args, retrn)) = new_value {
-            *typ.borrow_mut() = TypeVar::Link {
+            *type_.borrow_mut() = TypeVar::Link {
                 type_: fn_(args.clone(), retrn.clone()),
             };
             return Ok((args, retrn));
         }
     }
 
-    if let Type::Fn { args, retrn } = typ.deref() {
+    if let Type::Fn { args, retrn } = type_.deref() {
         return if args.len() != arity {
             Err(MatchFunTypeError::IncorrectArity {
                 expected: args.len(),
@@ -1124,15 +1121,17 @@ fn match_fun_type(
         };
     }
 
-    Err(MatchFunTypeError::NotFn { typ })
+    Err(MatchFunTypeError::NotFn { type_ })
 }
 
 pub fn generalise(t: Arc<Type>) -> Arc<Type> {
     match t.deref() {
-        Type::Var { type_: typ } => match typ.borrow().deref() {
+        Type::Var { type_ } => match type_.borrow().deref() {
             TypeVar::Unbound { id } => generic_var(*id),
-            TypeVar::Link { type_: typ } => generalise(typ.clone()),
-            TypeVar::Generic { .. } => Arc::new(Type::Var { type_: typ.clone() }),
+            TypeVar::Link { type_ } => generalise(type_.clone()),
+            TypeVar::Generic { .. } => Arc::new(Type::Var {
+                type_: type_.clone(),
+            }),
         },
 
         Type::Named {

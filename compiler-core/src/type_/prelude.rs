@@ -1,3 +1,4 @@
+use hexpm::version::Version;
 use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
@@ -209,13 +210,13 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
         types_value_constructors: HashMap::new(),
         values: HashMap::new(),
         accessors: HashMap::new(),
-        unused_imports: Vec::new(),
         is_internal: false,
         warnings: vec![],
         // prelude doesn't have real src
         src_path: "".into(),
         // prelude doesn't have real line numbers
         line_numbers: LineNumbers::new(""),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     for t in PreludeType::iter() {
@@ -224,7 +225,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                 let v = TypeConstructor {
                     origin: Default::default(),
                     parameters: vec![],
-                    typ: bits(),
+                    type_: bits(),
                     module: PRELUDE_MODULE_NAME.into(),
                     publicity: Publicity::Public,
                     deprecation: NotDeprecated,
@@ -287,7 +288,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: bool(),
+                        type_: bool(),
                         module: PRELUDE_MODULE_NAME.into(),
                         publicity: Publicity::Public,
                         deprecation: NotDeprecated,
@@ -302,7 +303,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: float(),
+                        type_: float(),
                         module: PRELUDE_MODULE_NAME.into(),
                         publicity: Publicity::Public,
                         deprecation: NotDeprecated,
@@ -316,7 +317,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     INT.into(),
                     TypeConstructor {
                         parameters: vec![],
-                        typ: int(),
+                        type_: int(),
                         origin: Default::default(),
                         module: PRELUDE_MODULE_NAME.into(),
                         publicity: Publicity::Public,
@@ -333,7 +334,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![list_parameter.clone()],
-                        typ: list(list_parameter),
+                        type_: list(list_parameter),
                         module: PRELUDE_MODULE_NAME.into(),
                         publicity: Publicity::Public,
                         deprecation: NotDeprecated,
@@ -364,7 +365,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: nil(),
+                        type_: nil(),
                         module: PRELUDE_MODULE_NAME.into(),
                         publicity: Publicity::Public,
                         deprecation: NotDeprecated,
@@ -393,7 +394,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![result_value.clone(), result_error.clone()],
-                        typ: result(result_value.clone(), result_error.clone()),
+                        type_: result(result_value.clone(), result_error.clone()),
                         module: PRELUDE_MODULE_NAME.into(),
                         publicity: Publicity::Public,
                         deprecation: NotDeprecated,
@@ -464,7 +465,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: string(),
+                        type_: string(),
                         module: PRELUDE_MODULE_NAME.into(),
                         publicity: Publicity::Public,
                         deprecation: NotDeprecated,
@@ -479,7 +480,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: utf_codepoint(),
+                        type_: utf_codepoint(),
                         module: PRELUDE_MODULE_NAME.into(),
                         publicity: Publicity::Public,
                         deprecation: NotDeprecated,

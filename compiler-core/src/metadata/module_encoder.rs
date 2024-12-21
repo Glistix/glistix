@@ -46,8 +46,8 @@ impl<'a> ModuleEncoder<'a> {
         self.set_module_values(&mut module);
         self.set_module_accessors(&mut module);
         self.set_module_types_constructors(&mut module);
-        self.set_unused_imports(&mut module);
         self.set_line_numbers(&mut module);
+        self.set_version(&mut module);
 
         capnp::serialize_packed::write_message(&mut buffer, &message).expect("capnp encode");
         Ok(buffer)
@@ -60,16 +60,6 @@ impl<'a> ModuleEncoder<'a> {
             line_numbers.init_line_starts(self.data.line_numbers.line_starts.len() as u32);
         for (i, l) in self.data.line_numbers.line_starts.iter().enumerate() {
             line_starts.reborrow().set(i as u32, *l);
-        }
-    }
-
-    fn set_unused_imports(&mut self, module: &mut module::Builder<'_>) {
-        let mut unused_imports = module
-            .reborrow()
-            .init_unused_imports(self.data.unused_imports.len() as u32);
-        for (i, span) in self.data.unused_imports.iter().enumerate() {
-            let unused_import = unused_imports.reborrow().get(i as u32);
-            self.build_src_span(unused_import, *span)
         }
     }
 
@@ -161,6 +151,13 @@ impl<'a> ModuleEncoder<'a> {
         }
     }
 
+    fn set_version(&mut self, module: &mut module::Builder<'_>) {
+        let mut version = module.reborrow().init_required_version();
+        version.set_major(self.data.minimum_required_version.major);
+        version.set_minor(self.data.minimum_required_version.minor);
+        version.set_patch(self.data.minimum_required_version.patch);
+    }
+
     fn build_type_constructor(
         &mut self,
         mut builder: type_constructor::Builder<'_>,
@@ -171,9 +168,9 @@ impl<'a> ModuleEncoder<'a> {
             Deprecation::NotDeprecated => "",
             Deprecation::Deprecated { message } => message,
         });
-        builder.set_publicity(self.publicity(constructor.publicity));
+        self.build_publicity(builder.reborrow().init_publicity(), constructor.publicity);
         let type_builder = builder.reborrow().init_type();
-        self.build_type(type_builder, &constructor.typ);
+        self.build_type(type_builder, &constructor.type_);
         self.build_types(
             builder
                 .reborrow()
@@ -222,16 +219,29 @@ impl<'a> ModuleEncoder<'a> {
             Deprecation::NotDeprecated => "",
             Deprecation::Deprecated { message } => message,
         });
-        builder.set_publicity(self.publicity(constructor.publicity));
+
+        self.build_publicity(builder.reborrow().init_publicity(), constructor.publicity);
         self.build_type(builder.reborrow().init_type(), &constructor.type_);
         self.build_value_constructor_variant(builder.init_variant(), &constructor.variant);
     }
 
-    fn publicity(&self, publicity: Publicity) -> crate::schema_capnp::Publicity {
+    fn build_publicity(&mut self, mut builder: publicity::Builder<'_>, publicity: Publicity) {
         match publicity {
-            Publicity::Public => crate::schema_capnp::Publicity::Public,
-            Publicity::Private => crate::schema_capnp::Publicity::Private,
-            Publicity::Internal => crate::schema_capnp::Publicity::Internal,
+            Publicity::Public => builder.set_public(()),
+            Publicity::Private => builder.set_private(()),
+            Publicity::Internal {
+                attribute_location: None,
+            } => {
+                let mut builder = builder.init_internal();
+                builder.set_none(());
+            }
+            Publicity::Internal {
+                attribute_location: Some(location),
+            } => {
+                let builder = builder.init_internal();
+                let builder = builder.init_some();
+                self.build_src_span(builder, location);
+            }
         }
     }
 
@@ -298,12 +308,21 @@ impl<'a> ModuleEncoder<'a> {
                 location,
                 documentation: doc,
                 implementations,
+                external_erlang,
+                external_javascript,
+                external_nix,
             } => {
                 let mut builder = builder.init_module_fn();
                 builder.set_name(name);
                 builder.set_module(module);
                 builder.set_arity(*arity as u16);
                 builder.set_documentation(doc.as_ref().map(EcoString::as_str).unwrap_or_default());
+                self.build_external(builder.reborrow().init_external_erlang(), external_erlang);
+                self.build_external(
+                    builder.reborrow().init_external_javascript(),
+                    external_javascript,
+                );
+                self.build_external(builder.reborrow().init_external_nix(), external_nix);
                 self.build_optional_field_map(builder.reborrow().init_field_map(), field_map);
                 self.build_src_span(builder.reborrow().init_location(), *location);
                 self.build_implementations(builder.init_implementations(), *implementations);
@@ -342,13 +361,15 @@ impl<'a> ModuleEncoder<'a> {
                 self.build_constants(builder.init_tuple(elements.len() as u32), elements)
             }
 
-            Constant::List { elements, typ, .. } => {
+            Constant::List {
+                elements, type_, ..
+            } => {
                 let mut builder = builder.init_list();
                 self.build_constants(
                     builder.reborrow().init_elements(elements.len() as u32),
                     elements,
                 );
-                self.build_type(builder.init_type(), typ);
+                self.build_type(builder.init_type(), type_);
             }
 
             Constant::BitArray { segments, .. } => {
@@ -358,7 +379,9 @@ impl<'a> ModuleEncoder<'a> {
                 }
             }
 
-            Constant::Record { args, tag, typ, .. } => {
+            Constant::Record {
+                args, tag, type_, ..
+            } => {
                 let mut builder = builder.init_record();
                 {
                     let mut builder = builder.reborrow().init_args(args.len() as u32);
@@ -367,23 +390,23 @@ impl<'a> ModuleEncoder<'a> {
                     }
                 }
                 builder.reborrow().set_tag(tag);
-                self.build_type(builder.reborrow().init_typ(), typ);
+                self.build_type(builder.reborrow().init_type(), type_);
             }
 
             Constant::Var {
                 module,
                 name,
-                typ,
+                type_,
                 constructor,
                 ..
             } => {
                 let mut builder = builder.init_var();
                 match module {
-                    Some(name) => builder.set_module(name),
+                    Some((name, _)) => builder.set_module(name),
                     None => builder.set_module(""),
                 };
                 builder.set_name(name);
-                self.build_type(builder.reborrow().init_typ(), typ);
+                self.build_type(builder.reborrow().init_type(), type_);
                 self.build_value_constructor(
                     builder.reborrow().init_constructor(),
                     constructor
@@ -496,8 +519,8 @@ impl<'a> ModuleEncoder<'a> {
                 elems,
             ),
 
-            Type::Var { type_: typ } => match typ.borrow().deref() {
-                TypeVar::Link { type_: typ } => self.build_type(builder, typ),
+            Type::Var { type_ } => match type_.borrow().deref() {
+                TypeVar::Link { type_ } => self.build_type(builder, type_),
                 TypeVar::Unbound { id, .. } | TypeVar::Generic { id } => {
                     self.build_type_var(builder.init_var(), *id)
                 }
@@ -544,5 +567,20 @@ impl<'a> ModuleEncoder<'a> {
         builder.set_can_run_on_erlang(implementations.can_run_on_erlang);
         builder.set_can_run_on_javascript(implementations.can_run_on_javascript);
         builder.set_can_run_on_nix(implementations.can_run_on_nix);
+    }
+
+    fn build_external(
+        &self,
+        mut builder: option::Builder<'_, external::Owned>,
+        external: &Option<(EcoString, EcoString)>,
+    ) {
+        match external {
+            None => builder.set_none(()),
+            Some((module, function)) => {
+                let mut builder = builder.init_some();
+                builder.set_module(module);
+                builder.set_function(function);
+            }
+        }
     }
 }

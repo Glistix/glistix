@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/nix/tests/bit_arrays.rs
+expression: "\npub fn main() {\n  <<\"hello\", \" \", \"world\">>\n}"
+snapshot_kind: text
+---
+let
+  inherit (builtins.import ./../gleam.nix) toBitArray stringBits;
+  
+  main =
+    { }:
+    toBitArray [ (stringBits "hello") (stringBits " ") (stringBits "world") ];
+in
+{ inherit main; }

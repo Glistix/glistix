@@ -4,7 +4,7 @@ use camino::Utf8PathBuf;
 use ecow::EcoString;
 use glistix_core::{
     analyse::TargetSupport,
-    build::{Built, Codegen, Mode, Options, Runtime, Target},
+    build::{Built, Codegen, Compile, Mode, NullTelemetry, Options, Runtime, Target, Telemetry},
     config::{DenoFlag, PackageConfig},
     error::Error,
     io::{CommandExecutor, Stdio},
@@ -27,6 +27,7 @@ pub fn command(
     runtime: Option<Runtime>,
     module: Option<String>,
     which: Which,
+    no_print_progress: bool,
 ) -> Result<(), Error> {
     let paths = crate::find_project_paths()?;
 
@@ -39,8 +40,18 @@ pub fn command(
         }
     };
 
+    let telemetry: &'static dyn Telemetry = if no_print_progress {
+        &NullTelemetry
+    } else {
+        &crate::cli::Reporter
+    };
+
     // Download dependencies
-    let manifest = crate::build::download_dependencies()?;
+    let manifest = if no_print_progress {
+        crate::build::download_dependencies(NullTelemetry)?
+    } else {
+        crate::build::download_dependencies(crate::cli::Reporter::new())?
+    };
 
     // Get the config for the module that is being run to check the target.
     // Also get the kind of the package the module belongs to: wether the module
@@ -65,6 +76,13 @@ pub fn command(
 
     let options = Options {
         warnings_as_errors: false,
+        compile: match package_kind {
+            // If we're trying to run a dependecy module we do not compile and
+            // check the root package. So we can run the main function from a
+            // dependency's module even if the root package doesn't compile.
+            PackageKind::Dependency => Compile::DepsOnly,
+            PackageKind::Root => Compile::All,
+        },
         codegen: Codegen::All,
         mode: Mode::Dev,
         target: Some(target),
@@ -76,6 +94,7 @@ pub fn command(
             // only care if the dependency can compile for the current target.
             PackageKind::Dependency => TargetSupport::NotEnforced,
         },
+        no_print_progress,
     };
 
     let built = crate::build::main(options, manifest)?;
@@ -86,7 +105,7 @@ pub fn command(
     // Don't exit on ctrl+c as it is used by child erlang shell
     ctrlc::set_handler(move || {}).expect("Error setting Ctrl-C handler");
 
-    crate::cli::print_running(&format!("{module}.main"));
+    telemetry.running(&format!("{module}.main"));
 
     // Run the command
     let status = match target {

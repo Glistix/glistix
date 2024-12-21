@@ -1,7 +1,7 @@
 use crate::ast::{
-    Arg, BinOp, BitArrayOption, BitArraySegment, CallArg, Constant, SrcSpan, Statement, TypedArg,
-    TypedAssignment, TypedClause, TypedConstant, TypedExpr, TypedExprBitArraySegment, TypedModule,
-    TypedPattern, TypedRecordUpdateArg, TypedStatement,
+    Arg, BinOp, BitArrayOption, CallArg, Constant, SrcSpan, Statement, TypedArg, TypedAssignment,
+    TypedClause, TypedConstant, TypedConstantBitArraySegment, TypedExpr, TypedExprBitArraySegment,
+    TypedModule, TypedPattern, TypedRecordUpdateArg, TypedStatement,
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
@@ -440,7 +440,9 @@ impl<'module> Generator<'module> {
                 constant_expression(self.tracker, literal)
             }
             ValueConstructorVariant::Record { .. } => {
-                Ok(self.record_constructor(constructor.type_.clone(), None, name))
+                let type_ = constructor.type_.clone();
+                let tracker = &mut self.tracker;
+                Ok(record_constructor(type_, None, name, tracker))
             }
             ValueConstructorVariant::ModuleFn { .. }
             | ValueConstructorVariant::ModuleConstant { .. }
@@ -795,7 +797,9 @@ impl Generator<'_> {
     fn todo<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
         let message = match message {
             Some(m) => self.wrap_child_expression(m)?,
-            None => "\"This has not yet been implemented\"".to_doc(),
+            None => {
+                "\"`todo` expression evaluated. This code has not yet been implemented.\"".to_doc()
+            }
         };
 
         Ok(self.throw_error("todo", &message, *location, vec![]))
@@ -804,7 +808,7 @@ impl Generator<'_> {
     fn panic<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
         let message = match message {
             Some(m) => self.wrap_child_expression(m)?,
-            None => "\"panic expression evaluated\"".to_doc(),
+            None => "\"`panic` expression evaluated.\"".to_doc(),
         };
 
         Ok(self.throw_error("panic", &message, *location, vec![]))
@@ -929,7 +933,8 @@ impl Generator<'_> {
         should_be_equal: bool,
     ) -> Output<'a> {
         // Nix's equality is always structural.
-        return self.print_bin_op(left, right, if should_be_equal { "==" } else { "!=" });
+        self.print_bin_op(left, right, if should_be_equal { "==" } else { "!=" })
+        // Inherited code (equality was not always structural):
         // if is_nix_scalar(left.type_()) {
         // }
         // Other types must be compared using structural equality
@@ -988,35 +993,6 @@ impl Generator<'_> {
         Ok(docvec![record, " // ", set])
     }
 
-    fn record_constructor<'a>(
-        &mut self,
-        type_: Arc<Type>,
-        qualifier: Option<&'a str>,
-        name: &'a str,
-    ) -> Document<'a> {
-        if qualifier.is_none() && type_.is_result_constructor() {
-            if name == "Ok" {
-                self.tracker.ok_used = true;
-            } else if name == "Error" {
-                self.tracker.error_used = true;
-            }
-        }
-        if type_.is_bool() && name == "True" {
-            "true".to_doc()
-        } else if type_.is_bool() {
-            "false".to_doc()
-        } else if type_.is_nil() {
-            "null".to_doc()
-        } else {
-            // Use the record constructor directly.
-            // No need to escape the name as it must start with an uppercase letter.
-            match qualifier {
-                Some(module) => docvec![module_var_name_doc(module), ".", name],
-                None => name.to_doc(),
-            }
-        }
-    }
-
     fn module_select<'a>(
         &mut self,
         module: &'a str,
@@ -1036,7 +1012,7 @@ impl Generator<'_> {
             }
 
             ModuleValueConstructor::Record { name, type_, .. } => {
-                self.record_constructor(type_.clone(), Some(module), name)
+                record_constructor(type_.clone(), Some(module), name, self.tracker)
             }
         }
     }
@@ -1057,7 +1033,7 @@ impl Generator<'_> {
                         let size_int = match *size.clone() {
                             TypedExpr::Int {
                                 location: _,
-                                typ: _,
+                                type_: _,
                                 value,
                             } => value.parse().unwrap_or(0),
                             _ => 0,
@@ -1190,8 +1166,8 @@ impl Generator<'_> {
         subject: Document<'a>,
     ) -> Document<'a> {
         self.throw_error(
-            "assignment_no_match",
-            &"\"Assignment pattern did not match\"".to_doc(),
+            "let_assert",
+            &"\"Pattern match failed, no pattern matched the value.\"".to_doc(),
             location,
             [("value", subject)],
         )
@@ -1218,23 +1194,23 @@ pub(crate) fn guard_constant_expression<'a>(
                     .map(|e| wrap_child_guard_constant_expression(assignments, tracker, e)),
             )
         }
-        Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
+        Constant::Record { type_, name, .. } if type_.is_bool() && name == "True" => {
             Ok("true".to_doc())
         }
-        Constant::Record { typ, name, .. } if typ.is_bool() && name == "False" => {
+        Constant::Record { type_, name, .. } if type_.is_bool() && name == "False" => {
             Ok("false".to_doc())
         }
-        Constant::Record { typ, .. } if typ.is_nil() => Ok("null".to_doc()),
+        Constant::Record { type_, .. } if type_.is_nil() => Ok("null".to_doc()),
 
         Constant::Record {
             args,
             module,
             name,
             tag,
-            typ,
+            type_,
             ..
         } => {
-            if typ.is_result() {
+            if type_.is_result() {
                 if tag == "Ok" {
                     tracker.ok_used = true;
                 } else {
@@ -1245,7 +1221,11 @@ pub(crate) fn guard_constant_expression<'a>(
                 .iter()
                 .map(|arg| wrap_child_guard_constant_expression(assignments, tracker, &arg.value))
                 .try_collect()?;
-            Ok(construct_record(module.as_deref(), name, field_values))
+            Ok(construct_record(
+                module.as_ref().map(|(module, _)| module.as_str()),
+                name,
+                field_values,
+            ))
         }
 
         Constant::BitArray { segments, .. } => {
@@ -1291,35 +1271,49 @@ pub(crate) fn constant_expression<'a>(
             )
         }
 
-        Constant::Record { typ, name, .. } if typ.is_bool() && name == "True" => {
+        Constant::Record { type_, name, .. } if type_.is_bool() && name == "True" => {
             Ok("true".to_doc())
         }
-        Constant::Record { typ, name, .. } if typ.is_bool() && name == "False" => {
+        Constant::Record { type_, name, .. } if type_.is_bool() && name == "False" => {
             Ok("false".to_doc())
         }
-        Constant::Record { typ, .. } if typ.is_nil() => Ok("null".to_doc()),
+        Constant::Record { type_, .. } if type_.is_nil() => Ok("null".to_doc()),
 
         Constant::Record {
             args,
             module,
             name,
             tag,
-            typ,
+            type_,
             ..
         } => {
-            if typ.is_result() {
+            if type_.is_result() {
                 if tag == "Ok" {
                     tracker.ok_used = true;
                 } else {
                     tracker.error_used = true;
                 }
             }
+
+            // If there's no arguments and the type is a function that takes
+            // arguments then this is the constructor being referenced, not the
+            // function being called.
+            if let Some(arity) = type_.fn_arity() {
+                if args.is_empty() && arity != 0 {
+                    return Ok(record_constructor(type_.clone(), None, name, tracker));
+                }
+            }
+
             let field_values = args
                 .iter()
                 .map(|arg| wrap_child_constant_expression(tracker, &arg.value))
                 .try_collect()?;
 
-            Ok(construct_record(module.as_deref(), name, field_values))
+            Ok(construct_record(
+                module.as_ref().map(|(module, _)| module.as_str()),
+                name,
+                field_values,
+            ))
         }
 
         Constant::BitArray { segments, .. } => {
@@ -1329,7 +1323,7 @@ pub(crate) fn constant_expression<'a>(
         Constant::Var { name, module, .. } => Ok({
             match module {
                 None => maybe_escape_identifier_doc(name),
-                Some(module) => docvec![
+                Some((module, _)) => docvec![
                     module_var_name_doc(module),
                     ".",
                     maybe_escape_identifier_doc(name)
@@ -1590,7 +1584,7 @@ pub fn list<'a, Elements: IntoIterator<Item = Output<'a>>>(elements: Elements) -
 
 fn constant_bit_array<'a>(
     tracker: &mut UsageTracker,
-    segments: &'a [BitArraySegment<TypedConstant, Arc<Type>>],
+    segments: &'a [TypedConstantBitArraySegment],
     mut wrap_child_constant_expr_fun: impl FnMut(&mut UsageTracker, &'a TypedConstant) -> Output<'a>,
 ) -> Output<'a> {
     tracker.bit_array_literal_used = true;
@@ -1722,5 +1716,35 @@ fn owned_local_var<'a>(name: EcoString, next: usize) -> Document<'a> {
         0 => Document::String(maybe_escape_identifier_string(&name)),
         n if name == ANONYMOUS_VAR_NAME => Document::String(format!("_'{n}")),
         n => Document::String(format!("{name}'{n}")),
+    }
+}
+
+/// A record constructor: `Ok`, `Some`, `True`, `Nil`
+fn record_constructor<'a>(
+    type_: Arc<Type>,
+    qualifier: Option<&'a str>,
+    name: &'a str,
+    tracker: &mut UsageTracker,
+) -> Document<'a> {
+    if qualifier.is_none() && type_.is_result_constructor() {
+        if name == "Ok" {
+            tracker.ok_used = true;
+        } else if name == "Error" {
+            tracker.error_used = true;
+        }
+    }
+    if type_.is_bool() && name == "True" {
+        "true".to_doc()
+    } else if type_.is_bool() {
+        "false".to_doc()
+    } else if type_.is_nil() {
+        "null".to_doc()
+    } else {
+        // Use the record constructor directly.
+        // No need to escape the name as it must start with an uppercase letter.
+        match qualifier {
+            Some(module) => docvec![module_var_name_doc(module), ".", name],
+            None => name.to_doc(),
+        }
     }
 }

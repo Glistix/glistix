@@ -10,6 +10,7 @@ use crate::{
     docvec,
     io::Utf8Writer,
     parse::extra::{Comment, ModuleExtra},
+    parse::SpannedString,
     pretty::{self, *},
     type_::{self, Type},
     warning::WarningEmitter,
@@ -468,7 +469,7 @@ impl<'comments> Formatter<'comments> {
             Constant::Record {
                 name,
                 args,
-                module: Some(m),
+                module: Some((m, _)),
                 ..
             } if args.is_empty() => m.to_doc().append(".").append(name.as_str()),
 
@@ -488,7 +489,7 @@ impl<'comments> Formatter<'comments> {
             Constant::Record {
                 name,
                 args,
-                module: Some(m),
+                module: Some((m, _)),
                 location,
                 ..
             } => {
@@ -506,7 +507,7 @@ impl<'comments> Formatter<'comments> {
 
             Constant::Var {
                 name,
-                module: Some(module),
+                module: Some((module, _)),
                 ..
             } => docvec![module, ".", name],
 
@@ -648,14 +649,14 @@ impl<'comments> Formatter<'comments> {
 
     fn type_ast_constructor<'a>(
         &mut self,
-        module: &'a Option<EcoString>,
+        module: &'a Option<(EcoString, SrcSpan)>,
         name: &'a str,
         args: &'a [TypeAst],
         location: &SrcSpan,
     ) -> Document<'a> {
         let head = module
             .as_ref()
-            .map(|qualifier| qualifier.to_doc().append(".").append(name))
+            .map(|(qualifier, _)| qualifier.to_doc().append(".").append(name))
             .unwrap_or_else(|| name.to_doc());
 
         if args.is_empty() {
@@ -705,8 +706,8 @@ impl<'comments> Formatter<'comments> {
         &mut self,
         publicity: Publicity,
         name: &'a str,
-        args: &'a [(SrcSpan, EcoString)],
-        typ: &'a TypeAst,
+        args: &'a [SpannedString],
+        type_: &'a TypeAst,
         deprecation: &'a Deprecation,
         location: &SrcSpan,
     ) -> Document<'a> {
@@ -724,7 +725,7 @@ impl<'comments> Formatter<'comments> {
         };
 
         head.append(" =")
-            .append(line().append(self.type_ast(typ)).group().nest(INDENT))
+            .append(line().append(self.type_ast(type_)).group().nest(INDENT))
     }
 
     fn fn_arg<'a, A>(&mut self, arg: &'a Arg<A>) -> Document<'a> {
@@ -847,10 +848,17 @@ impl<'comments> Formatter<'comments> {
             if i != 0 && preceding_newline {
                 documents.push(lines(2));
             } else if i != 0 {
-                documents.push(lines(1));
+                documents.push(line());
             }
             previous_position = statement.location().end;
             documents.push(self.statement(statement).group());
+
+            // If the last statement is a use we make sure it's followed by a
+            // todo to make it explicit it has an unimplemented callback.
+            if statement.is_use() && i == count - 1 {
+                documents.push(line());
+                documents.push("todo".to_doc());
+            }
         }
         if count == 1 && statements.first().is_expression() {
             documents.to_doc()
@@ -1108,7 +1116,7 @@ impl<'comments> Formatter<'comments> {
         &mut self,
         name: &'a str,
         args: &'a [CallArg<UntypedPattern>],
-        module: &'a Option<EcoString>,
+        module: &'a Option<(EcoString, SrcSpan)>,
         spread: Option<SrcSpan>,
         location: &SrcSpan,
     ) -> Document<'a> {
@@ -1123,7 +1131,7 @@ impl<'comments> Formatter<'comments> {
         }
 
         let name = match module {
-            Some(m) => m.to_doc().append(".").append(name),
+            Some((m, _)) => m.to_doc().append(".").append(name),
             None => name.to_doc(),
         };
 
@@ -1642,7 +1650,7 @@ impl<'comments> Formatter<'comments> {
         &mut self,
         publicity: Publicity,
         name: &'a str,
-        args: &'a [(SrcSpan, EcoString)],
+        args: &'a [SpannedString],
         location: &'a SrcSpan,
     ) -> Document<'a> {
         let _ = self.pop_empty_lines(location.start);
@@ -1773,7 +1781,23 @@ impl<'comments> Formatter<'comments> {
 
     fn tuple_index<'a>(&mut self, tuple: &'a UntypedExpr, index: u64) -> Document<'a> {
         match tuple {
-            UntypedExpr::TupleIndex { .. } => self.expr(tuple).surround("{", "}"),
+            // In case we have a block with a single variable tuple access we
+            // remove that redundat wrapper:
+            //
+            //     {tuple.1}.0 becomes
+            //     tuple.1.0
+            //
+            UntypedExpr::Block { statements, .. } => match statements.as_slice() {
+                [Statement::Expression(tuple @ UntypedExpr::TupleIndex { tuple: inner, .. })]
+                    // We can't apply this change if the inner thing is a
+                    // literal tuple because the compiler cannot currently parse
+                    // it:  `#(1, #(2, 3)).1.0` is a syntax error at the moment.
+                    if !inner.is_tuple() =>
+                {
+                    self.expr(tuple)
+                }
+                _ => self.expr(tuple),
+            },
             _ => self.expr(tuple),
         }
         .append(".")
@@ -1868,7 +1892,7 @@ impl<'comments> Formatter<'comments> {
         } else if space_before {
             lines(2).append(clause_doc)
         } else {
-            lines(1).append(clause_doc)
+            line().append(clause_doc)
         }
     }
 
@@ -2125,8 +2149,8 @@ impl<'comments> Formatter<'comments> {
 
     fn list_pattern<'a>(
         &mut self,
-        elements: &'a [Pattern<()>],
-        tail: &'a Option<Box<Pattern<()>>>,
+        elements: &'a [UntypedPattern],
+        tail: &'a Option<Box<UntypedPattern>>,
     ) -> Document<'a> {
         if elements.is_empty() {
             return match tail {
@@ -2649,7 +2673,7 @@ impl<'a> Documentable<'a> for &'a ArgNames {
 
 fn pub_(publicity: Publicity) -> Document<'static> {
     match publicity {
-        Publicity::Public | Publicity::Internal => "pub ".to_doc(),
+        Publicity::Public | Publicity::Internal { .. } => "pub ".to_doc(),
         Publicity::Private => nil(),
     }
 }
@@ -2963,9 +2987,9 @@ fn constant_call_arg_formatting<A, B>(
 }
 
 struct AttributesPrinter<'a> {
-    external_erlang: &'a Option<(EcoString, EcoString)>,
-    external_javascript: &'a Option<(EcoString, EcoString)>,
-    external_nix: &'a Option<(EcoString, EcoString)>,
+    external_erlang: &'a Option<(EcoString, EcoString, SrcSpan)>,
+    external_javascript: &'a Option<(EcoString, EcoString, SrcSpan)>,
+    external_nix: &'a Option<(EcoString, EcoString, SrcSpan)>,
     deprecation: &'a Deprecation,
     internal: bool,
 }
@@ -2981,17 +3005,26 @@ impl<'a> AttributesPrinter<'a> {
         }
     }
 
-    pub fn set_external_erlang(mut self, external: &'a Option<(EcoString, EcoString)>) -> Self {
+    pub fn set_external_erlang(
+        mut self,
+        external: &'a Option<(EcoString, EcoString, SrcSpan)>,
+    ) -> Self {
         self.external_erlang = external;
         self
     }
 
-    pub fn set_external_javascript(mut self, external: &'a Option<(EcoString, EcoString)>) -> Self {
+    pub fn set_external_javascript(
+        mut self,
+        external: &'a Option<(EcoString, EcoString, SrcSpan)>,
+    ) -> Self {
         self.external_javascript = external;
         self
     }
 
-    pub fn set_external_nix(mut self, external: &'a Option<(EcoString, EcoString)>) -> Self {
+    pub fn set_external_nix(
+        mut self,
+        external: &'a Option<(EcoString, EcoString, SrcSpan)>,
+    ) -> Self {
         self.external_nix = external;
         self
     }
@@ -3017,15 +3050,15 @@ impl<'a> Documentable<'a> for AttributesPrinter<'a> {
         };
 
         // @external attributes
-        if let Some((m, f)) = self.external_erlang {
+        if let Some((m, f, _)) = self.external_erlang {
             attributes.push(docvec!["@external(erlang, \"", m, "\", \"", f, "\")"])
         };
 
-        if let Some((m, f)) = self.external_javascript {
+        if let Some((m, f, _)) = self.external_javascript {
             attributes.push(docvec!["@external(javascript, \"", m, "\", \"", f, "\")"])
         };
 
-        if let Some((m, f)) = self.external_nix {
+        if let Some((m, f, _)) = self.external_nix {
             attributes.push(docvec!["@external(nix, \"", m, "\", \"", f, "\")"])
         };
 

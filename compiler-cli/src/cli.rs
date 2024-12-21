@@ -19,8 +19,16 @@ impl Reporter {
 }
 
 impl Telemetry for Reporter {
+    fn compiled_package(&self, duration: Duration) {
+        print_compiled(duration);
+    }
+
     fn compiling_package(&self, name: &str) {
         print_compiling(name);
+    }
+
+    fn checked_package(&self, duration: Duration) {
+        print_checked(duration);
     }
 
     fn checking_package(&self, name: &str) {
@@ -37,6 +45,10 @@ impl Telemetry for Reporter {
 
     fn resolving_package_versions(&self) {
         print_resolving_versions()
+    }
+
+    fn running(&self, name: &str) {
+        print_running(name);
     }
 
     fn waiting_for_build_directory_lock(&self) {
@@ -157,7 +169,7 @@ pub fn seconds(duration: Duration) -> String {
 }
 
 pub fn print_colourful_prefix(prefix: &str, text: &str) {
-    let buffer_writer = stdout_buffer_writer();
+    let buffer_writer = stderr_buffer_writer();
     let mut buffer = buffer_writer.buffer();
     buffer
         .set_color(
@@ -177,11 +189,6 @@ pub fn print_colourful_prefix(prefix: &str, text: &str) {
 pub fn stderr_buffer_writer() -> BufferWriter {
     // Don't add color codes to the output if standard error isn't connected to a terminal
     BufferWriter::stderr(color_choice())
-}
-
-pub fn stdout_buffer_writer() -> BufferWriter {
-    // Don't add color codes to the output if standard error isn't connected to a terminal
-    BufferWriter::stdout(color_choice())
 }
 
 fn colour_forced() -> bool {

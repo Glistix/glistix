@@ -1,7 +1,7 @@
 use crate::{
     analyse::name::correct_name_case,
     ast::{
-        Arg, CustomType, Definition, ModuleConstant, SrcSpan, TypedExpr, TypedFunction,
+        CustomType, Definition, ModuleConstant, SrcSpan, TypedArg, TypedExpr, TypedFunction,
         TypedModule, TypedPattern,
     },
     build::{type_constructor_from_modules, Located, Module, UnqualifiedImport},
@@ -23,14 +23,15 @@ use ecow::EcoString;
 use itertools::Itertools;
 use lsp::CodeAction;
 use lsp_types::{
-    self as lsp, DocumentSymbol, Hover, HoverContents, MarkedString, SignatureHelp, SymbolKind,
-    SymbolTag, Url,
+    self as lsp, DocumentSymbol, Hover, HoverContents, MarkedString, Position, Range,
+    SignatureHelp, SymbolKind, SymbolTag, TextEdit, Url,
 };
 use std::sync::Arc;
 
 use super::{
     code_action::{
-        CodeActionBuilder, FillInMissingLabelledArgs, LabelShorthandSyntax, LetAssertToCase,
+        code_action_add_missing_patterns, code_action_import_module, CodeActionBuilder,
+        FillInMissingLabelledArgs, LabelShorthandSyntax, LetAssertToCase,
         RedundantTupleInCaseSubject,
     },
     completer::Completer,
@@ -293,8 +294,11 @@ where
                 return Ok(None);
             };
 
+            code_action_unused_values(module, &params, &mut actions);
             code_action_unused_imports(module, &params, &mut actions);
             code_action_fix_names(module, &params, &this.error, &mut actions);
+            code_action_import_module(module, &params, &this.error, &mut actions);
+            code_action_add_missing_patterns(module, &params, &this.error, &mut actions);
             actions.extend(LetAssertToCase::new(module, &params).code_actions());
             actions.extend(RedundantTupleInCaseSubject::new(module, &params).code_actions());
             actions.extend(LabelShorthandSyntax::new(module, &params).code_actions());
@@ -487,7 +491,7 @@ where
                     .and_then(|module| {
                         if is_type {
                             module.types.get(name).map(|t| {
-                                hover_for_annotation(*location, t.typ.as_ref(), Some(t), lines)
+                                hover_for_annotation(*location, t.type_.as_ref(), Some(t), lines)
                             })
                         } else {
                             module.values.get(name).map(|v| {
@@ -783,7 +787,7 @@ fn hover_for_function_head(fun: &TypedFunction, line_numbers: LineNumbers) -> Ho
     }
 }
 
-fn hover_for_function_argument(argument: &Arg<Arc<Type>>, line_numbers: LineNumbers) -> Hover {
+fn hover_for_function_argument(argument: &TypedArg, line_numbers: LineNumbers) -> Hover {
     let type_ = Printer::new().pretty_print(&argument.type_, 0);
     let contents = format!("```gleam\n{type_}\n```");
     Hover {
@@ -890,7 +894,7 @@ fn hover_for_imported_value(
 }
 
 // Returns true if any part of either range overlaps with the other.
-pub fn overlaps(a: lsp_types::Range, b: lsp_types::Range) -> bool {
+pub fn overlaps(a: Range, b: Range) -> bool {
     position_within(a.start, b)
         || position_within(a.end, b)
         || position_within(b.start, a)
@@ -898,13 +902,74 @@ pub fn overlaps(a: lsp_types::Range, b: lsp_types::Range) -> bool {
 }
 
 // Returns true if a range is contained within another.
-pub fn within(a: lsp_types::Range, b: lsp_types::Range) -> bool {
+pub fn within(a: Range, b: Range) -> bool {
     position_within(a.start, b) && position_within(a.end, b)
 }
 
 // Returns true if a position is within a range.
-fn position_within(position: lsp_types::Position, range: lsp_types::Range) -> bool {
+fn position_within(position: Position, range: Range) -> bool {
     position >= range.start && position <= range.end
+}
+
+fn code_action_unused_values(
+    module: &Module,
+    params: &lsp::CodeActionParams,
+    actions: &mut Vec<CodeAction>,
+) {
+    let uri = &params.text_document.uri;
+    let mut unused_values: Vec<&SrcSpan> = module
+        .ast
+        .type_info
+        .warnings
+        .iter()
+        .filter_map(|warning| match warning {
+            type_::Warning::ImplicitlyDiscardedResult { location } => Some(location),
+            _ => None,
+        })
+        .collect();
+
+    if unused_values.is_empty() {
+        return;
+    }
+
+    // Convert src spans to lsp range
+    let line_numbers = LineNumbers::new(&module.code);
+
+    // Sort spans by start position, with longer spans coming first
+    unused_values.sort_by_key(|span| (span.start, -(span.end as i64 - span.start as i64)));
+
+    let mut processed_lsp_range = Vec::new();
+
+    for unused in unused_values {
+        let SrcSpan { start, end } = *unused;
+        let hover_range = src_span_to_lsp_range(SrcSpan::new(start, end), &line_numbers);
+
+        // Check if this span is contained within any previously processed span
+        if processed_lsp_range
+            .iter()
+            .any(|&prev_lsp_range| within(hover_range, prev_lsp_range))
+        {
+            continue;
+        }
+
+        // Check if the cursor is within this span
+        if !within(params.range, hover_range) {
+            continue;
+        }
+
+        let edit = TextEdit {
+            range: src_span_to_lsp_range(SrcSpan::new(start, start), &line_numbers),
+            new_text: "let _ = ".into(),
+        };
+
+        CodeActionBuilder::new("Assign unused Result value to `_`")
+            .kind(lsp_types::CodeActionKind::QUICKFIX)
+            .changes(uri.clone(), vec![edit])
+            .preferred(true)
+            .push_to(actions);
+
+        processed_lsp_range.push(hover_range);
+    }
 }
 
 fn code_action_unused_imports(
@@ -913,7 +978,17 @@ fn code_action_unused_imports(
     actions: &mut Vec<CodeAction>,
 ) {
     let uri = &params.text_document.uri;
-    let unused = &module.ast.type_info.unused_imports;
+    let unused: Vec<&SrcSpan> = module
+        .ast
+        .type_info
+        .warnings
+        .iter()
+        .filter_map(|warning| match warning {
+            type_::Warning::UnusedImportedModuleAlias { location, .. }
+            | type_::Warning::UnusedImportedModule { location, .. } => Some(location),
+            _ => None,
+        })
+        .collect();
 
     if unused.is_empty() {
         return;
@@ -939,7 +1014,7 @@ fn code_action_unused_imports(
         // Keep track of whether any unused import has is where the cursor is
         hovered = hovered || overlaps(params.range, range);
 
-        edits.push(lsp_types::TextEdit {
+        edits.push(TextEdit {
             range,
             new_text: "".into(),
         });
@@ -1004,7 +1079,7 @@ fn code_action_fix_names(
         let range = src_span_to_lsp_range(location, &line_numbers);
         // Check if the user's cursor is on the invalid name
         if overlaps(params.range, range) {
-            let edit = lsp_types::TextEdit {
+            let edit = TextEdit {
                 range,
                 new_text: correction.to_string(),
             };

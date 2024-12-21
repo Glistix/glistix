@@ -167,12 +167,19 @@ jobs:
         working-directory: ./test/project_erlang_windows
         if: ${{ runner.os == 'Windows' && matrix.run-integration-tests }}
 
-      - name: test/project_erlang export package-interface
+      - name: test/project_erlang export package-interface (non-windows)
         run: |
           glistix export package-interface --out="interface.json"
           cat interface.json
         working-directory: ./test/project_erlang
-        if: ${{ matrix.run-integration-tests }}
+        if: ${{ runner.os != 'Windows' && matrix.run-integration-tests }}
+
+      - name: test/project_erlang export package-interface (windows)
+        run: |
+          glistix export package-interface --out="interface.json"
+          cat interface.json
+        working-directory: ./test/project_erlang_windows
+        if: ${{ runner.os == 'Windows' && matrix.run-integration-tests }}
 
       - name: test/external_only_javascript
         run: ./test.sh
@@ -184,6 +191,13 @@ jobs:
       - name: test/external_only_erlang
         run: ./test.sh
         working-directory: ./test/external_only_erlang
+        if: ${{ matrix.run-integration-tests }}
+        env:
+          GLEAM_COMMAND: glistix
+
+      - name: test/root_package_not_compiled_when_running_dep
+        run: ./test.sh
+        working-directory: ./test/root_package_not_compiled_when_running_dep
         if: ${{ matrix.run-integration-tests }}
         env:
           GLEAM_COMMAND: glistix
@@ -365,7 +379,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-          - os: macos-12 # intel
+          - os: macos-13 # intel (macos-14 only supports aarch64)
             target: x86_64-apple-darwin
           - os: macos-14 # aarch64
             target: aarch64-apple-darwin

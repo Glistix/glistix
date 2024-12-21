@@ -1,3 +1,4 @@
+use hexpm::version::Version;
 use im::hashmap;
 use itertools::Itertools;
 
@@ -7,7 +8,9 @@ use itertools::Itertools;
 use super::*;
 use crate::{
     analyse::{name::check_name_case, Inferred},
-    ast::{AssignName, ImplicitCallArgOrigin, Layer, UntypedPatternBitArraySegment},
+    ast::{
+        AssignName, BitArrayOption, ImplicitCallArgOrigin, Layer, UntypedPatternBitArraySegment,
+    },
 };
 use std::sync::Arc;
 
@@ -17,6 +20,9 @@ pub struct PatternTyper<'a, 'b> {
     mode: PatternMode,
     initial_pattern_vars: HashSet<EcoString>,
     problems: &'a mut Problems,
+
+    /// The minimum Gleam version required to compile the typed pattern.
+    pub minimum_required_version: Version,
 }
 
 enum PatternMode {
@@ -35,6 +41,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
             hydrator,
             mode: PatternMode::Initial,
             initial_pattern_vars: HashSet::new(),
+            minimum_required_version: Version::new(0, 1, 0),
             problems,
         }
     }
@@ -42,7 +49,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
     fn insert_variable(
         &mut self,
         name: &str,
-        typ: Arc<Type>,
+        type_: Arc<Type>,
         location: SrcSpan,
     ) -> Result<(), UnifyError> {
         self.check_name_case(location, &EcoString::from(name), Named::Variable);
@@ -69,7 +76,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 // And now insert the variable for use in the code that comes
                 // after the pattern.
                 self.environment
-                    .insert_local_variable(name.into(), location, typ);
+                    .insert_local_variable(name.into(), location, type_);
                 Ok(())
             }
 
@@ -79,7 +86,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                     Some(initial) if self.initial_pattern_vars.contains(name) => {
                         assigned.push(name.into());
                         let initial_typ = initial.type_.clone();
-                        unify(initial_typ, typ)
+                        unify(initial_typ, type_)
                     }
 
                     // This variable was not defined in the Initial multi-pattern
@@ -179,9 +186,21 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
             ..
         } = segment;
 
+        let options = match value.as_ref() {
+            Pattern::String { location, .. } if options.is_empty() => {
+                self.track_feature_usage(FeatureKind::UnannotatedUtf8StringSegment, *location);
+                vec![BitArrayOption::Utf8 {
+                    location: SrcSpan::default(),
+                }]
+            }
+            _ => options,
+        };
+
         let options: Vec<_> = options
             .into_iter()
-            .map(|o| crate::analyse::infer_bit_array_option(o, |value, typ| self.unify(value, typ)))
+            .map(|o| {
+                crate::analyse::infer_bit_array_option(o, |value, type_| self.unify(value, type_))
+            })
             .try_collect()?;
 
         let segment_type = bit_array::type_options_for_pattern(&options, !is_last_segment)
@@ -190,7 +209,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 location: error.location,
             })?;
 
-        let typ = {
+        let type_ = {
             match value.deref() {
                 Pattern::Variable { .. } if segment_type == string() => {
                     Err(Error::BitArraySegmentError {
@@ -201,13 +220,13 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 _ => Ok(segment_type),
             }
         }?;
-        let typed_value = self.unify(*value, typ.clone())?;
+        let typed_value = self.unify(*value, type_.clone())?;
 
         Ok(BitArraySegment {
             location,
             value: Box::new(typed_value),
             options,
-            type_: typ,
+            type_,
         })
     }
 
@@ -255,19 +274,19 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                             .environment
                             .module_types
                             .keys()
-                            .any(|typ| typ == &name),
+                            .any(|type_| type_ == &name),
                     })?;
                 self.environment.increment_usage(&name);
-                let typ =
+                let type_ =
                     self.environment
                         .instantiate(vc.type_.clone(), &mut hashmap![], self.hydrator);
-                unify(int(), typ.clone()).map_err(|e| convert_unify_error(e, location))?;
+                unify(int(), type_.clone()).map_err(|e| convert_unify_error(e, location))?;
 
                 Ok(Pattern::VarUsage {
                     name,
                     location,
                     constructor: Some(vc),
-                    type_: typ,
+                    type_,
                 })
             }
 
@@ -396,7 +415,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                     let elems = elems
                         .into_iter()
                         .zip(type_elems)
-                        .map(|(pattern, typ)| self.unify(pattern, typ.clone()))
+                        .map(|(pattern, type_)| self.unify(pattern, type_.clone()))
                         .try_collect()?;
                     Ok(Pattern::Tuple { elems, location })
                 }
@@ -448,8 +467,14 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
 
                 let cons = self
                     .environment
-                    .get_value_constructor(module.as_ref(), &name)
-                    .map_err(|e| convert_get_value_constructor_error(e, location))?;
+                    .get_value_constructor(module.as_ref().map(|(module, _)| module), &name)
+                    .map_err(|e| {
+                        convert_get_value_constructor_error(
+                            e,
+                            location,
+                            module.as_ref().map(|(_, location)| *location),
+                        )
+                    })?;
 
                 match cons.field_map() {
                     // The fun has a field map so labelled arguments may be present and need to be reordered.
@@ -609,14 +634,21 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                             let pattern_args = pattern_args
                                 .into_iter()
                                 .zip(args)
-                                .map(|(arg, typ)| {
+                                .map(|(arg, type_)| {
+                                    if !arg.is_implicit() && arg.uses_label_shorthand() {
+                                        self.track_feature_usage(
+                                            FeatureKind::LabelShorthandSyntax,
+                                            arg.location,
+                                        );
+                                    }
+
                                     let CallArg {
                                         value,
                                         location,
                                         implicit,
                                         label,
                                     } = arg;
-                                    let value = self.unify(value, typ.clone())?;
+                                    let value = self.unify(value, type_.clone())?;
                                     Ok(CallArg {
                                         value,
                                         location,
@@ -678,6 +710,34 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
     fn check_name_case(&mut self, location: SrcSpan, name: &EcoString, kind: Named) {
         if let Err(error) = check_name_case(location, name, kind) {
             self.problems.error(error);
+        }
+    }
+
+    fn track_feature_usage(&mut self, feature_kind: FeatureKind, location: SrcSpan) {
+        let minimum_required_version = feature_kind.required_version();
+
+        // Then if the required version is not in the specified version for the
+        // range we emit a warning highlighting the usage of the feature.
+        if let Some(gleam_version) = &self.environment.gleam_version {
+            if let Some(lowest_allowed_version) = gleam_version.lowest_version() {
+                // There is a version in the specified range that is lower than
+                // the one required by this feature! This means that the
+                // specified range is wrong and would allow someone to run a
+                // compiler that is too old to know of this feature.
+                if minimum_required_version > lowest_allowed_version {
+                    self.problems
+                        .warning(Warning::FeatureRequiresHigherGleamVersion {
+                            location,
+                            feature_kind,
+                            minimum_required_version: minimum_required_version.clone(),
+                            wrongfully_allowed_version: lowest_allowed_version,
+                        })
+                }
+            }
+        }
+
+        if minimum_required_version > self.minimum_required_version {
+            self.minimum_required_version = minimum_required_version;
         }
     }
 }

@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/use_.rs
 expression: "\npub fn main() {\n  let thingy = fn(f) { f() }\n  use <- thingy()\n}\n"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError;
@@ -18,7 +19,7 @@ let
           "my/mod"
           4
           "main"
-          "This has not yet been implemented"
+          "`todo` expression evaluated. This code has not yet been implemented."
           { }));
 in
 { inherit main; }

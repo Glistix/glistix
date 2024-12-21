@@ -10,103 +10,37 @@ pub type Direction {
 
 
 ----- Completion content -----
-[
-    CompletionItem {
-        label: "Left",
-        label_details: Some(
-            CompletionItemLabelDetails {
-                detail: None,
-                description: Some(
-                    "app",
-                ),
-            },
-        ),
-        kind: Some(
-            EnumMember,
-        ),
-        detail: Some(
-            "Direction",
-        ),
-        documentation: None,
-        deprecated: None,
-        preselect: None,
-        sort_text: Some(
-            "2_Left",
-        ),
-        filter_text: None,
-        insert_text: None,
-        insert_text_format: None,
-        insert_text_mode: None,
-        text_edit: Some(
-            Edit(
-                TextEdit {
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            character: 0,
-                        },
-                        end: Position {
-                            line: 1,
-                            character: 0,
-                        },
-                    },
-                    new_text: "Left",
-                },
-            ),
-        ),
-        additional_text_edits: None,
-        command: None,
-        commit_characters: None,
-        data: None,
-        tags: None,
-    },
-    CompletionItem {
-        label: "Right",
-        label_details: Some(
-            CompletionItemLabelDetails {
-                detail: None,
-                description: Some(
-                    "app",
-                ),
-            },
-        ),
-        kind: Some(
-            EnumMember,
-        ),
-        detail: Some(
-            "Direction",
-        ),
-        documentation: None,
-        deprecated: None,
-        preselect: None,
-        sort_text: Some(
-            "2_Right",
-        ),
-        filter_text: None,
-        insert_text: None,
-        insert_text_format: None,
-        insert_text_mode: None,
-        text_edit: Some(
-            Edit(
-                TextEdit {
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            character: 0,
-                        },
-                        end: Position {
-                            line: 1,
-                            character: 0,
-                        },
-                    },
-                    new_text: "Right",
-                },
-            ),
-        ),
-        additional_text_edits: None,
-        command: None,
-        commit_characters: None,
-        data: None,
-        tags: None,
-    },
-]
+Error
+  kind:   Constructor
+  detail: gleam
+  sort:   4_Error
+False
+  kind:   EnumMember
+  detail: gleam
+  sort:   4_False
+Left
+  kind:   EnumMember
+  detail: Direction
+  sort:   2_Left
+  desc:   app
+  edits:
+    [1:0-1:0]: "Left"
+Nil
+  kind:   EnumMember
+  detail: gleam
+  sort:   4_Nil
+Ok
+  kind:   Constructor
+  detail: gleam
+  sort:   4_Ok
+Right
+  kind:   EnumMember
+  detail: Direction
+  sort:   2_Right
+  desc:   app
+  edits:
+    [1:0-1:0]: "Right"
+True
+  kind:   EnumMember
+  detail: gleam
+  sort:   4_True

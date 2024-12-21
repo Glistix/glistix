@@ -1,7 +1,7 @@
 use camino::Utf8PathBuf;
 use glistix_core::{
     analyse::TargetSupport,
-    build::{Codegen, Mode, Options, Target},
+    build::{Codegen, Compile, Mode, Options, Target},
     Result,
 };
 
@@ -45,10 +45,12 @@ pub(crate) fn erlang_shipment() -> Result<()> {
             root_target_support: TargetSupport::Enforced,
             warnings_as_errors: false,
             codegen: Codegen::All,
+            compile: Compile::All,
             mode,
             target: Some(target),
+            no_print_progress: false,
         },
-        crate::build::download_dependencies()?,
+        crate::build::download_dependencies(crate::cli::Reporter::new())?,
     )?;
 
     for entry in crate::fs::read_dir(&build)?.filter_map(Result::ok) {
@@ -103,8 +105,8 @@ the {file} script.
 
 pub fn hex_tarball() -> Result<()> {
     let paths = crate::find_project_paths()?;
-    let config = crate::config::root_config()?;
-    let data: Vec<u8> = crate::publish::build_hex_tarball(&paths, &config)?;
+    let mut config = crate::config::root_config()?;
+    let data: Vec<u8> = crate::publish::build_hex_tarball(&paths, &mut config)?;
 
     let path = paths.build_export_hex_tarball(&config.name, &config.version.to_string());
     crate::fs::write_bytes(&path, &data)?;
@@ -139,10 +141,12 @@ pub fn package_interface(path: Utf8PathBuf) -> Result<()> {
             mode: Mode::Prod,
             target: None,
             codegen: Codegen::All,
+            compile: Compile::All,
             warnings_as_errors: false,
             root_target_support: TargetSupport::Enforced,
+            no_print_progress: false,
         },
-        crate::build::download_dependencies()?,
+        crate::build::download_dependencies(crate::cli::Reporter::new())?,
     )?;
     built.root_package.attach_doc_and_module_comments();
 

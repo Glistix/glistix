@@ -78,10 +78,10 @@ impl ModuleDecoder {
                 type_variants_constructors
             ),
             accessors: read_hashmap!(reader.get_accessors()?, self, accessors_map),
-            unused_imports: read_vec!(reader.get_unused_imports()?, self, src_span),
             line_numbers: self.line_numbers(&reader.get_line_numbers()?)?,
             src_path: reader.get_src_path()?.into(),
             warnings: vec![],
+            minimum_required_version: self.version(&reader.get_required_version()?),
         })
     }
 
@@ -97,11 +97,11 @@ impl ModuleDecoder {
             },
         };
         Ok(TypeConstructor {
-            publicity: self.publicity(reader.get_publicity()?),
+            publicity: self.publicity(reader.get_publicity()?)?,
             origin: self.src_span(&reader.get_origin()?)?,
             module: reader.get_module()?.into(),
             parameters: read_vec!(reader.get_parameters()?, self, type_),
-            typ: type_,
+            type_,
             deprecation,
             documentation: self.optional_string(reader.get_documentation()?),
         })
@@ -212,7 +212,7 @@ impl ModuleDecoder {
     ) -> Result<ValueConstructor> {
         let type_ = self.type_(&reader.get_type()?)?;
         let variant = self.value_constructor_variant(&reader.get_variant()?)?;
-        let publicity = self.publicity(reader.get_publicity()?);
+        let publicity = self.publicity(reader.get_publicity()?)?;
         let deprecation = match reader.get_deprecated()? {
             "" => Deprecation::NotDeprecated,
             message => Deprecation::Deprecated {
@@ -227,11 +227,18 @@ impl ModuleDecoder {
         })
     }
 
-    fn publicity(&self, publicity: crate::schema_capnp::Publicity) -> Publicity {
-        match publicity {
-            schema::Publicity::Public => Publicity::Public,
-            schema::Publicity::Private => Publicity::Private,
-            schema::Publicity::Internal => Publicity::Internal,
+    fn publicity(&self, reader: publicity::Reader<'_>) -> Result<Publicity> {
+        match reader.which()? {
+            publicity::Which::Public(()) => Ok(Publicity::Public),
+            publicity::Which::Private(()) => Ok(Publicity::Private),
+            publicity::Which::Internal(reader) => match reader?.which()? {
+                option::Which::None(()) => Ok(Publicity::Internal {
+                    attribute_location: None,
+                }),
+                option::Which::Some(reader) => Ok(Publicity::Internal {
+                    attribute_location: Some(self.src_span(&reader?)?),
+                }),
+            },
         }
     }
 
@@ -286,12 +293,12 @@ impl ModuleDecoder {
         Ok(Constant::List {
             location: Default::default(),
             elements: read_vec!(reader.get_elements()?, self, constant),
-            typ: type_,
+            type_,
         })
     }
 
     fn constant_record(&mut self, reader: &constant::record::Reader<'_>) -> Result<TypedConstant> {
-        let type_ = self.type_(&reader.get_typ()?)?;
+        let type_ = self.type_(&reader.get_type()?)?;
         let tag = reader.get_tag()?.into();
         let args = read_vec!(reader.get_args()?, self, constant_call_arg);
         Ok(Constant::Record {
@@ -300,7 +307,7 @@ impl ModuleDecoder {
             name: Default::default(),
             args,
             tag,
-            typ: type_,
+            type_,
             field_map: None,
         })
     }
@@ -328,7 +335,7 @@ impl ModuleDecoder {
     }
 
     fn constant_var(&mut self, reader: &constant::var::Reader<'_>) -> Result<TypedConstant> {
-        let type_ = self.type_(&reader.get_typ()?)?;
+        let type_ = self.type_(&reader.get_type()?)?;
         let module = match reader.get_module()? {
             "" => None,
             module_str => Some(module_str),
@@ -337,10 +344,10 @@ impl ModuleDecoder {
         let constructor = self.value_constructor(&reader.get_constructor()?)?;
         Ok(Constant::Var {
             location: Default::default(),
-            module: module.map(EcoString::from),
+            module: module.map(|module| (EcoString::from(module), Default::default())),
             name: name.into(),
             constructor: Some(Box::from(constructor)),
-            typ: type_,
+            type_,
         })
     }
 
@@ -482,6 +489,9 @@ impl ModuleDecoder {
             location: self.src_span(&reader.get_location()?)?,
             documentation: self.optional_string(reader.get_documentation()?),
             implementations: self.implementations(reader.get_implementations()?),
+            external_erlang: self.optional_external(reader.get_external_erlang()?)?,
+            external_javascript: self.optional_external(reader.get_external_javascript()?)?,
+            external_nix: self.optional_external(reader.get_external_nix()?)?,
         })
     }
 
@@ -556,5 +566,24 @@ impl ModuleDecoder {
             length: reader.get_length(),
             line_starts: read_vec!(reader.get_line_starts()?, self, line_starts),
         })
+    }
+
+    fn version(&self, reader: &version::Reader<'_>) -> hexpm::version::Version {
+        hexpm::version::Version::new(reader.get_major(), reader.get_minor(), reader.get_patch())
+    }
+
+    fn optional_external(
+        &self,
+        reader: option::Reader<'_, external::Owned>,
+    ) -> Result<Option<(EcoString, EcoString)>> {
+        match reader.which()? {
+            option::Which::None(()) => Ok(None),
+            option::Which::Some(reader) => {
+                let reader = reader?;
+                let module = EcoString::from(reader.get_module()?);
+                let function = EcoString::from(reader.get_function()?);
+                Ok(Some((module, function)))
+            }
+        }
     }
 }

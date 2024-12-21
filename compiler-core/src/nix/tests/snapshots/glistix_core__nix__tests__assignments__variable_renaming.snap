@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/assignments.rs
 expression: "\n\nfn go(x, wibble) {\n  let a = 1\n  wibble(a)\n  let a = 2\n  wibble(a)\n  let assert #(a, 3) = x\n  let b = a\n  wibble(b)\n  let c = {\n    let a = a\n    #(a, b)\n  }\n  wibble(a)\n  // make sure arguments are counted in initial state\n  let x = c\n  x\n}\n"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError seqAll;
@@ -16,11 +17,11 @@ let
         if (builtins.elemAt x 1) != 3 then
           builtins.throw
             (makeError
-              "assignment_no_match"
+              "let_assert"
               "my/mod"
               8
               "go"
-              "Assignment pattern did not match"
+              "Pattern match failed, no pattern matched the value."
               { value = x; })
         else null;
       a'2 = builtins.seq _assert' (builtins.elemAt x 0);

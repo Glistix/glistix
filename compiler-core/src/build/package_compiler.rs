@@ -43,6 +43,13 @@ pub struct PackageCompiler<'a, IO> {
     pub ids: UniqueIdGenerator,
     pub write_metadata: bool,
     pub perform_codegen: bool,
+    /// If set to false the compiler won't load and analyse any of the package's
+    /// modules and always succeed compilation returning no compile modules.
+    ///
+    /// Code generation is still carried out so that a root package will have an
+    /// entry point nonetheless.
+    ///
+    pub compile_modules: bool,
     pub write_entrypoint: bool,
     pub copy_native_files: bool,
     pub compile_beam_bytecode: bool,
@@ -76,6 +83,7 @@ where
             target,
             write_metadata: true,
             perform_codegen: true,
+            compile_modules: true,
             write_entrypoint: false,
             copy_native_files: true,
             compile_beam_bytecode: true,
@@ -112,6 +120,7 @@ where
         } else {
             CodegenRequired::No
         };
+
         let loader = PackageLoader::new(
             self.io.clone(),
             self.ids.clone(),
@@ -127,9 +136,14 @@ where
             already_defined_modules,
             incomplete_modules,
         );
-        let loaded = match loader.run() {
-            Ok(loaded) => loaded,
-            Err(error) => return error.into(),
+
+        let loaded = if self.compile_modules {
+            match loader.run() {
+                Ok(loaded) => loaded,
+                Err(error) => return error.into(),
+            }
+        } else {
+            Loaded::empty()
         };
 
         // Load the cached modules that have previously been compiled
@@ -168,6 +182,7 @@ where
             self.target_support,
             incomplete_modules,
         );
+
         let modules = match outcome {
             Outcome::Ok(modules) => modules,
             Outcome::PartialFailure(_, _) | Outcome::TotalFailure(_) => return outcome,
@@ -673,6 +688,15 @@ impl CacheMetadata {
 pub(crate) struct Loaded {
     pub to_compile: Vec<UncompiledModule>,
     pub cached: Vec<type_::ModuleInterface>,
+}
+
+impl Loaded {
+    fn empty() -> Self {
+        Self {
+            to_compile: vec![],
+            cached: vec![],
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

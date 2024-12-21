@@ -10,10 +10,11 @@ use crate::{
         AssignName, AssignmentKind, CallArg, ImplicitCallArgOrigin, Pattern, SrcSpan, TypedExpr,
         TypedPattern, TypedRecordUpdateArg,
     },
-    build::Module,
+    build::{Located, Module},
     line_numbers::LineNumbers,
     parse::extra::ModuleExtra,
-    type_::{FieldMap, ModuleValueConstructor, Type, TypedCallArg},
+    type_::{self, error::ModuleSuggestion, FieldMap, ModuleValueConstructor, Type, TypedCallArg},
+    Error,
 };
 use ecow::EcoString;
 use im::HashMap;
@@ -21,6 +22,7 @@ use itertools::Itertools;
 use lsp_types::{CodeAction, CodeActionKind, CodeActionParams, TextEdit, Url};
 
 use super::{
+    edits::{add_newlines_after_import, get_import_edit, position_of_first_definition_if_import},
     engine::{overlaps, within},
     src_span_to_lsp_range,
 };
@@ -119,7 +121,7 @@ impl<'ast> ast::visit::Visit<'ast> for RedundantTupleInCaseSubject<'_> {
     fn visit_typed_expr_case(
         &mut self,
         location: &'ast SrcSpan,
-        typ: &'ast Arc<Type>,
+        type_: &'ast Arc<Type>,
         subjects: &'ast [TypedExpr],
         clauses: &'ast [ast::TypedClause],
     ) {
@@ -164,7 +166,7 @@ impl<'ast> ast::visit::Visit<'ast> for RedundantTupleInCaseSubject<'_> {
             self.edits.extend(clause_edits);
         }
 
-        ast::visit::visit_typed_expr_case(self, location, typ, subjects, clauses)
+        ast::visit::visit_typed_expr_case(self, location, type_, subjects, clauses)
     }
 }
 
@@ -605,7 +607,7 @@ impl<'ast> ast::visit::Visit<'ast> for FillInMissingLabelledArgs<'ast> {
     fn visit_typed_expr_call(
         &mut self,
         location: &'ast SrcSpan,
-        typ: &'ast Arc<Type>,
+        type_: &'ast Arc<Type>,
         fun: &'ast TypedExpr,
         args: &'ast [TypedCallArg],
     ) {
@@ -632,6 +634,278 @@ impl<'ast> ast::visit::Visit<'ast> for FillInMissingLabelledArgs<'ast> {
         // containing the current selection so we can't stop at the first call
         // we find (the outermost one) and have to keep traversing it in case
         // we're inside a nested call.
-        visit_typed_expr_call(self, location, typ, fun, args)
+        visit_typed_expr_call(self, location, type_, fun, args)
+    }
+}
+
+struct MissingImport {
+    location: SrcSpan,
+    suggestions: Vec<ImportSuggestion>,
+}
+
+struct ImportSuggestion {
+    // The name to replace with, if the user made a typo
+    name: EcoString,
+    // The optional module to import, if suggesting an importable module
+    import: Option<EcoString>,
+}
+
+pub fn code_action_import_module(
+    module: &Module,
+    params: &CodeActionParams,
+    error: &Option<Error>,
+    actions: &mut Vec<CodeAction>,
+) {
+    let uri = &params.text_document.uri;
+    let Some(Error::Type { errors, .. }) = error else {
+        return;
+    };
+
+    let missing_imports = errors
+        .into_iter()
+        .filter_map(|e| match e {
+            type_::Error::UnknownModule {
+                location,
+                suggestions,
+                ..
+            } => suggest_imports(*location, suggestions),
+            _ => None,
+        })
+        .collect_vec();
+
+    if missing_imports.is_empty() {
+        return;
+    }
+
+    let line_numbers = LineNumbers::new(&module.code);
+    let first_import_pos = position_of_first_definition_if_import(module, &line_numbers);
+    let first_is_import = first_import_pos.is_some();
+    let import_location = first_import_pos.unwrap_or_default();
+
+    let after_import_newlines = add_newlines_after_import(
+        import_location,
+        first_is_import,
+        &line_numbers,
+        &module.code,
+    );
+
+    for missing_import in missing_imports {
+        let range = src_span_to_lsp_range(missing_import.location, &line_numbers);
+        if !overlaps(params.range, range) {
+            continue;
+        }
+
+        for suggestion in missing_import.suggestions {
+            let mut edits = vec![TextEdit {
+                range,
+                new_text: suggestion.name.to_string(),
+            }];
+            if let Some(import) = &suggestion.import {
+                edits.push(get_import_edit(
+                    import_location,
+                    import,
+                    &after_import_newlines,
+                ))
+            };
+
+            let title = if let Some(import) = &suggestion.import {
+                &format!("Import `{import}`")
+            } else {
+                &format!("Did you mean `{}`", suggestion.name)
+            };
+
+            CodeActionBuilder::new(title)
+                .kind(CodeActionKind::QUICKFIX)
+                .changes(uri.clone(), edits)
+                .preferred(true)
+                .push_to(actions);
+        }
+    }
+}
+
+fn suggest_imports(
+    location: SrcSpan,
+    importable_modules: &[ModuleSuggestion],
+) -> Option<MissingImport> {
+    let suggestions = importable_modules
+        .iter()
+        .map(|suggestion| {
+            let imported_name = suggestion.last_name_component();
+            match suggestion {
+                ModuleSuggestion::Importable(name) => ImportSuggestion {
+                    name: imported_name.into(),
+                    import: Some(name.clone()),
+                },
+                ModuleSuggestion::Imported(_) => ImportSuggestion {
+                    name: imported_name.into(),
+                    import: None,
+                },
+            }
+        })
+        .collect_vec();
+
+    if suggestions.is_empty() {
+        None
+    } else {
+        Some(MissingImport {
+            location,
+            suggestions,
+        })
+    }
+}
+
+pub fn code_action_add_missing_patterns(
+    module: &Module,
+    params: &CodeActionParams,
+    error: &Option<Error>,
+    actions: &mut Vec<CodeAction>,
+) {
+    let uri = &params.text_document.uri;
+    let Some(Error::Type { errors, .. }) = error else {
+        return;
+    };
+    let missing_patterns = errors
+        .iter()
+        .filter_map(|error| match error {
+            type_::Error::InexhaustiveCaseExpression { location, missing } => {
+                Some((*location, missing))
+            }
+            _ => None,
+        })
+        .collect_vec();
+
+    if missing_patterns.is_empty() {
+        return;
+    }
+
+    let line_numbers = LineNumbers::new(&module.code);
+
+    for (location, missing) in missing_patterns {
+        let range = src_span_to_lsp_range(location, &line_numbers);
+        if !overlaps(params.range, range) {
+            return;
+        }
+
+        let mut edits = Vec::new();
+
+        let Some(Located::Expression(TypedExpr::Case {
+            clauses, subjects, ..
+        })) = module.find_node(location.start)
+        else {
+            continue;
+        };
+
+        // Find the start of the line. We can't just use the start of the case
+        // expression for cases like:
+        //
+        //```gleam
+        // let value = case a {}
+        //```
+        //
+        // Here, the start of the expression is part-way through the line, meaning
+        // we think we are more indented than we actually are
+        //
+        let mut indent_size = 0;
+        let line_start = *line_numbers
+            .line_starts
+            .get(range.start.line as usize)
+            .expect("Line number should be valid");
+        let chars = module.code.chars();
+        let mut chars = chars.skip(line_start as usize);
+        // Count indentation
+        while chars.next() == Some(' ') {
+            indent_size += 1;
+        }
+
+        let indent = " ".repeat(indent_size);
+
+        // Insert the missing patterns just after the final clause, or just before
+        // the closing brace if there are no clauses
+        let insert_span = clauses
+            .last()
+            .map(|clause| SrcSpan {
+                start: clause.location.end,
+                end: clause.location.end,
+            })
+            .unwrap_or(SrcSpan {
+                start: location.end - 1,
+                end: location.end - 1,
+            });
+
+        let insert_range = src_span_to_lsp_range(insert_span, &line_numbers);
+
+        for pattern in missing {
+            let new_text = format!("\n{indent}  {pattern} -> todo");
+            edits.push(TextEdit {
+                range: insert_range,
+                new_text,
+            })
+        }
+
+        // Add a newline + indent after the last pattern if there are no clauses
+        //
+        // This improves the generated code for this case:
+        // ```gleam
+        // case True {}
+        // ```
+        // This produces:
+        // ```gleam
+        // case True {
+        //   True -> todo
+        //   False -> todo
+        // }
+        // ```
+        // Instead of:
+        // ```gleam
+        // case True {
+        //   True -> todo
+        //   False -> todo}
+        // ```
+        //
+        if clauses.is_empty() {
+            let last_subject_location = subjects
+                .last()
+                .expect("Case expressions have at least one subject")
+                .location()
+                .end;
+
+            // Find the opening brace of the case expression
+
+            // Calculate the number of characters from the start of the line to the end of the
+            // last subject, to skip, so we can find the opening brace.
+            // That is: the location we want to get to, minus the start of the line which we skipped to begin with,
+            // minus the number we skipped for the indent, minus one more because we go one past the end of indentation
+            let num_to_skip = last_subject_location - line_start - indent_size as u32 - 1;
+            let chars = chars.skip(num_to_skip as usize);
+            let mut start_brace_location = last_subject_location;
+            for char in chars {
+                start_brace_location += 1;
+                if char == '{' {
+                    break;
+                }
+            }
+
+            let range = src_span_to_lsp_range(
+                SrcSpan::new(start_brace_location, insert_span.start),
+                &line_numbers,
+            );
+
+            // Remove any blank spaces/lines between the start brace and end brace
+            edits.push(TextEdit {
+                range,
+                new_text: String::new(),
+            });
+
+            edits.push(TextEdit {
+                range: insert_range,
+                new_text: format!("\n{indent}"),
+            })
+        }
+
+        CodeActionBuilder::new("Add missing patterns")
+            .kind(CodeActionKind::QUICKFIX)
+            .changes(uri.clone(), edits)
+            .preferred(true)
+            .push_to(actions);
     }
 }

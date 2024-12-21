@@ -1,3 +1,4 @@
+use hexpm::version::Version;
 use rand::Rng;
 use type_::{AccessorsMap, FieldMap, RecordAccessor};
 
@@ -37,7 +38,6 @@ fn constant_module(constant: TypedConstant) -> ModuleInterface {
         name: "a".into(),
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [(
             "one".into(),
@@ -65,6 +65,7 @@ fn constant_module(constant: TypedConstant) -> ModuleInterface {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     }
 }
 
@@ -94,10 +95,10 @@ fn empty_module() {
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
         values: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -113,7 +114,6 @@ fn with_line_numbers() {
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
         values: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(
             "const a = 1
@@ -121,6 +121,7 @@ fn with_line_numbers() {
         const c = 3",
         ),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -136,7 +137,7 @@ fn module_with_private_type() {
         types: [(
             "ListIntType".into(),
             TypeConstructor {
-                typ: type_::list(type_::int()),
+                type_: type_::list(type_::int()),
                 publicity: Publicity::Private,
                 origin: Default::default(),
                 module: "the/module".into(),
@@ -148,32 +149,10 @@ fn module_with_private_type() {
         .into(),
         types_value_constructors: HashMap::new(),
         values: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
-    };
-    assert_eq!(roundtrip(&module), module);
-}
-
-#[test]
-fn module_with_unused_import() {
-    let module = ModuleInterface {
-        warnings: vec![],
-        is_internal: false,
-        package: "some_package".into(),
-        origin: Origin::Src,
-        name: "a".into(),
-        types: HashMap::new(),
-        types_value_constructors: HashMap::new(),
-        unused_imports: vec![
-            SrcSpan { start: 0, end: 10 },
-            SrcSpan { start: 13, end: 42 },
-        ],
-        accessors: HashMap::new(),
-        values: HashMap::new(),
-        line_numbers: LineNumbers::new(""),
-        src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -189,7 +168,7 @@ fn module_with_app_type() {
         types: [(
             "ListIntType".into(),
             TypeConstructor {
-                typ: type_::list(type_::int()),
+                type_: type_::list(type_::int()),
                 publicity: Publicity::Public,
                 origin: Default::default(),
                 module: "the/module".into(),
@@ -201,10 +180,10 @@ fn module_with_app_type() {
         .into(),
         types_value_constructors: HashMap::new(),
         values: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -220,7 +199,7 @@ fn module_with_fn_type() {
         types: [(
             "FnType".into(),
             TypeConstructor {
-                typ: type_::fn_(vec![type_::nil(), type_::float()], type_::int()),
+                type_: type_::fn_(vec![type_::nil(), type_::float()], type_::int()),
                 publicity: Publicity::Public,
                 origin: Default::default(),
                 module: "the/module".into(),
@@ -232,10 +211,10 @@ fn module_with_fn_type() {
         .into(),
         types_value_constructors: HashMap::new(),
         values: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -251,7 +230,7 @@ fn module_with_tuple_type() {
         types: [(
             "TupleType".into(),
             TypeConstructor {
-                typ: type_::tuple(vec![type_::nil(), type_::float(), type_::int()]),
+                type_: type_::tuple(vec![type_::nil(), type_::float(), type_::int()]),
                 publicity: Publicity::Public,
                 origin: Default::default(),
                 module: "the/module".into(),
@@ -263,10 +242,10 @@ fn module_with_tuple_type() {
         .into(),
         types_value_constructors: HashMap::new(),
         values: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -288,7 +267,7 @@ fn module_with_generic_type() {
             types: [(
                 "TupleType".into(),
                 TypeConstructor {
-                    typ: type_::tuple(vec![t1.clone(), t1.clone(), t2.clone()]),
+                    type_: type_::tuple(vec![t1.clone(), t1.clone(), t2.clone()]),
                     publicity: Publicity::Public,
                     origin: Default::default(),
                     module: "the/module".into(),
@@ -300,10 +279,10 @@ fn module_with_generic_type() {
             .into(),
             types_value_constructors: HashMap::new(),
             values: HashMap::new(),
-            unused_imports: Vec::new(),
             accessors: HashMap::new(),
             line_numbers: LineNumbers::new(""),
             src_path: "some_path".into(),
+            minimum_required_version: Version::new(0, 1, 0),
         }
     }
 
@@ -325,7 +304,7 @@ fn module_with_type_links() {
             types: [(
                 "SomeType".into(),
                 TypeConstructor {
-                    typ: type_,
+                    type_,
                     publicity: Publicity::Public,
                     origin: Default::default(),
                     module: "a".into(),
@@ -337,10 +316,10 @@ fn module_with_type_links() {
             .into(),
             types_value_constructors: HashMap::new(),
             values: HashMap::new(),
-            unused_imports: Vec::new(),
             accessors: HashMap::new(),
             line_numbers: LineNumbers::new(""),
             src_path: "some_path".into(),
+            minimum_required_version: Version::new(0, 1, 0),
         }
     }
 
@@ -362,7 +341,7 @@ fn module_with_type_constructor_documentation() {
             types: [(
                 "SomeType".into(),
                 TypeConstructor {
-                    typ: type_,
+                    type_,
                     publicity: Publicity::Public,
                     origin: Default::default(),
                     module: "a".into(),
@@ -374,10 +353,10 @@ fn module_with_type_constructor_documentation() {
             .into(),
             types_value_constructors: HashMap::new(),
             values: HashMap::new(),
-            unused_imports: Vec::new(),
             accessors: HashMap::new(),
             line_numbers: LineNumbers::new(""),
             src_path: "some_path".into(),
+            minimum_required_version: Version::new(0, 1, 0),
         }
     }
 
@@ -399,7 +378,7 @@ fn module_with_type_constructor_origin() {
             types: [(
                 "SomeType".into(),
                 TypeConstructor {
-                    typ: type_,
+                    type_,
                     publicity: Publicity::Public,
                     origin: SrcSpan {
                         start: 535,
@@ -414,10 +393,10 @@ fn module_with_type_constructor_origin() {
             .into(),
             types_value_constructors: HashMap::new(),
             values: HashMap::new(),
-            unused_imports: Vec::new(),
             accessors: HashMap::new(),
             line_numbers: LineNumbers::new(""),
             src_path: "some_path".into(),
+            minimum_required_version: Version::new(0, 1, 0),
         }
     }
 
@@ -444,11 +423,11 @@ fn module_type_to_constructors_mapping() {
             },
         )]
         .into(),
-        unused_imports: Default::default(),
         accessors: HashMap::new(),
         values: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -463,7 +442,6 @@ fn module_fn_value() {
         origin: Origin::Src,
         name: "a".into(),
         types: HashMap::new(),
-        unused_imports: Vec::new(),
         types_value_constructors: HashMap::new(),
         accessors: HashMap::new(),
         values: [(
@@ -482,6 +460,9 @@ fn module_fn_value() {
                         start: 535,
                         end: 1100,
                     },
+                    external_erlang: None,
+                    external_javascript: None,
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: true,
                         uses_erlang_externals: false,
@@ -497,6 +478,7 @@ fn module_fn_value() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -511,7 +493,6 @@ fn deprecated_module_fn_value() {
         name: "a".into(),
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [(
             "one".into(),
@@ -531,6 +512,9 @@ fn deprecated_module_fn_value() {
                         start: 535,
                         end: 1100,
                     },
+                    external_erlang: None,
+                    external_javascript: None,
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: true,
                         uses_erlang_externals: false,
@@ -546,6 +530,7 @@ fn deprecated_module_fn_value() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -559,7 +544,6 @@ fn private_module_fn_value() {
         origin: Origin::Src,
         name: "a".into(),
         types: HashMap::new(),
-        unused_imports: Vec::new(),
         types_value_constructors: HashMap::new(),
         accessors: HashMap::new(),
         values: [(
@@ -578,6 +562,9 @@ fn private_module_fn_value() {
                         start: 535,
                         end: 1100,
                     },
+                    external_erlang: None,
+                    external_javascript: None,
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: true,
                         uses_erlang_externals: false,
@@ -593,6 +580,7 @@ fn private_module_fn_value() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -609,7 +597,6 @@ fn module_fn_value_regression() {
         name: "a/b/c".into(),
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [(
             "one".into(),
@@ -627,6 +614,9 @@ fn module_fn_value_regression() {
                         start: 52,
                         end: 1100,
                     },
+                    external_erlang: None,
+                    external_javascript: None,
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: true,
                         uses_erlang_externals: false,
@@ -642,6 +632,7 @@ fn module_fn_value_regression() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -657,7 +648,6 @@ fn module_fn_value_with_field_map() {
         name: "a".into(),
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [(
             "one".into(),
@@ -672,6 +662,9 @@ fn module_fn_value_with_field_map() {
                         arity: 20,
                         fields: [("ok".into(), 5), ("ko".into(), 7)].into(),
                     }),
+                    external_erlang: None,
+                    external_javascript: None,
+                    external_nix: None,
                     module: "a".into(),
                     arity: 5,
                     location: SrcSpan { start: 2, end: 11 },
@@ -690,6 +683,7 @@ fn module_fn_value_with_field_map() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -707,7 +701,6 @@ fn record_value() {
         name: "a".into(),
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [(
             "one".into(),
@@ -733,6 +726,7 @@ fn record_value() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -750,7 +744,6 @@ fn record_value_with_field_map() {
         name: "a".into(),
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [(
             "one".into(),
@@ -779,6 +772,7 @@ fn record_value_with_field_map() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -795,7 +789,6 @@ fn accessors() {
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
         values: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: [
             (
                 "one".into(),
@@ -843,6 +836,7 @@ fn accessors() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -914,7 +908,7 @@ fn constant_tuple() {
 fn constant_list() {
     let module = constant_module(Constant::List {
         location: Default::default(),
-        typ: type_::int(),
+        type_: type_::int(),
         elements: vec![
             Constant::Int {
                 location: Default::default(),
@@ -961,7 +955,7 @@ fn constant_record() {
             },
         ],
         tag: "thetag".into(),
-        typ: type_::int(),
+        type_: type_::int(),
         field_map: None,
     });
 
@@ -979,7 +973,7 @@ fn constant_var() {
         location: Default::default(),
         module: None,
         name: "one_original".into(),
-        typ: type_::int(),
+        type_: type_::int(),
         constructor: Some(Box::from(ValueConstructor {
             publicity: Publicity::Public,
             deprecation: Deprecation::NotDeprecated,
@@ -1010,7 +1004,6 @@ fn constant_var() {
         name: "a".into(),
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [
             (
@@ -1063,6 +1056,7 @@ fn constant_var() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -1235,7 +1229,7 @@ fn deprecated_type() {
         types: [(
             "ListIntType".into(),
             TypeConstructor {
-                typ: type_::list(type_::int()),
+                type_: type_::list(type_::int()),
                 publicity: Publicity::Public,
                 origin: Default::default(),
                 module: "the/module".into(),
@@ -1249,10 +1243,10 @@ fn deprecated_type() {
         .into(),
         types_value_constructors: HashMap::new(),
         values: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
     assert_eq!(roundtrip(&module), module);
 }
@@ -1267,7 +1261,6 @@ fn module_fn_value_with_external_implementations() {
         name: "a/b/c".into(),
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [(
             "one".into(),
@@ -1285,6 +1278,9 @@ fn module_fn_value_with_external_implementations() {
                         start: 52,
                         end: 1100,
                     },
+                    external_erlang: Some(("wibble".into(), "wobble".into())),
+                    external_javascript: Some(("wobble".into(), "wibble".into())),
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: false,
                         uses_erlang_externals: true,
@@ -1300,6 +1296,7 @@ fn module_fn_value_with_external_implementations() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -1315,12 +1312,13 @@ fn internal_module_fn() {
         name: "a/b/c".into(),
         types: HashMap::new(),
         types_value_constructors: HashMap::new(),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [(
             "one".into(),
             ValueConstructor {
-                publicity: Publicity::Internal,
+                publicity: Publicity::Internal {
+                    attribute_location: None,
+                },
                 deprecation: Deprecation::NotDeprecated,
                 type_: type_::int(),
                 variant: ValueConstructorVariant::ModuleFn {
@@ -1333,6 +1331,9 @@ fn internal_module_fn() {
                         start: 52,
                         end: 1100,
                     },
+                    external_erlang: Some(("wibble".into(), "wobble".into())),
+                    external_javascript: Some(("wobble".into(), "wibble".into())),
+                    external_nix: None,
                     implementations: Implementations {
                         gleam: false,
                         uses_erlang_externals: true,
@@ -1348,6 +1349,63 @@ fn internal_module_fn() {
         .into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
+    };
+
+    assert_eq!(roundtrip(&module), module);
+}
+
+#[test]
+fn internal_annotated_module_fn() {
+    let module = ModuleInterface {
+        warnings: vec![],
+        is_internal: false,
+        package: "some_package".into(),
+        origin: Origin::Src,
+        name: "a/b/c".into(),
+        types: HashMap::new(),
+        types_value_constructors: HashMap::new(),
+        accessors: HashMap::new(),
+        values: [(
+            "one".into(),
+            ValueConstructor {
+                publicity: Publicity::Internal {
+                    attribute_location: Some(SrcSpan {
+                        start: 11,
+                        end: 111,
+                    }),
+                },
+                deprecation: Deprecation::NotDeprecated,
+                type_: type_::int(),
+                variant: ValueConstructorVariant::ModuleFn {
+                    documentation: Some("wabble!".into()),
+                    name: "one".into(),
+                    field_map: None,
+                    module: "a".into(),
+                    arity: 5,
+                    location: SrcSpan {
+                        start: 52,
+                        end: 1100,
+                    },
+                    external_erlang: Some(("wibble".into(), "wobble".into())),
+                    external_javascript: Some(("wobble".into(), "wibble".into())),
+                    external_nix: None,
+                    implementations: Implementations {
+                        gleam: false,
+                        uses_erlang_externals: true,
+                        uses_javascript_externals: true,
+                        uses_nix_externals: false,
+                        can_run_on_erlang: true,
+                        can_run_on_javascript: true,
+                        can_run_on_nix: false,
+                    },
+                },
+            },
+        )]
+        .into(),
+        line_numbers: LineNumbers::new(""),
+        src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     assert_eq!(roundtrip(&module), module);
@@ -1383,11 +1441,11 @@ fn type_variable_ids_in_constructors_are_shared() {
                 }],
             },
         )]),
-        unused_imports: Vec::new(),
         accessors: HashMap::new(),
         values: [].into(),
         line_numbers: LineNumbers::new(""),
         src_path: "some_path".into(),
+        minimum_required_version: Version::new(0, 1, 0),
     };
 
     let expected = HashMap::from([(

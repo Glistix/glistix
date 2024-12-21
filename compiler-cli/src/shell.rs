@@ -1,6 +1,6 @@
 use glistix_core::{
     analyse::TargetSupport,
-    build::{Codegen, Mode, Options, Target},
+    build::{Codegen, Compile, Mode, Options, Target},
     error::Error,
 };
 use std::process::Command;
@@ -14,10 +14,12 @@ pub fn command() -> Result<(), Error> {
             root_target_support: TargetSupport::Enforced,
             warnings_as_errors: false,
             codegen: Codegen::All,
+            compile: Compile::All,
             mode: Mode::Dev,
             target: Some(Target::Erlang),
+            no_print_progress: false,
         },
-        crate::build::download_dependencies()?,
+        crate::build::download_dependencies(crate::cli::Reporter::new())?,
     )?;
 
     // Don't exit on ctrl+c as it is used by child erlang shell

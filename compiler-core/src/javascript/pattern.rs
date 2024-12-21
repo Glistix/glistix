@@ -1,11 +1,11 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 use super::{expression::is_js_scalar, *};
 use crate::{
     analyse::Inferred,
     javascript::endianness::Endianness,
     strings::convert_string_escape_chars,
-    type_::{FieldMap, PatternConstructor, Type},
+    type_::{FieldMap, PatternConstructor},
 };
 
 pub static ASSIGNMENT_VAR: &str = "$";
@@ -536,7 +536,9 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                     _ if type_.is_result() => {
                         self.push_result_check(subject.clone(), record_name == "Ok")
                     }
-                    Some(m) => self.push_variant_check(subject.clone(), docvec!["$", m, ".", name]),
+                    Some((m, _)) => {
+                        self.push_variant_check(subject.clone(), docvec!["$", m, ".", name])
+                    }
                     None => self.push_variant_check(subject.clone(), name.to_doc()),
                 }
 
@@ -669,7 +671,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
     }
 
     fn sized_bit_array_segment_details(
-        segment: &BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>,
+        segment: &TypedPatternBitArraySegment,
     ) -> Result<SizedBitArraySegmentDetails, Error> {
         use BitArrayOption as Opt;
 
@@ -704,7 +706,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                     .parse::<usize>()
                     .expect("part of an Int node should always parse as integer")),
                 _ => Err(Error::Unsupported {
-                    feature: "This bit array size option in patterns".into(),
+                    feature: "Non-constant size option in patterns".into(),
                     location: segment.location,
                 }),
             },
@@ -721,9 +723,17 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
         }?;
 
         // 16-bit floats are not supported
-        if segment.type_ == crate::type_::float() && size == 16usize {
+        if segment.type_ == crate::type_::float() && size == 16 {
             return Err(Error::Unsupported {
-                feature: "This bit array size option in patterns".into(),
+                feature: "Float width of 16 bits in patterns".into(),
+                location: segment.location,
+            });
+        }
+
+        // Ints that aren't byte-aligned are not supported
+        if segment.type_ == crate::type_::int() && size % 8 != 0 {
+            return Err(Error::Unsupported {
+                feature: "Non byte aligned integer in patterns".into(),
                 location: segment.location,
             });
         }
@@ -826,7 +836,7 @@ pub struct CompiledPattern<'a> {
     pub assignments: Vec<Assignment<'a>>,
 }
 
-impl<'a> CompiledPattern<'a> {
+impl CompiledPattern<'_> {
     pub fn has_assignments(&self) -> bool {
         !self.assignments.is_empty()
     }

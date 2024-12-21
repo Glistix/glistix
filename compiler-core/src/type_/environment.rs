@@ -1,7 +1,11 @@
+use pubgrub::range::Range;
+
 use crate::{
     analyse::TargetSupport,
     ast::{Publicity, PIPE_VARIABLE},
     build::Target,
+    error::edit_distance,
+    exhaustiveness::printer::ValueNames,
     uid::UniqueIdGenerator,
 };
 
@@ -11,6 +15,11 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct Environment<'a> {
     pub current_package: EcoString,
+
+    /// The gleam version range required by the current package as stated in its
+    /// gleam.toml
+    pub gleam_version: Option<Range<Version>>,
+
     pub current_module: EcoString,
     pub target: Target,
     pub ids: UniqueIdGenerator,
@@ -54,12 +63,15 @@ pub struct Environment<'a> {
     /// Used to determine if all functions/constants need to support the current
     /// compilation target.
     pub target_support: TargetSupport,
+
+    pub value_names: ValueNames,
 }
 
 impl<'a> Environment<'a> {
     pub fn new(
         ids: UniqueIdGenerator,
         current_package: EcoString,
+        gleam_version: Option<Range<Version>>,
         current_module: EcoString,
         target: Target,
         importable_modules: &'a im::HashMap<EcoString, ModuleInterface>,
@@ -68,8 +80,19 @@ impl<'a> Environment<'a> {
         let prelude = importable_modules
             .get(PRELUDE_MODULE_NAME)
             .expect("Unable to find prelude in importable modules");
+
+        let mut value_names = ValueNames::new();
+        for name in prelude.values.keys() {
+            value_names.named_constructor_in_scope(
+                PRELUDE_MODULE_NAME.into(),
+                name.clone(),
+                name.clone(),
+            );
+        }
+
         Self {
             current_package: current_package.clone(),
+            gleam_version,
             previous_id: ids.next(),
             ids,
             target,
@@ -88,6 +111,7 @@ impl<'a> Environment<'a> {
             current_module,
             entity_usages: vec![HashMap::new()],
             target_support,
+            value_names,
         }
     }
 }
@@ -120,7 +144,7 @@ pub struct ScopeResetData {
     local_values: im::HashMap<EcoString, ValueConstructor>,
 }
 
-impl<'a> Environment<'a> {
+impl Environment<'_> {
     pub fn in_new_scope<T, E>(
         &mut self,
         problems: &mut Problems,
@@ -190,14 +214,14 @@ impl<'a> Environment<'a> {
 
     /// Insert a variable in the current scope.
     ///
-    pub fn insert_local_variable(&mut self, name: EcoString, location: SrcSpan, typ: Arc<Type>) {
+    pub fn insert_local_variable(&mut self, name: EcoString, location: SrcSpan, type_: Arc<Type>) {
         let _ = self.scope.insert(
             name,
             ValueConstructor {
                 deprecation: Deprecation::NotDeprecated,
                 publicity: Publicity::Private,
                 variant: ValueConstructorVariant::LocalVariable { location },
-                type_: typ,
+                type_,
             },
         );
     }
@@ -227,7 +251,7 @@ impl<'a> Environment<'a> {
         &mut self,
         name: EcoString,
         variant: ValueConstructorVariant,
-        typ: Arc<Type>,
+        type_: Arc<Type>,
         publicity: Publicity,
         deprecation: Deprecation,
     ) {
@@ -237,7 +261,7 @@ impl<'a> Environment<'a> {
                 publicity,
                 deprecation,
                 variant,
-                type_: typ,
+                type_,
             },
         );
     }
@@ -319,7 +343,7 @@ impl<'a> Environment<'a> {
     ///
     pub fn get_type_constructor(
         &mut self,
-        module_alias: &Option<EcoString>,
+        module_alias: &Option<(EcoString, SrcSpan)>,
         name: &EcoString,
     ) -> Result<&TypeConstructor, UnknownTypeConstructorError> {
         let t = match module_alias {
@@ -331,11 +355,12 @@ impl<'a> Environment<'a> {
                     hint: self.unknown_type_hint(name),
                 }),
 
-            Some(module_name) => {
+            Some((module_name, _)) => {
                 let (_, module) = self.imported_modules.get(module_name).ok_or_else(|| {
                     UnknownTypeConstructorError::Module {
                         name: module_name.clone(),
-                        imported_modules: self.importable_modules.keys().cloned().collect(),
+                        suggestions: self
+                            .suggest_modules(module_name, Imported::Type(name.clone())),
                     }
                 })?;
                 let _ = self.unused_modules.remove(module_name);
@@ -386,7 +411,7 @@ impl<'a> Environment<'a> {
                 let module = self.importable_modules.get(m).ok_or_else(|| {
                     UnknownTypeConstructorError::Module {
                         name: name.clone(),
-                        imported_modules: self.importable_modules.keys().cloned().collect(),
+                        suggestions: self.suggest_modules(m, Imported::Type(name.clone())),
                     }
                 })?;
                 module.types_value_constructors.get(name).ok_or_else(|| {
@@ -410,7 +435,7 @@ impl<'a> Environment<'a> {
     ) -> Result<&ValueConstructor, UnknownValueConstructorError> {
         match module {
             None => self.scope.get(name).ok_or_else(|| {
-                let type_with_name_in_scope = self.module_types.keys().any(|typ| typ == name);
+                let type_with_name_in_scope = self.module_types.keys().any(|type_| type_ == name);
                 UnknownValueConstructorError::Variable {
                     name: name.clone(),
                     variables: self.local_value_names(),
@@ -422,7 +447,8 @@ impl<'a> Environment<'a> {
                 let (_, module) = self.imported_modules.get(module_name).ok_or_else(|| {
                     UnknownValueConstructorError::Module {
                         name: module_name.clone(),
-                        imported_modules: self.importable_modules.keys().cloned().collect(),
+                        suggestions: self
+                            .suggest_modules(module_name, Imported::Value(name.clone())),
                     }
                 })?;
                 let _ = self.unused_modules.remove(module_name);
@@ -472,13 +498,17 @@ impl<'a> Environment<'a> {
                 })
             }
 
-            Type::Var { type_: typ } => {
-                match typ.borrow().deref() {
-                    TypeVar::Link { type_: typ } => {
-                        return self.instantiate(typ.clone(), ids, hydrator)
+            Type::Var { type_ } => {
+                match type_.borrow().deref() {
+                    TypeVar::Link { type_ } => {
+                        return self.instantiate(type_.clone(), ids, hydrator)
                     }
 
-                    TypeVar::Unbound { .. } => return Arc::new(Type::Var { type_: typ.clone() }),
+                    TypeVar::Unbound { .. } => {
+                        return Arc::new(Type::Var {
+                            type_: type_.clone(),
+                        })
+                    }
 
                     TypeVar::Generic { id } => match ids.get(id) {
                         Some(t) => return t.clone(),
@@ -492,7 +522,9 @@ impl<'a> Environment<'a> {
                         }
                     },
                 }
-                Arc::new(Type::Var { type_: typ.clone() })
+                Arc::new(Type::Var {
+                    type_: type_.clone(),
+                })
             }
 
             Type::Fn { args, retrn, .. } => fn_(
@@ -569,20 +601,18 @@ impl<'a> Environment<'a> {
 
     /// Converts entities with a usage count of 0 to warnings.
     /// Returns the list of unused imported module location for the removed unused lsp action.
-    pub fn convert_unused_to_warnings(&mut self, problems: &mut Problems) -> Vec<SrcSpan> {
+    pub fn convert_unused_to_warnings(&mut self, problems: &mut Problems) {
         let unused = self
             .entity_usages
             .pop()
             .expect("Expected a bottom level of entity usages.");
         self.handle_unused(unused, problems);
 
-        let mut locations = Vec::new();
         for (name, location) in self.unused_modules.clone().into_iter() {
             problems.warning(Warning::UnusedImportedModule {
                 name: name.clone(),
                 location,
             });
-            locations.push(location);
         }
 
         for (name, info) in self.unused_module_aliases.iter() {
@@ -592,10 +622,8 @@ impl<'a> Environment<'a> {
                     location: info.location,
                     module_name: info.module_name.clone(),
                 });
-                locations.push(info.location);
             }
         }
-        locations
     }
 
     fn handle_unused(
@@ -647,6 +675,63 @@ impl<'a> Environment<'a> {
             .cloned()
             .collect()
     }
+
+    /// Suggest modules to import or use, for an unknown module
+    pub fn suggest_modules(&self, module: &str, imported: Imported) -> Vec<ModuleSuggestion> {
+        let mut suggestions = self
+            .importable_modules
+            .iter()
+            .filter_map(|(importable, module_info)| {
+                match &imported {
+                    // Don't suggest importing modules if they are already imported
+                    _ if self
+                        .imported_modules
+                        .contains_key(importable.split('/').last().unwrap_or(importable)) =>
+                    {
+                        None
+                    }
+                    Imported::Type(name) if module_info.get_public_type(name).is_some() => {
+                        Some(ModuleSuggestion::Importable(importable.clone()))
+                    }
+                    Imported::Value(name) if module_info.get_public_value(name).is_some() => {
+                        Some(ModuleSuggestion::Importable(importable.clone()))
+                    }
+                    _ => None,
+                }
+            })
+            .collect_vec();
+
+        suggestions.extend(
+            self.imported_modules
+                .keys()
+                .map(|module| ModuleSuggestion::Imported(module.clone())),
+        );
+
+        let threshold = std::cmp::max(module.chars().count() / 3, 1);
+
+        // Filter and sort options based on edit distance.
+        suggestions
+            .into_iter()
+            .sorted()
+            .filter_map(|suggestion| {
+                edit_distance(module, suggestion.last_name_component(), threshold)
+                    .map(|distance| (suggestion, distance))
+            })
+            .sorted_by_key(|&(_, distance)| distance)
+            .map(|(suggestion, _)| suggestion)
+            .collect()
+    }
+}
+
+#[derive(Debug)]
+/// An imported name, for looking up a module which exports it
+pub enum Imported {
+    /// An imported module, with no extra information
+    Module,
+    /// An imported type
+    Type(EcoString),
+    /// An imported value
+    Value(EcoString),
 }
 
 /// Unify two types that should be the same.
@@ -660,21 +745,21 @@ pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<(), UnifyError> {
     }
 
     // Collapse right hand side type links. Left hand side will be collapsed in the next block.
-    if let Type::Var { type_: typ } = t2.deref() {
-        if let TypeVar::Link { type_: typ } = typ.borrow().deref() {
-            return unify(t1, typ.clone());
+    if let Type::Var { type_ } = t2.deref() {
+        if let TypeVar::Link { type_ } = type_.borrow().deref() {
+            return unify(t1, type_.clone());
         }
     }
 
-    if let Type::Var { type_: typ } = t1.deref() {
+    if let Type::Var { type_ } = t1.deref() {
         enum Action {
             Unify(Arc<Type>),
             CouldNotUnify,
             Link,
         }
 
-        let action = match typ.borrow().deref() {
-            TypeVar::Link { type_: typ } => Action::Unify(typ.clone()),
+        let action = match type_.borrow().deref() {
+            TypeVar::Link { type_ } => Action::Unify(type_.clone()),
 
             TypeVar::Unbound { id } => {
                 unify_unbound_type(t2.clone(), *id)?;
@@ -682,9 +767,9 @@ pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<(), UnifyError> {
             }
 
             TypeVar::Generic { id } => {
-                if let Type::Var { type_: typ } = t2.deref() {
-                    if typ.borrow().is_unbound() {
-                        *typ.borrow_mut() = TypeVar::Generic { id: *id };
+                if let Type::Var { type_ } = t2.deref() {
+                    if type_.borrow().is_unbound() {
+                        *type_.borrow_mut() = TypeVar::Generic { id: *id };
                         return Ok(());
                     }
                 }
@@ -694,7 +779,7 @@ pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<(), UnifyError> {
 
         return match action {
             Action::Link => {
-                *typ.borrow_mut() = TypeVar::Link { type_: t2 };
+                *type_.borrow_mut() = TypeVar::Link { type_: t2 };
                 Ok(())
             }
 

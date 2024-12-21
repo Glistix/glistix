@@ -421,7 +421,7 @@ impl<'module> Generator<'module> {
                 Definition::Function(Function {
                     name: Some((_, name)),
                     publicity,
-                    external_nix: Some((module, function)),
+                    external_nix: Some((module, function, _location)),
                     ..
                 }) => {
                     self.register_external_function(

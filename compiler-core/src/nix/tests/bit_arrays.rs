@@ -1,4 +1,4 @@
-use crate::assert_nix;
+use crate::{assert_nix, assert_nix_error};
 
 #[test]
 fn empty() {
@@ -178,6 +178,31 @@ fn go(x) {
     );
 }
 
+// TODO: new error message when updating Nix bit arrays
+#[test]
+fn match_dynamic_size_error() {
+    assert_nix_error!(
+        r#"
+fn go(x) {
+  let n = 16
+  let assert <<a:size(n)>> = x
+}
+"#
+    );
+}
+
+// TODO: update Nix bit arrays with this check
+// #[test]
+// fn match_non_byte_aligned_size_error() {
+//     assert_nix_error!(
+//         r#"
+// fn go(x) {
+//   let assert <<a:size(7)>> = x
+// }
+// "#
+//     );
+// }
+
 #[test]
 fn discard_sized() {
     assert_nix!(
@@ -197,6 +222,18 @@ fn go(x) {
   let assert <<258:16>> = x
 }
 "#,
+    );
+}
+
+// TODO: new error message when updating Nix bit arrays
+#[test]
+fn match_float_16_bit_error() {
+    assert_nix_error!(
+        r#"
+fn go(x) {
+  let assert <<a:float-size(16)>> = x
+}
+"#
     );
 }
 
@@ -260,7 +297,7 @@ fn go() {
 // https://github.com/gleam-lang/gleam/issues/1591
 #[test]
 fn not_byte_aligned() {
-    assert_nix!(
+    assert_nix_error!(
         r#"
 fn thing() {
   4
@@ -274,7 +311,7 @@ fn go() {
 
 #[test]
 fn not_byte_aligned_explicit_sized() {
-    assert_nix!(
+    assert_nix_error!(
         r#"
 fn go() {
   <<256:size(4)>>
@@ -297,3 +334,32 @@ fn go() {
 "#,
     );
 }
+
+#[test]
+fn bit_array_literal_string_constant_is_treated_as_utf8() {
+    assert_nix!(r#"const a = <<"hello", " ", "world">>"#);
+}
+
+#[test]
+fn bit_array_literal_string_is_treated_as_utf8() {
+    assert_nix!(
+        r#"
+pub fn main() {
+  <<"hello", " ", "world">>
+}"#
+    );
+}
+
+// TODO: update nix bit array support to include utf8
+// #[test]
+// fn bit_array_literal_string_pattern_is_treated_as_utf8() {
+//     assert_nix!(
+//         r#"
+// pub fn main() {
+//   case <<>> {
+//     <<"a", "b", _:bytes>> -> 1
+//     _ -> 2
+//   }
+// }"#
+//     );
+// }

@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/nix/tests/bools.rs
 expression: "pub fn negate(x) {\n    todo && x\n}"
+snapshot_kind: text
 ---
 let
   inherit (builtins.import ./../gleam.nix) makeError;
@@ -13,7 +14,7 @@ let
         "my/mod"
         2
         "negate"
-        "This has not yet been implemented"
+        "`todo` expression evaluated. This code has not yet been implemented."
         { })) && x;
 in
 { inherit negate; }
