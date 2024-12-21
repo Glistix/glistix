@@ -6,7 +6,7 @@
   <a><img src="https://github.com/Glistix/glistix/actions/workflows/ci.yaml/badge.svg?branch=main"></a>
 </p>
 
-<h3><p align="center"><i><a href="https://glistix.zulipchat.com/join/iwsu634fmrqbby4jomq4tuas">Join our Zulip chat!</a></i></p></h3>
+<h3><p align="center"><i><a href="https://glistix.zulipchat.com/join/dj7k33san27nujoppkmuqalc/">Join our Zulip chat!</a></i></p></h3>
 
 <h3><p align="center"><i><a href="https://glistix.github.io/book">Read the Glistix book here!</a></i></p></h3>
 
