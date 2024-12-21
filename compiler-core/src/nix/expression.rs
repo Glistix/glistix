@@ -933,7 +933,8 @@ impl Generator<'_> {
         should_be_equal: bool,
     ) -> Output<'a> {
         // Nix's equality is always structural.
-        return self.print_bin_op(left, right, if should_be_equal { "==" } else { "!=" });
+        self.print_bin_op(left, right, if should_be_equal { "==" } else { "!=" })
+        // Inherited code (equality was not always structural):
         // if is_nix_scalar(left.type_()) {
         // }
         // Other types must be compared using structural equality
