@@ -148,7 +148,7 @@ jobs:
       - name: Upload built archive
         uses: actions/upload-artifact@v4
         with:
-          name: test-archive-wasm
+          name: glistix-test-browser
           path: |
             ${{ env.ASSET }}
             ${{ env.ASSET }}.sha256
