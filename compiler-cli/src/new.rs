@@ -277,7 +277,10 @@ jobs:
     }};
 
     # Pick your Glistix version here.
-    glistix.url = "github:glistix/glistix/v0.4.0";
+    glistix.url = {{
+      url = "github:glistix/glistix/v0.4.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
 
     # Submodules
     # Add any submodules which you use as dependencies here,
