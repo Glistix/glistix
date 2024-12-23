@@ -801,8 +801,8 @@ impl GlistixReplacements {
         self.0.get(name).map(|r| &*r.name).unwrap_or(name)
     }
 
-    /// Replace this package's name with another if necessary.
-    pub fn replace_name_str(&self, name: EcoString) -> EcoString {
+    /// Replace this package's name with another if necessary (EcoString version).
+    pub fn replace_name_ecostring(&self, name: EcoString) -> EcoString {
         self.0.get(&name).map(|r| r.name.clone()).unwrap_or(name)
     }
 
