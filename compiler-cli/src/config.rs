@@ -12,7 +12,7 @@ use crate::fs::{get_current_directory, get_project_root};
 pub fn root_config() -> Result<PackageConfig, Error> {
     let dir = get_project_root(get_current_directory()?)?;
     let paths = ProjectPaths::new(dir);
-    read(paths.root_config())
+    read(paths.root_config()).map(PackageConfig::with_glistix_replacements_applied)
 }
 
 #[derive(Debug, Clone, Copy)]
