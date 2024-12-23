@@ -25,7 +25,7 @@ pub fn resolve_versions<Requirements>(
     root_name: EcoString,
     dependencies: Requirements,
     locked: &HashMap<EcoString, Version>,
-    replacements: &crate::config::GlistixReplacements,
+    glistix_replacements: &crate::config::GlistixReplacements,
 ) -> Result<PackageVersions>
 where
     Requirements: Iterator<Item = (EcoString, Range)>,
@@ -61,7 +61,7 @@ where
             root,
             locked,
             exact_deps,
-            replacements,
+            glistix_replacements,
         ),
         root_name.as_str().into(),
         root_version,
@@ -167,7 +167,7 @@ struct DependencyProvider<'a> {
     // We need this because by default pubgrub checks exact version by checking if a version is between the exact
     // and the version 1 bump ahead. That default breaks on prerelease builds since a bump includes the whole patch
     exact_only: &'a HashMap<String, Version>,
-    replacements: &'a crate::config::GlistixReplacements,
+    glistix_replacements: &'a crate::config::GlistixReplacements,
 }
 
 impl<'a> DependencyProvider<'a> {
@@ -177,7 +177,7 @@ impl<'a> DependencyProvider<'a> {
         root: hexpm::Package,
         locked: &'a HashMap<EcoString, Version>,
         exact_only: &'a HashMap<String, Version>,
-        replacements: &'a crate::config::GlistixReplacements,
+        glistix_replacements: &'a crate::config::GlistixReplacements,
     ) -> Self {
         let _ = packages.insert(root.name.as_str().into(), root);
         Self {
@@ -185,7 +185,7 @@ impl<'a> DependencyProvider<'a> {
             locked,
             remote,
             exact_only,
-            replacements,
+            glistix_replacements,
         }
     }
 
@@ -207,7 +207,7 @@ impl<'a> DependencyProvider<'a> {
             let mut package = self.remote.get_dependencies(name)?;
 
             // Glistix: Update dependencies.
-            self.replacements.patch_hex_package(&mut package);
+            self.glistix_replacements.patch_hex_package(&mut package);
 
             // Sort the packages from newest to oldest, pres after all others
             package.releases.sort_by(|a, b| a.version.cmp(&b.version));
