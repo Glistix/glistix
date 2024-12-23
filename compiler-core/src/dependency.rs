@@ -22,6 +22,7 @@ pub fn resolve_versions<Requirements>(
     root_name: EcoString,
     dependencies: Requirements,
     locked: &HashMap<EcoString, Version>,
+    replacements: &crate::config::GlistixReplacements,
 ) -> Result<PackageVersions>
 where
     Requirements: Iterator<Item = (EcoString, Range)>,
@@ -51,7 +52,14 @@ where
     };
 
     let packages = pubgrub::solver::resolve(
-        &DependencyProvider::new(package_fetcher, provided_packages, root, locked, exact_deps),
+        &DependencyProvider::new(
+            package_fetcher,
+            provided_packages,
+            root,
+            locked,
+            exact_deps,
+            replacements,
+        ),
         root_name.as_str().into(),
         root_version,
     )
@@ -154,6 +162,7 @@ struct DependencyProvider<'a> {
     // and the version 1 bump ahead. That default breaks on prerelease builds since a bump includes the whole patch
     exact_only: &'a HashMap<String, Version>,
     optional_dependencies: RefCell<HashMap<EcoString, pubgrub::range::Range<Version>>>,
+    replacements: &'a crate::config::GlistixReplacements,
 }
 
 impl<'a> DependencyProvider<'a> {
@@ -163,6 +172,7 @@ impl<'a> DependencyProvider<'a> {
         root: hexpm::Package,
         locked: &'a HashMap<EcoString, Version>,
         exact_only: &'a HashMap<String, Version>,
+        replacements: &'a crate::config::GlistixReplacements,
     ) -> Self {
         let _ = packages.insert(root.name.as_str().into(), root);
         Self {
@@ -171,6 +181,7 @@ impl<'a> DependencyProvider<'a> {
             remote,
             exact_only,
             optional_dependencies: RefCell::new(Default::default()),
+            replacements,
         }
     }
 
@@ -190,6 +201,10 @@ impl<'a> DependencyProvider<'a> {
         let mut packages = self.packages.borrow_mut();
         if packages.get(name).is_none() {
             let mut package = self.remote.get_dependencies(name)?;
+
+            // Glistix: Update dependencies.
+            self.replacements.patch_hex_package(&mut package);
+
             // Sort the packages from newest to oldest, pres after all others
             package.releases.sort_by(|a, b| a.version.cmp(&b.version));
             package.releases.reverse();
@@ -483,6 +498,7 @@ mod tests {
             "app".into(),
             vec![("gleam_stdlib".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![locked_stdlib].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -501,6 +517,7 @@ mod tests {
             "app".into(),
             vec![].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(result, vec![].into_iter().collect())
@@ -514,6 +531,7 @@ mod tests {
             "app".into(),
             vec![("gleam_stdlib".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -532,6 +550,7 @@ mod tests {
             "app".into(),
             vec![("gleam_otp".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -553,6 +572,7 @@ mod tests {
             "app".into(),
             vec![("package_with_optional".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -578,6 +598,7 @@ mod tests {
             ]
             .into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -606,6 +627,7 @@ mod tests {
             ]
             .into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         );
         assert!(result.is_err());
     }
@@ -622,6 +644,7 @@ mod tests {
             ]
             .into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -650,6 +673,7 @@ mod tests {
             "app".into(),
             vec![("gleam_otp".into(), Range::new("~> 0.1.0".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -671,6 +695,7 @@ mod tests {
             "app".into(),
             vec![("package_with_retired".into(), Range::new("> 0.0.0".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -695,6 +720,7 @@ mod tests {
             &vec![("package_with_retired".into(), Version::new(0, 2, 0))]
                 .into_iter()
                 .collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -717,6 +743,7 @@ mod tests {
             "app".into(),
             vec![("gleam_otp".into(), Range::new("~> 0.3.0-rc1".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -738,6 +765,7 @@ mod tests {
             "app".into(),
             vec![("gleam_otp".into(), Range::new("0.3.0-rc1".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -759,6 +787,7 @@ mod tests {
             "app".into(),
             vec![("unknown".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap_err();
     }
@@ -771,6 +800,7 @@ mod tests {
             "app".into(),
             vec![("gleam_stdlib".into(), Range::new("~> 99.0".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap_err();
     }
@@ -785,6 +815,7 @@ mod tests {
             &vec![("gleam_stdlib".into(), Version::new(0, 2, 0))]
                 .into_iter()
                 .collect(),
+            &Default::default(),
         )
         .unwrap_err();
 
@@ -805,6 +836,7 @@ mod tests {
             "app".into(),
             vec![("gleam_stdlib".into(), Range::new("0.1.0".into()))].into_iter(),
             &vec![].into_iter().collect(),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(

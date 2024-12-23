@@ -239,6 +239,8 @@ pub fn download<Telem: Telemetry>(
     let mut config = crate::config::read(paths.root_config())?;
     let project_name = config.name.clone();
 
+    config.apply_glistix_replacements();
+
     // Insert the new packages to add, if it exists
     if let Some((packages, dev)) = new_package {
         for (package, requirement) in packages {
@@ -704,6 +706,7 @@ fn resolve_versions<Telem: Telemetry>(
         config.name.clone(),
         root_requirements.into_iter(),
         &locked,
+        &config.glistix.preview.replacements,
     )?;
 
     // Convert the hex packages and local packages into manifest packages
@@ -830,7 +833,16 @@ fn provide_package(
         None => (),
     }
     // Load the package
-    let config = crate::config::read(package_path.join("gleam.toml"))?;
+    let config = crate::config::read(package_path.join("gleam.toml")).map(|mut c| {
+        // Patch transitive dependencies with root's replacements
+        root_config
+            .glistix
+            .preview
+            .replacements
+            .patch_config(&mut c, false);
+        c
+    })?;
+
     // Check that we are loading the correct project
     if config.name != package_name {
         return Err(Error::WrongDependencyProvided {
