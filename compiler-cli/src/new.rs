@@ -277,7 +277,7 @@ jobs:
     }};
 
     # Pick your Glistix version here.
-    glistix.url = {{
+    glistix = {{
       url = "github:glistix/glistix/v0.4.0";
       inputs.nixpkgs.follows = "nixpkgs";
     }};
