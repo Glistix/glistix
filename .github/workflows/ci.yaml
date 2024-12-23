@@ -412,6 +412,12 @@ jobs:
           cd .test-flake
           nix run -L .. -- new newpkg
 
+      # For efficiency, just fully reuse the already built glistix
+      - name: Remove 'follows nixpkgs' from test project flake
+        run: |
+          sed -i -e 's/inputs\.nixpkgs\.follows = "nixpkgs";//' flake.nix
+        working-directory: ./.test-flake/newpkg
+
       - name: Build generated project without flake
         run: |
           # Build to generate manifest.toml
