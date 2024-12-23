@@ -710,11 +710,16 @@ fn resolve_versions<Telem: Telemetry>(
     )?;
 
     // Convert the hex packages and local packages into manifest packages
-    let manifest_packages = runtime.block_on(future::try_join_all(
-        resolved
-            .into_iter()
-            .map(|(name, version)| lookup_package(name, version, &provided_packages)),
-    ))?;
+    let manifest_packages = runtime.block_on(future::try_join_all(resolved.into_iter().map(
+        |(name, version)| {
+            lookup_package(
+                name,
+                version,
+                &provided_packages,
+                &config.glistix.preview.replacements,
+            )
+        },
+    )))?;
 
     let manifest = Manifest {
         packages: manifest_packages,
@@ -948,6 +953,7 @@ async fn lookup_package(
     name: String,
     version: Version,
     provided: &HashMap<EcoString, ProvidedPackage>,
+    glistix_replacements: &glistix_core::config::GlistixReplacements,
 ) -> Result<ManifestPackage> {
     match provided.get(name.as_str()) {
         Some(provided_package) => Ok(provided_package.to_manifest_package(name.as_str())),
@@ -965,6 +971,7 @@ async fn lookup_package(
                 .requirements
                 .keys()
                 .map(|s| EcoString::from(s.as_str()))
+                .map(|s| glistix_replacements.replace_name_ecostring(s))
                 .collect_vec();
             Ok(ManifestPackage {
                 name: name.into(),
