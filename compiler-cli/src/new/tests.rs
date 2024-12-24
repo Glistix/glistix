@@ -11,7 +11,7 @@ fn new() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: None,
             skip_git: false,
             skip_github: false,
@@ -49,7 +49,7 @@ fn new_with_default_template() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.join("my_project").to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: None,
             skip_git: false,
             skip_github: true,
@@ -105,7 +105,7 @@ fn new_with_skip_git() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: None,
             skip_git: true,
             skip_github: false,
@@ -126,7 +126,7 @@ fn new_with_skip_github() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: None,
             skip_git: false,
             skip_github: true,
@@ -150,7 +150,7 @@ fn new_with_skip_git_and_github() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -174,7 +174,7 @@ fn invalid_path() {
     assert!(super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: None,
             skip_git: false,
             skip_github: false,
@@ -192,7 +192,7 @@ fn invalid_name() {
     assert!(super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: Some("-".into()),
             skip_git: false,
             skip_github: false,
@@ -212,7 +212,7 @@ fn existing_directory_no_files() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -239,7 +239,7 @@ fn existing_directory_with_one_existing_file() {
     assert!(super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -262,7 +262,7 @@ fn existing_directory_with_non_generated_file() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Erlang,
+            template: super::Template::Nix,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -292,7 +292,7 @@ fn conflict_with_existing_files() {
         super::Creator::new(
             super::NewOptions {
                 project_root: path.to_string(),
-                template: super::Template::Erlang,
+                template: super::Template::Nix,
                 name: None,
                 skip_git: true,
                 skip_github: true,
