@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use ecow::EcoString;
 use itertools::Itertools;
 
 use crate::nix::{maybe_escape_identifier_string, syntax};
@@ -14,8 +15,8 @@ use crate::{
 /// Analogous to [`crate::javascript::Imports`].
 #[derive(Debug, Default)]
 pub(crate) struct Imports<'a> {
-    imports: HashMap<String, Import<'a>>,
-    exports: HashSet<String>,
+    imports: HashMap<EcoString, Import<'a>>,
+    exports: HashSet<EcoString>,
 }
 
 impl<'a> Imports<'a> {
@@ -23,29 +24,29 @@ impl<'a> Imports<'a> {
         Self::default()
     }
 
-    pub fn register_export(&mut self, export: String) {
+    pub fn register_export(&mut self, export: EcoString) {
         let _ = self.exports.insert(export);
     }
 
     pub fn register_module(
         &mut self,
-        path: String,
-        aliases: impl IntoIterator<Item = String>,
+        path: EcoString,
+        aliases: impl IntoIterator<Item = EcoString>,
         unqualified_imports: impl IntoIterator<Item = Member<'a>>,
     ) {
         // Sanitize path
-        let path = syntax::path(&path);
+        let path = EcoString::from(syntax::path(&path));
         let import = self
             .imports
-            .entry(path.clone().to_string())
-            .or_insert_with(|| Import::new(path.to_string()));
+            .entry(path.clone())
+            .or_insert_with(|| Import::new(path));
         import.aliases.extend(aliases);
         import.unqualified.extend(unqualified_imports)
     }
 
     /// Finishes import declarations.
     /// Returns assignments to perform and names to export.
-    pub fn finish(self) -> (Document<'a>, impl IntoIterator<Item = String>) {
+    pub fn finish(self) -> (Document<'a>, impl IntoIterator<Item = EcoString>) {
         let imports = join(
             self.imports
                 .into_values()
@@ -65,14 +66,14 @@ impl<'a> Imports<'a> {
 
 #[derive(Debug)]
 struct Import<'a> {
-    path: String,
-    aliases: HashSet<String>,
+    path: EcoString,
+    aliases: HashSet<EcoString>,
     unqualified: Vec<Member<'a>>,
 }
 
 impl<'a> Import<'a> {
     /// Assumes the path is already sanitized.
-    fn new(path: String) -> Self {
+    fn new(path: EcoString) -> Self {
         Self {
             path,
             aliases: Default::default(),
@@ -81,14 +82,14 @@ impl<'a> Import<'a> {
     }
 
     pub fn into_doc(self) -> Document<'a> {
-        let path = Document::String(self.path.clone());
+        let path = self.path.to_doc();
         let no_aliases = self.aliases.is_empty();
         let alias_imports = join(
             self.aliases.into_iter().sorted().map(|alias| {
                 // Alias is equivalent to just importing again:
                 // alias = import path;
                 syntax::assignment_line(
-                    Document::String(maybe_escape_identifier_string(&alias)),
+                    maybe_escape_identifier_string(&alias).to_doc(),
                     docvec!["builtins.import ", path.clone()],
                 )
             }),

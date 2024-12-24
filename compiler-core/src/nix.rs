@@ -18,7 +18,7 @@ use crate::nix::import::{Imports, Member};
 use crate::pretty::{break_, concat, line, nil, Document, Documentable};
 use crate::type_::PRELUDE_MODULE_NAME;
 use camino::Utf8Path;
-use ecow::EcoString;
+use ecow::{eco_format, EcoString};
 use itertools::Itertools;
 
 pub const INDENT: isize = 2;
@@ -94,7 +94,7 @@ impl<'module> Generator<'module> {
         // Exported names. Those will be `inherit`ed in the final exported dictionary.
         let mut exported_names = exported_names
             .into_iter()
-            .map(Document::String)
+            .map(EcoString::to_doc)
             .chain(
                 statements
                     .iter()
@@ -284,7 +284,7 @@ impl<'module> Generator<'module> {
             arg.label
                 .as_ref()
                 .map(|(_, s)| maybe_escape_identifier_doc(s))
-                .unwrap_or_else(|| Document::String(format!("x{i}")))
+                .unwrap_or_else(|| eco_format!("x{i}").to_doc())
         }
 
         let should_export = !(publicity.is_private() || opaque);
@@ -351,7 +351,7 @@ impl<'module> Generator<'module> {
             } else {
                 // Positional arguments are represented as '_NUMBER'.
                 // They might not start at zero.
-                syntax::assignment_line(Document::String(format!("_{i}")), parameter)
+                syntax::assignment_line(eco_format!("_{i}").to_doc(), parameter)
             };
 
             docvec![break_("", " "), assignment]
@@ -443,22 +443,22 @@ impl<'module> Generator<'module> {
         imports
     }
 
-    fn import_path<'a>(&self, package: &'a str, module: &'a str) -> String {
+    fn import_path<'a>(&self, package: &'a str, module: &'a str) -> EcoString {
         // TODO: strip shared prefixed between current module and imported
         // module to avoid descending and climbing back out again
         if package == self.module.type_info.package || package.is_empty() {
             // Same package
             match self.current_module_name_segments_count {
-                1 => format!("./{module}.nix"),
+                1 => eco_format!("./{module}.nix"),
                 _ => {
                     let prefix = "../".repeat(self.current_module_name_segments_count - 1);
-                    format!("{prefix}{module}.nix")
+                    eco_format!("{prefix}{module}.nix")
                 }
             }
         } else {
             // Different package
             let prefix = "../".repeat(self.current_module_name_segments_count);
-            format!("{prefix}{package}/{module}.nix")
+            eco_format!("{prefix}{package}/{module}.nix")
         }
     }
 
@@ -524,7 +524,7 @@ impl<'module> Generator<'module> {
             alias: if name == fun && !needs_escaping {
                 None
             } else if needs_escaping {
-                Some(Document::String(escape_identifier(name)))
+                Some(escape_identifier(name).to_doc())
             } else {
                 Some(name.to_doc())
             },
@@ -532,7 +532,7 @@ impl<'module> Generator<'module> {
         if publicity.is_importable() {
             imports.register_export(maybe_escape_identifier_string(name))
         }
-        imports.register_module(module.to_string(), [], [member]);
+        imports.register_module(EcoString::from(module), [], [member]);
     }
 
     /// Add prelude imports based on the used functions.
@@ -674,8 +674,8 @@ pub fn module(
 }
 
 /// Generates the variable name in Nix for the given module.
-pub fn module_var_name(name: &str) -> String {
-    format!("{}'", maybe_escape_identifier_string(name))
+pub fn module_var_name(name: &str) -> EcoString {
+    eco_format!("{}'", maybe_escape_identifier_string(name))
 }
 
 /// Generates the variable name in Nix for the given module (as a document).
@@ -706,23 +706,23 @@ pub fn is_usable_nix_identifier(word: &str) -> bool {
     )
 }
 
-pub fn maybe_escape_identifier_string(word: &str) -> String {
+pub fn maybe_escape_identifier_string(word: &str) -> EcoString {
     if is_usable_nix_identifier(word) {
-        word.to_string()
+        EcoString::from(word)
     } else {
         escape_identifier(word)
     }
 }
 
-pub fn escape_identifier(word: &str) -> String {
-    format!("{word}'")
+pub fn escape_identifier(word: &str) -> EcoString {
+    eco_format!("{word}'")
 }
 
 pub fn maybe_escape_identifier_doc(word: &str) -> Document<'_> {
     if is_usable_nix_identifier(word) {
         word.to_doc()
     } else {
-        Document::String(escape_identifier(word))
+        escape_identifier(word).to_doc()
     }
 }
 

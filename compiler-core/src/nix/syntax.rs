@@ -3,6 +3,7 @@
 use crate::docvec;
 use crate::nix::{Output, INDENT};
 use crate::pretty::{break_, concat, join, nil, Document, Documentable};
+use ecow::EcoString;
 use itertools::Itertools;
 use regex::Regex;
 use std::borrow::Cow;
@@ -104,7 +105,7 @@ pub fn string_without_escapes_or_backslashes(value: &str) -> Document<'_> {
     debug_assert!(!value.contains(['\\', '"']));
 
     match sanitize_string(value) {
-        Cow::Owned(string) => Document::String(string),
+        Cow::Owned(string) => EcoString::from(string).to_doc(),
         Cow::Borrowed(value) => value.to_doc(),
     }
     .surround("\"", "\"")
@@ -116,11 +117,13 @@ pub fn string_without_escapes_or_backslashes(value: &str) -> Document<'_> {
 /// `${` becomes `\${`.
 pub fn string_escaping_backslashes_and_quotes(value: &str) -> Document<'_> {
     if value.contains('\\') || value.contains('"') {
-        let replaced_value = value.replace('\\', "\\\\").replace('"', "\\\"");
+        let replaced_value = EcoString::from(value)
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"");
 
         match sanitize_string(&replaced_value) {
-            Cow::Owned(string) => Document::String(string),
-            Cow::Borrowed(_) => Document::String(replaced_value),
+            Cow::Owned(string) => EcoString::from(string).to_doc(),
+            Cow::Borrowed(_) => replaced_value.to_doc(),
         }
         .surround("\"", "\"")
     } else {

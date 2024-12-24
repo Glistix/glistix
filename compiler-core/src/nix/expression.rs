@@ -11,7 +11,7 @@ use crate::nix::{
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
-use ecow::EcoString;
+use ecow::{eco_format, EcoString};
 use itertools::Itertools;
 use regex::Regex;
 use std::borrow::Cow;
@@ -64,8 +64,8 @@ impl<'module> Generator<'module> {
                 maybe_escape_identifier_doc(name)
             }
             Some(0) => maybe_escape_identifier_doc(name),
-            Some(n) if name == ANONYMOUS_VAR_NAME => Document::String(format!("_'{n}")),
-            Some(n) => Document::String(format!("{name}'{n}")),
+            Some(n) if name == ANONYMOUS_VAR_NAME => eco_format!("_'{n}").to_doc(),
+            Some(n) => eco_format!("{name}'{n}").to_doc(),
         }
     }
 
@@ -387,7 +387,7 @@ impl<'module> Generator<'module> {
     fn statements<'a>(&mut self, statements: &'a [TypedStatement]) -> Output<'a> {
         let Some((trailing_statement, assignments)) = statements.split_last() else {
             // TODO: can we unwrap?
-            return Ok(Document::Str(""));
+            return Ok("".to_doc());
         };
 
         if assignments.is_empty() {
@@ -1436,9 +1436,9 @@ fn construct_record<'a>(
 pub fn string<'a>(value: &'a str, tracker: &mut UsageTracker) -> Document<'a> {
     let sanitized = syntax::sanitize_string(value);
     match sanitize_string_escape_sequences(&sanitized, tracker) {
-        Cow::Owned(string) => Document::String(string),
+        Cow::Owned(string) => EcoString::from(string).to_doc(),
         Cow::Borrowed(_) => match sanitized {
-            Cow::Owned(string) => Document::String(string),
+            Cow::Owned(string) => EcoString::from(string).to_doc(),
             Cow::Borrowed(value) => value.to_doc(),
         },
     }
@@ -1701,7 +1701,7 @@ pub fn fun_args(args: &'_ [TypedArg]) -> Document<'_> {
             let doc = if discards == 0 {
                 "_".to_doc()
             } else {
-                Document::String(format!("_{discards}"))
+                eco_format!("_{discards}").to_doc()
             };
             discards += 1;
             doc
@@ -1713,9 +1713,9 @@ pub fn fun_args(args: &'_ [TypedArg]) -> Document<'_> {
 /// Borrow-less version of the generator's `local_var`.
 fn owned_local_var<'a>(name: EcoString, next: usize) -> Document<'a> {
     match next {
-        0 => Document::String(maybe_escape_identifier_string(&name)),
-        n if name == ANONYMOUS_VAR_NAME => Document::String(format!("_'{n}")),
-        n => Document::String(format!("{name}'{n}")),
+        0 => maybe_escape_identifier_string(&name).to_doc(),
+        n if name == ANONYMOUS_VAR_NAME => eco_format!("_'{n}").to_doc(),
+        n => eco_format!("{name}'{n}").to_doc(),
     }
 }
 
