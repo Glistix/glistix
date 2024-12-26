@@ -2284,7 +2284,7 @@ name = "test-helpers-rs"
 version = "0.1.0"
 dependencies = [
  "camino",
- "gleam-core",
+ "glistix-core",
  "im",
  "insta",
  "itertools",
@@ -2310,10 +2310,10 @@ dependencies = [
 
 [[package]]
 name = "test-project-compiler"
-version = "1.5.0"
+version = "0.5.0"
 dependencies = [
  "camino",
- "gleam-core",
+ "glistix-core",
  "im",
  "insta",
  "itertools",

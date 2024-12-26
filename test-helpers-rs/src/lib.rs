@@ -1,5 +1,5 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use gleam_core::io::{memory::InMemoryFileSystem, Content, FileSystemWriter};
+use glistix_core::io::{memory::InMemoryFileSystem, Content, FileSystemWriter};
 use itertools::Itertools;
 use regex::Regex;
 use std::{collections::HashMap, fmt::Write, sync::OnceLock};
@@ -7,7 +7,7 @@ use std::{collections::HashMap, fmt::Write, sync::OnceLock};
 #[derive(Debug)]
 pub struct TestCompileOutput {
     pub files: HashMap<Utf8PathBuf, Content>,
-    pub warnings: Vec<gleam_core::Warning>,
+    pub warnings: Vec<glistix_core::Warning>,
 }
 
 impl TestCompileOutput {

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gleam-core = { path = "../compiler-core" }
+glistix-core = { path = "../compiler-core" }
 toml.workspace = true
 im.workspace = true
 itertools.workspace = true
