@@ -151,7 +151,7 @@ impl<'module> Generator<'module> {
             TypedExpr::NegateInt { value, .. } => self.negate_with("-", value),
 
             TypedExpr::RecordAccess { label, record, .. } => self.record_access(record, label),
-            TypedExpr::RecordUpdate { spread, args, .. } => self.record_update(spread, args),
+            TypedExpr::RecordUpdate { record, args, .. } => self.record_update(record, args),
 
             TypedExpr::ModuleSelect {
                 module_alias,
