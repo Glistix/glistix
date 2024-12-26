@@ -1,7 +1,17 @@
 ---
 source: compiler-core/src/nix/tests/externals.rs
 expression: "\n@external(nix, \"\", \"one\")\npub fn one(x: Int) -> Int {\n  1\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+@external(nix, "", "one")
+pub fn one(x: Int) -> Int {
+  1
+}
+
+
+----- ERROR
 error: Invalid Nix module
   ┌─ /src/one/two.gleam:3:1
   │

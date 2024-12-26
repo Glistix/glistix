@@ -1,7 +1,15 @@
 ---
 source: compiler-core/src/nix/tests/externals.rs
 expression: "\n@external(nix, \"/\", \"inspect\")\nfn root(x: anything) -> Nil\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+@external(nix, "/", "inspect")
+fn root(x: anything) -> Nil
+
+
+----- ERROR
 error: Invalid Nix module
   ┌─ /src/one/two.gleam:3:1
   │

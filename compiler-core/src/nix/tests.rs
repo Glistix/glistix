@@ -85,7 +85,8 @@ macro_rules! assert_nix {
 #[macro_export]
 macro_rules! assert_nix_error {
     ($src:expr $(,)?) => {{
-        let output = $crate::nix::tests::expect_nix_error($src, vec![]);
+        let error = $crate::nix::tests::expect_nix_error($src, vec![]);
+        let output = format!("----- SOURCE CODE\n{}\n\n----- ERROR\n{}", $src, error);
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     }};
 }

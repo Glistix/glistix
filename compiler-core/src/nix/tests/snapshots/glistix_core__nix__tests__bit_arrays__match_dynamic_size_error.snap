@@ -3,6 +3,15 @@ source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "\nfn go(x) {\n  let n = 16\n  let assert <<a:size(n)>> = x\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(x) {
+  let n = 16
+  let assert <<a:size(n)>> = x
+}
+
+
+----- ERROR
 error: Unsupported feature for compilation target
   ┌─ /src/nix/error.gleam:4:16
   │

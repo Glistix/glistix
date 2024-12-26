@@ -3,6 +3,17 @@ source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "\nfn thing() {\n  4\n}\nfn go() {\n  <<256:4>>\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn thing() {
+  4
+}
+fn go() {
+  <<256:4>>
+}
+
+
+----- ERROR
 error: Unsupported feature for compilation target
   ┌─ /src/nix/error.gleam:6:5
   │
