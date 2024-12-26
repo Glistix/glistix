@@ -40,8 +40,9 @@ pub static CURRENT_PACKAGE: &str = "thepackage";
 #[macro_export]
 macro_rules! assert_nix_with_multiple_imports {
     ($(($name:literal, $module_src:literal)),+; $src:literal) => {
-        let output =
+        let compiled =
             $crate::nix::tests::compile_nix($src, vec![$((CURRENT_PACKAGE, $name, $module_src)),*]).expect("compilation failed");
+        let output = format!("----- SOURCE CODE\n{}\n\n----- COMPILED NIX\n{}", $src, compiled);
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     };
 }
@@ -49,16 +50,24 @@ macro_rules! assert_nix_with_multiple_imports {
 #[macro_export]
 macro_rules! assert_nix {
     (($dep_package:expr, $dep_name:expr, $dep_src:expr), $src:expr $(,)?) => {{
-        let output =
+        let compiled =
             $crate::nix::tests::compile_nix($src, vec![($dep_package, $dep_name, $dep_src)])
                 .expect("compilation failed");
+        let output = format!(
+            "----- SOURCE CODE\n{}\n\n----- COMPILED NIX\n{}",
+            $src, compiled
+        );
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     }};
 
     (($dep_package:expr, $dep_name:expr, $dep_src:expr), $src:expr, $nix:expr $(,)?) => {{
-        let output =
+        let compiled =
             $crate::nix::tests::compile_nix($src, Some(($dep_package, $dep_name, $dep_src)))
                 .expect("compilation failed");
+        let output = format!(
+            "----- SOURCE CODE\n{}\n\n----- COMPILED NIX\n{}",
+            $src, compiled
+        );
         assert_eq!(($src, output), ($src, $nix.to_string()));
     }};
 

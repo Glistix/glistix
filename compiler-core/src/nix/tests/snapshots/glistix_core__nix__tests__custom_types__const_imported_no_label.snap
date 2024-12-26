@@ -1,7 +1,14 @@
 ---
 source: compiler-core/src/nix/tests/custom_types.rs
 expression: "import other\npub const main = other.Two(1)\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+import other
+pub const main = other.Two(1)
+
+
+----- COMPILED NIX
 let
   other' = builtins.import ./../other.nix;
   

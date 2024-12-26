@@ -1,7 +1,16 @@
 ---
 source: compiler-core/src/nix/tests/modules.rs
 expression: "\nimport esa/rocket_ship\nimport nasa/rocket_ship as _nasa_rocket\npub fn go() { rocket_ship.go() }\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+import esa/rocket_ship
+import nasa/rocket_ship as _nasa_rocket
+pub fn go() { rocket_ship.go() }
+
+
+----- COMPILED NIX
 let
   rocket_ship' = builtins.import ./../esa/rocket_ship.nix;
   

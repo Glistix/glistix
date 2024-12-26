@@ -1,7 +1,14 @@
 ---
 source: compiler-core/src/nix/tests/consts.rs
 expression: "import other_module.{A as B}\npub const local = B\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+import other_module.{A as B}
+pub const local = B
+
+
+----- COMPILED NIX
 let
   other_module' = builtins.import ./../../package/other_module.nix;
   B = (builtins.import ./../../package/other_module.nix).A;

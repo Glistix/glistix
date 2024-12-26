@@ -1,7 +1,17 @@
 ---
 source: compiler-core/src/nix/tests/modules.rs
 expression: "\nimport rocket_ship.{inherit, true as false}\npub fn main() {\n  #(inherit, false)\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+import rocket_ship.{inherit, true as false}
+pub fn main() {
+  #(inherit, false)
+}
+
+
+----- COMPILED NIX
 let
   rocket_ship' = builtins.import ./../rocket_ship.nix;
   inherit (builtins.import ./../rocket_ship.nix) inherit';

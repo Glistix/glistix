@@ -1,7 +1,17 @@
 ---
 source: compiler-core/src/nix/tests/custom_types.rs
 expression: "import other\n\npub fn main() {\n  other.One\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+import other
+
+pub fn main() {
+  other.One
+}
+
+
+----- COMPILED NIX
 let
   other' = builtins.import ./../other.nix;
   
