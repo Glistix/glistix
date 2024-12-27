@@ -1035,6 +1035,7 @@ impl Generator<'_> {
                                 location: _,
                                 type_: _,
                                 value,
+                                int_value: _,
                             } => value.parse().unwrap_or(0),
                             _ => 0,
                         };
@@ -1600,7 +1601,11 @@ fn constant_bit_array<'a>(
                 // Sized ints
                 [BitArrayOption::Size { value: size, .. }] => {
                     let size_int = match *size.clone() {
-                        Constant::Int { location: _, value } => value.parse().unwrap_or(0),
+                        Constant::Int {
+                            location: _,
+                            value,
+                            int_value: _,
+                        } => value.parse().unwrap_or(0),
                         _ => 0,
                     };
                     if size_int > 0 && size_int % 8 != 0 {
