@@ -13,6 +13,8 @@ let
   sourcePaths = [
     "test"
     "test-package-compiler"
+    "test-project-compiler"
+    "test-helpers-rs"
     "test-community-packages"
     "compiler-cli"
     "compiler-core"
@@ -39,7 +41,7 @@ rustPlatform.buildRustPackage {
   buildInputs = [ openssl ] ++
     lib.optionals stdenv.isDarwin [ Security SystemConfiguration ];
 
-  cargoHash = "sha256-Xty0NVTiGyBEGlAT834rfI56+876asCJRuijnmVVmYE=";
+  cargoHash = "sha256-/oJSGixb5WKg/OyoUtw6fa1wy/ObxLT8a5VLlZb0kOo=";
 
   meta = with lib; {
     description = "A fork of the Gleam compiler with a Nix backend";
