@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/parse/tests.rs
 expression: "\ntype Wibble {\n    Wibble(wibble: String)\n}\n\nfn wobble() {\n  Wibble(\"a\").\n}\n"
+snapshot_kind: text
 ---
 Parsed {
     module: Module {
@@ -145,12 +146,15 @@ Parsed {
                         documentation: None,
                         external_erlang: None,
                         external_javascript: None,
+                        external_nix: None,
                         implementations: Implementations {
                             gleam: true,
                             can_run_on_erlang: true,
                             can_run_on_javascript: true,
+                            can_run_on_nix: true,
                             uses_erlang_externals: false,
                             uses_javascript_externals: false,
+                            uses_nix_externals: false,
                         },
                     },
                 ),
