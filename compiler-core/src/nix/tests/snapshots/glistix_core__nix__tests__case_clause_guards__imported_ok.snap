@@ -19,7 +19,7 @@ fn func(x) {
 ----- COMPILED NIX
 let
   gleam' = builtins.import ./../gleam.nix;
-  inherit (builtins.import ./../gleam.nix) toList;
+  inherit (builtins.import ./../gleam.nix) Ok toList;
   
   Ok = { __gleamTag = "Ok"; };
   
@@ -28,7 +28,7 @@ let
     let
       _pat' = gleam'.Ok;
     in
-    if (toList [ ]) == (toList [ gleam'.Ok ]) then true
+    if (toList [ ]) == (toList [ Ok ]) then true
     else false;
 in
 { inherit Ok; }

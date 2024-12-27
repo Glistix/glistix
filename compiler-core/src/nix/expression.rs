@@ -1218,6 +1218,16 @@ pub(crate) fn guard_constant_expression<'a>(
                     tracker.error_used = true;
                 }
             }
+
+            // If there's no arguments and the type is a function that takes
+            // arguments then this is the constructor being referenced, not the
+            // function being called.
+            if let Some(arity) = type_.fn_arity() {
+                if args.is_empty() && arity != 0 {
+                    return Ok(record_constructor(type_.clone(), None, name, tracker));
+                }
+            }
+
             let field_values: Vec<_> = args
                 .iter()
                 .map(|arg| wrap_child_guard_constant_expression(assignments, tracker, &arg.value))
