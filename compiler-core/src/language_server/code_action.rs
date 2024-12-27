@@ -1121,7 +1121,7 @@ pub struct QualifiedConstructor<'a> {
     layer: ast::Layer,
 }
 
-impl<'a> QualifiedConstructor<'a> {
+impl QualifiedConstructor<'_> {
     fn constructor_import(&self) -> String {
         if self.layer.is_value() {
             self.constructor.to_string()
@@ -1463,11 +1463,11 @@ impl<'a> QualifiedToUnqualifiedImportSecondPass<'a> {
             import: ast::Import { location, .. },
             ..
         } = self.qualified_constructor;
-        return self
+        self
             .module
             .code
             .get(location.start as usize..location.end as usize)
-            .expect("import not found");
+            .expect("import not found")
     }
 
     fn determine_insert_position_and_text(&self) -> (u32, String) {
