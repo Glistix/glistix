@@ -22,7 +22,7 @@ const ERLANG_OTP_VERSION: &str = "27.1.2";
 #[allow(dead_code)]
 const REBAR3_VERSION: &str = "3";
 #[allow(dead_code)]
-const ELIXIR_VERSION: &str = "1.15.4";
+const ELIXIR_VERSION: &str = "1";
 
 const GLISTIX_STDLIB_URL: &str = "https://github.com/glistix/stdlib";
 
