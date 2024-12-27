@@ -1,5 +1,14 @@
 ---
 source: compiler-core/src/nix/tests/strings.rs
 expression: "\nfn go() {\n  \"Hello, \" <> \"Joe\"\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go() {
+  "Hello, " <> "Joe"
+}
+
+
+----- COMPILED NIX
 let go = { }: "Hello, " + "Joe"; in { }

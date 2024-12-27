@@ -1,7 +1,41 @@
 ---
 source: compiler-core/src/nix/tests/basic.rs
 expression: "\nimport mymod\n\ntype BigBad {\n  BigBad(a: Result(Int, Result(Int, Int)), b: Int)\n}\n\npub const inherit = 5\n\npub const bad = [Ok(5), Ok(6)]\n\nconst bigbad = [BigBad(Error(Ok(5)), 10), BigBad(Error(Ok(5)), 10)]\n\npub type Bad {\n  Bad(inherit: Bool)\n}\n\npub fn guard(x) {\n  let b = Bad(inherit: True)\n  case x {\n    Nil if mymod.inherit -> 1\n    Nil if b.inherit -> 2\n    Nil if Bad(inherit: True) == Bad(inherit: False) -> 3\n    Nil if BigBad(Error(Ok(5)), 10) == BigBad(Error(Ok(5)), 10) -> 4\n    Nil if 5 > 6 -> 5\n    Nil if [Ok(5), Ok(6)] == [Ok(7)] -> 6\n    _ -> 7\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+import mymod
+
+type BigBad {
+  BigBad(a: Result(Int, Result(Int, Int)), b: Int)
+}
+
+pub const inherit = 5
+
+pub const bad = [Ok(5), Ok(6)]
+
+const bigbad = [BigBad(Error(Ok(5)), 10), BigBad(Error(Ok(5)), 10)]
+
+pub type Bad {
+  Bad(inherit: Bool)
+}
+
+pub fn guard(x) {
+  let b = Bad(inherit: True)
+  case x {
+    Nil if mymod.inherit -> 1
+    Nil if b.inherit -> 2
+    Nil if Bad(inherit: True) == Bad(inherit: False) -> 3
+    Nil if BigBad(Error(Ok(5)), 10) == BigBad(Error(Ok(5)), 10) -> 4
+    Nil if 5 > 6 -> 5
+    Nil if [Ok(5), Ok(6)] == [Ok(7)] -> 6
+    _ -> 7
+  }
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) Ok Error toList;
   mymod' = builtins.import ./../mymod.nix;

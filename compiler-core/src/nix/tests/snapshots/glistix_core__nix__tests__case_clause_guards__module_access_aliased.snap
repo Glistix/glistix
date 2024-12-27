@@ -1,7 +1,21 @@
 ---
 source: compiler-core/src/nix/tests/case_clause_guards.rs
 expression: "\n          import hero/submodule as myhero\n          pub fn main() {\n            let name = \"Tony Stark\"\n            case name {\n              n if n == myhero.ironman.name -> True\n              _ -> False\n            }\n          }\n        "
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+          import hero/submodule as myhero
+          pub fn main() {
+            let name = "Tony Stark"
+            case name {
+              n if n == myhero.ironman.name -> True
+              _ -> False
+            }
+          }
+        
+
+----- COMPILED NIX
 let
   myhero' = builtins.import ./../../package/hero/submodule.nix;
   

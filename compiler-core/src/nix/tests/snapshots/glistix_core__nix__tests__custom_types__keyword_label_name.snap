@@ -1,7 +1,15 @@
 ---
 source: compiler-core/src/nix/tests/custom_types.rs
 expression: "pub type Thing {\n  Thing(in: Int, class: Nil)\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+pub type Thing {
+  Thing(in: Int, class: Nil)
+}
+
+
+----- COMPILED NIX
 let
   Thing = in': class: { __gleamTag = "Thing"; inherit class; "in" = in'; };
 in

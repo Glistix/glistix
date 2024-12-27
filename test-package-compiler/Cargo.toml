@@ -3,10 +3,11 @@ name = "test-package-compiler"
 version = "0.5.0"
 authors = ["PgBiel"]
 edition = "2021"
-license-file = "LICENCE"
+license = "Apache-2.0"
 
 [dependencies]
 glistix-core = { path = "../compiler-core" }
+test-helpers-rs = { path = "../test-helpers-rs" }
 toml.workspace = true
 im.workspace = true
 itertools.workspace = true

@@ -1,7 +1,29 @@
 ---
 source: compiler-core/src/nix/tests/basic.rs
 expression: "\npub type MyRecord {\n  Simple\n  TupleLike(Int, Float)\n  RecordLike(a: Int, inherit: Float)\n  Mixed(a: Int, b: Float, Float, Float)\n}\n\npub fn please_match(x) {\n  case x {\n    Simple as s -> {s #(-100, -100.0)}\n    TupleLike(i, f) as t -> { t #(i, f) }\n    RecordLike(a: i, inherit: f) -> { #(i, f) }\n    Mixed(f1, f2, a: i1, b: f3) -> #(i1, f1 +. f2 +. f3)\n    t -> { t #(555, 555.5) }\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub type MyRecord {
+  Simple
+  TupleLike(Int, Float)
+  RecordLike(a: Int, inherit: Float)
+  Mixed(a: Int, b: Float, Float, Float)
+}
+
+pub fn please_match(x) {
+  case x {
+    Simple as s -> {s #(-100, -100.0)}
+    TupleLike(i, f) as t -> { t #(i, f) }
+    RecordLike(a: i, inherit: f) -> { #(i, f) }
+    Mixed(f1, f2, a: i1, b: f3) -> #(i1, f1 +. f2 +. f3)
+    t -> { t #(555, 555.5) }
+  }
+}
+
+
+----- COMPILED NIX
 let
   Simple = { __gleamTag = "Simple"; };
   

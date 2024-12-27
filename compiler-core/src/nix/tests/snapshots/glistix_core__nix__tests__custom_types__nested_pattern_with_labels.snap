@@ -1,7 +1,19 @@
 ---
 source: compiler-core/src/nix/tests/custom_types.rs
 expression: "pub type Box(x) { Box(a: Int, b: x) }\nfn go(x) {\n  case x {\n    Box(a: _, b: Box(a: a, b: b)) -> a + b\n    _ -> 1\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+pub type Box(x) { Box(a: Int, b: x) }
+fn go(x) {
+  case x {
+    Box(a: _, b: Box(a: a, b: b)) -> a + b
+    _ -> 1
+  }
+}
+
+
+----- COMPILED NIX
 let
   Box = a: b: { __gleamTag = "Box"; inherit a b; };
   

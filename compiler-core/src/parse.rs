@@ -57,13 +57,13 @@ mod token;
 use crate::analyse::Inferred;
 use crate::ast::{
     Arg, ArgNames, AssignName, Assignment, AssignmentKind, BinOp, BitArrayOption, BitArraySegment,
-    CallArg, Clause, ClauseGuard, Constant, CustomType, Definition, Function, HasLocation, Import,
-    Module, ModuleConstant, Pattern, Publicity, RecordConstructor, RecordConstructorArg,
-    RecordUpdateSpread, SrcSpan, Statement, TargetedDefinition, TodoKind, TypeAlias, TypeAst,
-    TypeAstConstructor, TypeAstFn, TypeAstHole, TypeAstTuple, TypeAstVar, UnqualifiedImport,
-    UntypedArg, UntypedClause, UntypedClauseGuard, UntypedConstant, UntypedDefinition, UntypedExpr,
-    UntypedModule, UntypedPattern, UntypedRecordUpdateArg, UntypedStatement, Use, UseAssignment,
-    CAPTURE_VARIABLE,
+    CallArg, Clause, ClauseGuard, Constant, CustomType, Definition, Function, FunctionLiteralKind,
+    HasLocation, Import, Module, ModuleConstant, Pattern, Publicity, RecordBeingUpdated,
+    RecordConstructor, RecordConstructorArg, SrcSpan, Statement, TargetedDefinition, TodoKind,
+    TypeAlias, TypeAst, TypeAstConstructor, TypeAstFn, TypeAstHole, TypeAstTuple, TypeAstVar,
+    UnqualifiedImport, UntypedArg, UntypedClause, UntypedClauseGuard, UntypedConstant,
+    UntypedDefinition, UntypedExpr, UntypedModule, UntypedPattern, UntypedRecordUpdateArg,
+    UntypedStatement, Use, UseAssignment, CAPTURE_VARIABLE,
 };
 use crate::build::Target;
 use crate::error::wrap;
@@ -76,6 +76,7 @@ use camino::Utf8PathBuf;
 use ecow::EcoString;
 use error::{LexicalError, ParseError, ParseErrorType};
 use lexer::{LexResult, Spanned};
+use num_bigint::BigInt;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::str::FromStr;
@@ -218,7 +219,7 @@ pub struct Parser<T: Iterator<Item = LexResult>> {
     tok0: Option<Spanned>,
     tok1: Option<Spanned>,
     extra: ModuleExtra,
-    doc_comments: VecDeque<(u32, String)>,
+    doc_comments: VecDeque<(u32, EcoString)>,
 }
 impl<T> Parser<T>
 where
@@ -247,6 +248,7 @@ where
             documentation: vec![],
             type_info: (),
             definitions,
+            names: Default::default(),
         };
         Ok(Parsed {
             module,
@@ -495,11 +497,12 @@ where
                     value,
                 }
             }
-            Some((start, Token::Int { value }, end)) => {
+            Some((start, Token::Int { value, int_value }, end)) => {
                 self.advance();
                 UntypedExpr::Int {
                     location: SrcSpan { start, end },
                     value,
+                    int_value,
                 }
             }
 
@@ -678,7 +681,7 @@ where
                     })) => UntypedExpr::Fn {
                         location: SrcSpan::new(location.start, end_position),
                         end_of_head_byte_index: location.end,
-                        is_capture: false,
+                        kind: FunctionLiteralKind::Anonymous { head: location },
                         arguments: args,
                         body,
                         return_annotation,
@@ -784,7 +787,14 @@ where
                 // field access
                 match self.tok0.take() {
                     // tuple access
-                    Some((_, Token::Int { value }, end)) => {
+                    Some((
+                        _,
+                        Token::Int {
+                            value,
+                            int_value: _,
+                        },
+                        end,
+                    )) => {
                         self.advance();
                         let v = value.replace("_", "");
                         if let Ok(index) = u64::from_str(&v) {
@@ -849,7 +859,7 @@ where
                     // Record update
                     let base = self.expect_expression()?;
                     let base_e = base.location().end;
-                    let spread = RecordUpdateSpread {
+                    let record = RecordBeingUpdated {
                         base: Box::new(base),
                         location: SrcSpan {
                             start: dot_s,
@@ -869,7 +879,7 @@ where
                     expr = UntypedExpr::RecordUpdate {
                         location: SrcSpan { start, end },
                         constructor: Box::new(expr),
-                        spread,
+                        record,
                         arguments: args,
                     };
                 } else {
@@ -1203,11 +1213,12 @@ where
                     },
                 }
             }
-            Some((start, Token::Int { value }, end)) => {
+            Some((start, Token::Int { value, int_value }, end)) => {
                 self.advance();
                 Pattern::Int {
                     location: SrcSpan { start, end },
                     value,
+                    int_value,
                 }
             }
             Some((start, Token::Float { value }, end)) => {
@@ -1558,7 +1569,14 @@ where
                     };
 
                     match self.next_tok() {
-                        Some((_, Token::Int { value }, int_e)) => {
+                        Some((
+                            _,
+                            Token::Int {
+                                value,
+                                int_value: _,
+                            },
+                            int_e,
+                        )) => {
                             let v = value.replace("_", "");
                             if let Ok(index) = u64::from_str(&v) {
                                 unit = ClauseGuard::TupleIndex {
@@ -2205,10 +2223,16 @@ where
         &mut self,
     ) -> Result<(u32, EcoString, Vec<SpannedString>, u32, u32), ParseError> {
         let (start, upname, end) = self.expect_upname()?;
-        if self.maybe_one(&Token::LeftParen).is_some() {
+        if let Some((par_s, _)) = self.maybe_one(&Token::LeftParen) {
             let args =
                 Parser::series_of(self, &|p| Ok(Parser::maybe_name(p)), Some(&Token::Comma))?;
             let (_, par_e) = self.expect_one_following_series(&Token::RightParen, "a name")?;
+            if args.is_empty() {
+                return parse_error(
+                    ParseErrorType::TypeDefinitionNoArguments,
+                    SrcSpan::new(par_s, par_e),
+                );
+            }
             let args2 = args
                 .into_iter()
                 .map(|(start, name, end)| (SrcSpan { start, end }, name))
@@ -2398,9 +2422,15 @@ where
         name: EcoString,
         end: u32,
     ) -> Result<Option<TypeAst>, ParseError> {
-        if self.maybe_one(&Token::LeftParen).is_some() {
+        if let Some((par_s, _)) = self.maybe_one(&Token::LeftParen) {
             let args = self.parse_types()?;
             let (_, par_e) = self.expect_one(&Token::RightParen)?;
+            if args.is_empty() {
+                return parse_error(
+                    ParseErrorType::TypeConstructorNoArguments,
+                    SrcSpan::new(par_s, par_e),
+                );
+            }
             Ok(Some(TypeAst::Constructor(TypeAstConstructor {
                 location: SrcSpan { start, end: par_e },
                 module,
@@ -2673,10 +2703,11 @@ where
                 }))
             }
 
-            Some((start, Token::Int { value }, end)) => {
+            Some((start, Token::Int { value, int_value }, end)) => {
                 self.advance();
                 Ok(Some(Constant::Int {
                     value,
+                    int_value,
                     location: SrcSpan { start, end },
                 }))
             }
@@ -2859,11 +2890,17 @@ where
         name: EcoString,
         end: u32,
     ) -> Result<Option<UntypedConstant>, ParseError> {
-        if self.maybe_one(&Token::LeftParen).is_some() {
+        if let Some((par_s, _)) = self.maybe_one(&Token::LeftParen) {
             let args =
                 Parser::series_of(self, &Parser::parse_const_record_arg, Some(&Token::Comma))?;
             let (_, par_e) =
                 self.expect_one_following_series(&Token::RightParen, "a constant record argument")?;
+            if args.is_empty() {
+                return parse_error(
+                    ParseErrorType::ConstantRecordConstructorNoArguments,
+                    SrcSpan::new(par_s, par_e),
+                );
+            }
             Ok(Some(Constant::Record {
                 location: SrcSpan { start, end: par_e },
                 module,
@@ -2957,7 +2994,7 @@ where
         &mut self,
         value_parser: &impl Fn(&mut Self) -> Result<Option<A>, ParseError>,
         arg_parser: &impl Fn(&mut Self) -> Result<A, ParseError>,
-        to_int_segment: &impl Fn(EcoString, u32, u32) -> A,
+        to_int_segment: &impl Fn(EcoString, BigInt, u32, u32) -> A,
     ) -> Result<Option<BitArraySegment<A, ()>>, ParseError>
     where
         A: HasLocation + std::fmt::Debug,
@@ -2998,7 +3035,7 @@ where
     fn parse_bit_array_option<A: std::fmt::Debug>(
         &mut self,
         arg_parser: &impl Fn(&mut Self) -> Result<A, ParseError>,
-        to_int_segment: &impl Fn(EcoString, u32, u32) -> A,
+        to_int_segment: &impl Fn(EcoString, BigInt, u32, u32) -> A,
     ) -> Result<Option<BitArrayOption<A>>, ParseError> {
         match self.next_tok() {
             // named segment
@@ -3054,9 +3091,9 @@ where
                 }
             }
             // int segment
-            Some((start, Token::Int { value }, end)) => Ok(Some(BitArrayOption::Size {
+            Some((start, Token::Int { value, int_value }, end)) => Ok(Some(BitArrayOption::Size {
                 location: SrcSpan { start, end },
-                value: Box::new(to_int_segment(value, start, end)),
+                value: Box::new(to_int_segment(value, int_value, start, end)),
                 short_form: true,
             })),
             // invalid
@@ -3075,9 +3112,10 @@ where
                 constructor: None,
                 type_: (),
             }),
-            Some((start, Token::Int { value }, end)) => Ok(Pattern::Int {
+            Some((start, Token::Int { value, int_value }, end)) => Ok(Pattern::Int {
                 location: SrcSpan { start, end },
                 value,
+                int_value,
             }),
             _ => self.next_tok_unexpected(vec!["A variable name or an integer".into()]),
         }
@@ -3085,9 +3123,10 @@ where
 
     fn expect_const_int(&mut self) -> Result<UntypedConstant, ParseError> {
         match self.next_tok() {
-            Some((start, Token::Int { value }, end)) => Ok(Constant::Int {
+            Some((start, Token::Int { value, int_value }, end)) => Ok(Constant::Int {
                 location: SrcSpan { start, end },
                 value,
+                int_value,
             }),
             _ => self.next_tok_unexpected(vec!["A variable name or an integer".into()]),
         }
@@ -3581,7 +3620,10 @@ functions are declared separately from types.";
         if attributes.deprecated.is_deprecated() {
             return parse_error(ParseErrorType::DuplicateAttribute, SrcSpan::new(start, end));
         }
-        let (_, message, _) = self.expect_string()?;
+        let (_, message, _) = self.expect_string().map_err(|_| ParseError {
+            error: ParseErrorType::ExpectedDeprecationMessage,
+            location: SrcSpan { start, end },
+        })?;
         let (_, end) = self.expect_one(&Token::RightParen)?;
         attributes.deprecated = Deprecation::Deprecated { message };
         Ok(end)
@@ -3895,24 +3937,37 @@ fn clause_guard_reduction(
 // BitArrays in patterns, guards, and expressions have a very similar structure
 // but need specific types. These are helpers for that. There is probably a
 // rustier way to do this :)
-fn bit_array_pattern_int(value: EcoString, start: u32, end: u32) -> UntypedPattern {
+fn bit_array_pattern_int(
+    value: EcoString,
+    int_value: BigInt,
+    start: u32,
+    end: u32,
+) -> UntypedPattern {
     Pattern::Int {
         location: SrcSpan { start, end },
         value,
+        int_value,
     }
 }
 
-fn bit_array_expr_int(value: EcoString, start: u32, end: u32) -> UntypedExpr {
+fn bit_array_expr_int(value: EcoString, int_value: BigInt, start: u32, end: u32) -> UntypedExpr {
     UntypedExpr::Int {
         location: SrcSpan { start, end },
         value,
+        int_value,
     }
 }
 
-fn bit_array_const_int(value: EcoString, start: u32, end: u32) -> UntypedConstant {
+fn bit_array_const_int(
+    value: EcoString,
+    int_value: BigInt,
+    start: u32,
+    end: u32,
+) -> UntypedConstant {
     Constant::Int {
         location: SrcSpan { start, end },
         value,
+        int_value,
     }
 }
 
@@ -4020,7 +4075,7 @@ pub fn make_call(
         1 => Ok(UntypedExpr::Fn {
             location: call.location(),
             end_of_head_byte_index: call.location().end,
-            is_capture: true,
+            kind: FunctionLiteralKind::Capture,
             arguments: vec![Arg {
                 location: hole_location.expect("At least a capture hole"),
                 annotation: None,
@@ -4042,4 +4097,22 @@ pub fn make_call(
 struct ParsedUnqualifiedImports {
     types: Vec<UnqualifiedImport>,
     values: Vec<UnqualifiedImport>,
+}
+
+/// Parses an Int value to a bigint.
+///
+pub fn parse_int_value(value: &str) -> Option<BigInt> {
+    let (radix, value) = if let Some(value) = value.strip_prefix("0x") {
+        (16, value)
+    } else if let Some(value) = value.strip_prefix("0o") {
+        (8, value)
+    } else if let Some(value) = value.strip_prefix("0b") {
+        (2, value)
+    } else {
+        (10, value)
+    };
+
+    let value = value.trim_start_matches('_');
+
+    BigInt::parse_bytes(value.as_bytes(), radix)
 }

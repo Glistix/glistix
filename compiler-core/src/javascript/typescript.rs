@@ -11,7 +11,7 @@
 //! <https://www.typescriptlang.org/>
 //! <https://www.typescriptlang.org/docs/handbook/declaration-files/introduction.html>
 
-use crate::ast::AssignName;
+use crate::ast::{AssignName, Publicity};
 use crate::type_::{is_prelude_module, PRELUDE_MODULE_NAME};
 use crate::{
     ast::{
@@ -23,7 +23,7 @@ use crate::{
     pretty::{break_, Document, Documentable},
     type_::{Type, TypeVar},
 };
-use ecow::EcoString;
+use ecow::{eco_format, EcoString};
 use itertools::Itertools;
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
@@ -144,7 +144,7 @@ where
 /// Returns a name that can be used as a TypeScript type name. If there is a
 /// naming clash a '_' will be appended.
 ///
-fn ts_safe_type_name(mut name: String) -> String {
+fn ts_safe_type_name(mut name: String) -> EcoString {
     if matches!(
         name.as_str(),
         "any"
@@ -163,7 +163,7 @@ fn ts_safe_type_name(mut name: String) -> String {
             | "of"
     ) {
         name.push('_');
-        name
+        EcoString::from(name)
     } else {
         super::maybe_escape_identifier_string(&name)
     }
@@ -232,30 +232,99 @@ impl<'a> TypeScriptGenerator<'a> {
 
         for statement in &self.module.definitions {
             match statement {
-                Definition::Function(Function { .. })
-                | Definition::TypeAlias(TypeAlias { .. })
-                | Definition::CustomType(CustomType { .. })
-                | Definition::ModuleConstant(ModuleConstant { .. }) => (),
-
-                Definition::Import(Import {
-                    module,
-                    package,
-                    as_name,
+                Definition::Function(Function {
+                    arguments,
+                    return_type,
                     ..
                 }) => {
-                    match as_name {
-                        Some((AssignName::Variable(name), _)) => {
-                            let _ = self.aliased_module_names.insert(module, name);
-                        }
-                        Some((AssignName::Discard(_), _)) | None => (),
+                    for a in arguments {
+                        self.collect_imports_for_type(&a.type_, &mut imports);
                     }
 
-                    self.register_import(&mut imports, package, module);
+                    self.collect_imports_for_type(return_type, &mut imports);
                 }
+
+                Definition::TypeAlias(TypeAlias { type_, .. }) => {
+                    self.collect_imports_for_type(type_, &mut imports)
+                }
+
+                Definition::CustomType(CustomType {
+                    constructors,
+                    typed_parameters,
+                    ..
+                }) => {
+                    for t in typed_parameters {
+                        self.collect_imports_for_type(t, &mut imports);
+                    }
+
+                    for constructor in constructors {
+                        for arg in constructor.arguments.as_slice() {
+                            self.collect_imports_for_type(&arg.type_, &mut imports);
+                        }
+                    }
+                }
+
+                Definition::ModuleConstant(ModuleConstant { type_, .. }) => {
+                    self.collect_imports_for_type(type_, &mut imports)
+                }
+
+                Definition::Import(Import {
+                    module, as_name, ..
+                }) => match as_name {
+                    Some((AssignName::Variable(name), _)) => {
+                        let _ = self.aliased_module_names.insert(module, name);
+                    }
+                    Some((AssignName::Discard(_), _)) | None => (),
+                },
             }
         }
 
         imports
+    }
+
+    /// Recurses through a type and any types it references, registering all of their imports.
+    ///
+    fn collect_imports_for_type<'b>(&mut self, type_: &'b Type, imports: &mut Imports<'a>) {
+        match &type_ {
+            Type::Named {
+                package,
+                module,
+                args,
+                ..
+            } => {
+                let is_prelude = module == "gleam" && package.is_empty();
+                let is_current_module = *module == self.module.name;
+
+                if !is_prelude && !is_current_module {
+                    self.register_import(imports, package, module);
+                }
+
+                for arg in args {
+                    self.collect_imports_for_type(arg, imports);
+                }
+            }
+            Type::Fn { args, retrn } => {
+                for arg in args {
+                    self.collect_imports_for_type(arg, imports);
+                }
+                self.collect_imports_for_type(retrn, imports);
+            }
+            Type::Tuple { elems } => {
+                for elem in elems {
+                    self.collect_imports_for_type(elem, imports);
+                }
+            }
+            Type::Var { type_ } => {
+                if let TypeVar::Link { type_ } = type_
+                    .as_ref()
+                    .try_borrow()
+                    .expect("borrow type after inference")
+                    .deref()
+                {
+                    self.collect_imports_for_type(type_, imports);
+                }
+            }
+        }
     }
 
     /// Registers an import of an external module so that it can be added to
@@ -263,30 +332,35 @@ impl<'a> TypeScriptGenerator<'a> {
     /// "$" symbol to prevent any clashes with other Gleam names that may be
     /// used in this module.
     ///
-    fn register_import(&mut self, imports: &mut Imports<'a>, package: &'a str, module: &'a str) {
+    fn register_import<'b>(
+        &mut self,
+        imports: &mut Imports<'a>,
+        package: &'b str,
+        module: &'b str,
+    ) {
         let path = self.import_path(package, module);
         imports.register_module(path, [self.module_name(module)], []);
     }
 
     /// Calculates the path of where to import an external module from
     ///
-    fn import_path(&self, package: &'a str, module: &'a str) -> String {
+    fn import_path<'b>(&self, package: &'b str, module: &'b str) -> EcoString {
         // DUPE: current_module_name_segments_count
         // TODO: strip shared prefixed between current module and imported
         // module to avoid descending and climbing back out again
         if package == self.module.type_info.package || package.is_empty() {
             // Same package
             match self.current_module_name_segments_count {
-                1 => format!("./{module}.d.mts"),
+                1 => eco_format!("./{module}.d.mts"),
                 _ => {
                     let prefix = "../".repeat(self.current_module_name_segments_count - 1);
-                    format!("{prefix}{module}.d.mts")
+                    eco_format!("{prefix}{module}.d.mts")
                 }
             }
         } else {
             // Different package
             let prefix = "../".repeat(self.current_module_name_segments_count);
-            format!("{prefix}{package}/{module}.d.mts")
+            eco_format!("{prefix}{package}/{module}.d.mts")
         }
     }
 
@@ -309,10 +383,13 @@ impl<'a> TypeScriptGenerator<'a> {
                 name,
                 typed_parameters,
                 ..
-            }) if publicity.is_importable() => {
-                self.custom_type_definition(name, typed_parameters, constructors, *opaque)
-            }
-            Definition::CustomType(CustomType { .. }) => vec![],
+            }) => self.custom_type_definition(
+                name,
+                typed_parameters,
+                constructors,
+                *opaque,
+                publicity,
+            ),
 
             Definition::ModuleConstant(ModuleConstant {
                 publicity,
@@ -338,7 +415,7 @@ impl<'a> TypeScriptGenerator<'a> {
     fn type_alias(&mut self, alias: &str, type_: &Type) -> Output<'a> {
         Ok(docvec![
             "export type ",
-            Document::String(ts_safe_type_name(alias.to_string())),
+            ts_safe_type_name(alias.to_string()),
             " = ",
             self.print_type(type_),
             ";"
@@ -359,10 +436,14 @@ impl<'a> TypeScriptGenerator<'a> {
         typed_parameters: &'a [Arc<Type>],
         constructors: &'a [TypedRecordConstructor],
         opaque: bool,
+        publicity: &Publicity,
     ) -> Vec<Output<'a>> {
+        // Constructors for opaque and private types are not exported
+        let export_constructors = !opaque && publicity.is_importable();
+
         let mut definitions: Vec<Output<'_>> = constructors
             .iter()
-            .map(|constructor| Ok(self.record_definition(constructor, opaque)))
+            .map(|constructor| Ok(self.record_definition(constructor, export_constructors)))
             .collect();
 
         let definition = if constructors.is_empty() {
@@ -378,8 +459,13 @@ impl<'a> TypeScriptGenerator<'a> {
         };
 
         definitions.push(Ok(docvec![
-            "export type ",
-            name_with_generics(Document::String(format!("{name}$")), typed_parameters),
+            if publicity.is_importable() {
+                "export ".to_doc()
+            } else {
+                "declare ".to_doc()
+            },
+            "type ",
+            name_with_generics(eco_format!("{name}$").to_doc(), typed_parameters),
             " = ",
             definition,
             ";",
@@ -391,15 +477,14 @@ impl<'a> TypeScriptGenerator<'a> {
     fn record_definition(
         &mut self,
         constructor: &'a TypedRecordConstructor,
-        opaque: bool,
+        export: bool,
     ) -> Document<'a> {
         self.set_prelude_used();
         let head = docvec![
-            // opaque type constructors are not exposed to JS
-            if opaque {
-                super::nil()
-            } else {
+            if export {
                 "export ".to_doc()
+            } else {
+                "declare ".to_doc()
             },
             "class ",
             name_with_generics(
@@ -422,7 +507,7 @@ impl<'a> TypeScriptGenerator<'a> {
                     .label
                     .as_ref()
                     .map(|(_, s)| super::maybe_escape_identifier_doc(s))
-                    .unwrap_or_else(|| Document::String(format!("argument${i}")));
+                    .unwrap_or_else(|| eco_format!("argument${i}").to_doc());
                 docvec![name, ": ", self.do_print_force_generic_param(&arg.type_)]
             })),
             ";",
@@ -435,7 +520,7 @@ impl<'a> TypeScriptGenerator<'a> {
                         .label
                         .as_ref()
                         .map(|(_, s)| super::maybe_escape_identifier_doc(s))
-                        .unwrap_or_else(|| Document::String(format!("{i}")));
+                        .unwrap_or_else(|| eco_format!("{i}").to_doc());
                     docvec![
                         name,
                         ": ",
@@ -531,22 +616,18 @@ impl<'a> TypeScriptGenerator<'a> {
     /// Get the locally used name for a module. Either the last segment, or the
     /// alias if one was given when imported.
     ///
-    fn module_name(&self, name: &str) -> String {
+    fn module_name(&self, name: &str) -> EcoString {
         // The prelude is always `_`
         if name.is_empty() {
             return "_".into();
         }
 
         let name = match self.aliased_module_names.get(name) {
-            Some(name) => (*name).to_string(),
-            None => name
-                .split('/')
-                .last()
-                .expect("Non empty module path")
-                .to_string(),
+            Some(name) => name,
+            None => name.split('/').last().expect("Non empty module path"),
         };
 
-        format!("${name}")
+        eco_format!("${name}")
     }
 
     fn do_print(
@@ -668,17 +749,13 @@ impl<'a> TypeScriptGenerator<'a> {
         module: &str,
         generic_usages: Option<&HashMap<u64, u64>>,
     ) -> Document<'static> {
-        let name = format!("{}$", ts_safe_type_name(name.to_string()));
+        let name = eco_format!("{}$", ts_safe_type_name(name.to_string()));
         let name = match module == self.module.name {
-            true => Document::String(name),
+            true => name.to_doc(),
             false => {
                 // If type comes from a separate module, use that module's name
                 // as a TypeScript namespace prefix
-                docvec![
-                    Document::String(self.module_name(module)),
-                    ".",
-                    Document::String(name),
-                ]
+                docvec![self.module_name(module), ".", name]
             }
         };
         if args.is_empty() {

@@ -1,7 +1,21 @@
 ---
 source: compiler-core/src/nix/tests/lists.rs
 expression: "\nfn go(xs) {\n  case xs {\n    [] -> 0\n    [_] -> 1\n    [_, _] -> 2\n    _ -> 9999\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(xs) {
+  case xs {
+    [] -> 0
+    [_] -> 1
+    [_, _] -> 2
+    _ -> 9999
+  }
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) listHasLength;
   

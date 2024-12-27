@@ -5,6 +5,7 @@ mod wasm_filesystem;
 
 use camino::Utf8PathBuf;
 use glistix_core::{
+    analyse::TargetSupport,
     build::{
         Mode, NullTelemetry, PackageCompiler, StaleTracker, Target, TargetCodegenConfiguration,
     },
@@ -78,7 +79,7 @@ fn get_warnings(project_id: usize) -> VectorWarningEmitterIO {
 #[wasm_bindgen]
 pub fn write_module(project_id: usize, module_name: &str, code: &str) {
     let fs = get_filesystem(project_id);
-    let path = format!("/src/{}.gleam", module_name);
+    let path = format!("/src/{module_name}.gleam");
     fs.write(&Utf8PathBuf::from(path), code)
         .expect("writing file")
 }
@@ -134,7 +135,7 @@ pub fn compile_package(project_id: usize, target: &str) -> Result<(), String> {
 #[wasm_bindgen]
 pub fn read_compiled_javascript(project_id: usize, module_name: &str) -> Option<String> {
     let fs = get_filesystem(project_id);
-    let path = format!("/build/{}.mjs", module_name);
+    let path = format!("/build/{module_name}.mjs");
     fs.read(&Utf8PathBuf::from(path)).ok()
 }
 
@@ -219,6 +220,7 @@ fn do_compile_package(project: Project, target: Target) -> Result<(), Error> {
     compiler.write_entrypoint = false;
     compiler.write_metadata = false;
     compiler.compile_beam_bytecode = true;
+    compiler.target_support = TargetSupport::Enforced;
     compiler
         .compile(
             &warning_emitter,

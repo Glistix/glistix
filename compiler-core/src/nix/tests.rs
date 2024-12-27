@@ -40,8 +40,13 @@ pub static CURRENT_PACKAGE: &str = "thepackage";
 #[macro_export]
 macro_rules! assert_nix_with_multiple_imports {
     ($(($name:literal, $module_src:literal)),+; $src:literal) => {
-        let output =
+        let compiled =
             $crate::nix::tests::compile_nix($src, vec![$((CURRENT_PACKAGE, $name, $module_src)),*]).expect("compilation failed");
+        let mut output = String::from("----- SOURCE CODE\n");
+        for (name, src) in [$(($name, $module_src)),*] {
+            output.push_str(&format!("-- {name}.gleam\n{src}\n\n"));
+        }
+        output.push_str(&format!("-- main.gleam\n{}\n\n----- COMPILED NIX\n{compiled}", $src));
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     };
 }
@@ -49,9 +54,13 @@ macro_rules! assert_nix_with_multiple_imports {
 #[macro_export]
 macro_rules! assert_nix {
     (($dep_package:expr, $dep_name:expr, $dep_src:expr), $src:expr $(,)?) => {{
-        let output =
+        let compiled =
             $crate::nix::tests::compile_nix($src, vec![($dep_package, $dep_name, $dep_src)])
                 .expect("compilation failed");
+        let output = format!(
+            "----- SOURCE CODE\n{}\n\n----- COMPILED NIX\n{}",
+            $src, compiled
+        );
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     }};
 
@@ -63,7 +72,11 @@ macro_rules! assert_nix {
     }};
 
     ($src:expr $(,)?) => {{
-        let output = $crate::nix::tests::compile_nix($src, vec![]).expect("compilation failed");
+        let compiled = $crate::nix::tests::compile_nix($src, vec![]).expect("compilation failed");
+        let output = format!(
+            "----- SOURCE CODE\n{}\n\n----- COMPILED NIX\n{}",
+            $src, compiled
+        );
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     }};
 
@@ -76,7 +89,8 @@ macro_rules! assert_nix {
 #[macro_export]
 macro_rules! assert_nix_error {
     ($src:expr $(,)?) => {{
-        let output = $crate::nix::tests::expect_nix_error($src, vec![]);
+        let error = $crate::nix::tests::expect_nix_error($src, vec![]);
+        let output = format!("----- SOURCE CODE\n{}\n\n----- ERROR\n{}", $src, error);
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     }};
 }
@@ -160,7 +174,7 @@ pub fn compile_nix(src: &str, deps: Vec<(&str, &str, &str)>) -> Result<String, c
 
 pub fn expect_nix_error(src: &str, deps: Vec<(&str, &str, &str)>) -> String {
     let error = compile_nix(src, deps).expect_err("should not compile");
-    println!("er: {:#?}", error);
+    println!("er: {error:#?}");
     let better_error = match error {
         crate::Error::Nix {
             error: inner_error, ..
@@ -169,7 +183,7 @@ pub fn expect_nix_error(src: &str, deps: Vec<(&str, &str, &str)>) -> String {
             path: Utf8PathBuf::from("/src/nix/error.gleam"),
             error: inner_error,
         },
-        _ => panic!("expected nix error, got {:#?}", error),
+        _ => panic!("expected nix error, got {error:#?}"),
     };
     better_error.pretty_string()
 }

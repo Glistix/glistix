@@ -157,8 +157,7 @@ impl Printer {
 }
 
 fn qualify_type_name(module: &str, type_name: &str) -> Document<'static> {
-    let type_name = Document::String(type_name.to_string());
-    docvec![Document::String(module.to_string()), ".", type_name]
+    docvec![EcoString::from(module), ".", EcoString::from(type_name)]
 }
 
 #[test]
@@ -260,6 +259,7 @@ fn pretty_print_test() {
             name: "Int".into(),
             publicity: Publicity::Public,
             args: vec![],
+            inferred_variant: None,
         },
         "Int",
     );
@@ -276,6 +276,7 @@ fn pretty_print_test() {
                     name: "Int".into(),
                     publicity: Publicity::Public,
                     args: vec![],
+                    inferred_variant: None,
                 }),
                 Arc::new(Type::Named {
                     module: "whatever".into(),
@@ -283,8 +284,10 @@ fn pretty_print_test() {
                     name: "Bool".into(),
                     publicity: Publicity::Public,
                     args: vec![],
+                    inferred_variant: None,
                 }),
             ],
+            inferred_variant: None,
         },
         "Pair(Int, Bool)",
     );
@@ -297,6 +300,7 @@ fn pretty_print_test() {
                     package: "whatever".into(),
                     name: "Int".into(),
                     publicity: Publicity::Public,
+                    inferred_variant: None,
                 }),
                 Arc::new(Type::Named {
                     args: vec![],
@@ -304,6 +308,7 @@ fn pretty_print_test() {
                     package: "whatever".into(),
                     name: "Bool".into(),
                     publicity: Publicity::Public,
+                    inferred_variant: None,
                 }),
             ],
             retrn: Arc::new(Type::Named {
@@ -312,6 +317,7 @@ fn pretty_print_test() {
                 package: "whatever".into(),
                 name: "Bool".into(),
                 publicity: Publicity::Public,
+                inferred_variant: None,
             }),
         },
         "fn(Int, Bool) -> Bool",
@@ -325,6 +331,7 @@ fn pretty_print_test() {
                     package: "whatever".into(),
                     name: "Int".into(),
                     publicity: Publicity::Public,
+                    inferred_variant: None,
                 }),
             })),
         },

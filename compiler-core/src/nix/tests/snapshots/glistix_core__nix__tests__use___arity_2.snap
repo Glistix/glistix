@@ -1,7 +1,22 @@
 ---
 source: compiler-core/src/nix/tests/use_.rs
 expression: "\npub fn main() {\n  use <- pair(1.0)\n  123\n}\n\nfn pair(x, f) {\n  let y = f()\n  #(x, y)\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub fn main() {
+  use <- pair(1.0)
+  123
+}
+
+fn pair(x, f) {
+  let y = f()
+  #(x, y)
+}
+
+
+----- COMPILED NIX
 let
   pair = x: f: let y = f { }; in [ x y ];
   

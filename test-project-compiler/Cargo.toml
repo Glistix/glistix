@@ -1,0 +1,19 @@
+[package]
+name = "test-project-compiler"
+version = "0.5.0"
+authors = ["PgBiel"]
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+glistix-core = { path = "../compiler-core" }
+test-helpers-rs = { path = "../test-helpers-rs" }
+toml.workspace = true
+im.workspace = true
+itertools.workspace = true
+walkdir.workspace = true
+regex.workspace = true
+camino.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

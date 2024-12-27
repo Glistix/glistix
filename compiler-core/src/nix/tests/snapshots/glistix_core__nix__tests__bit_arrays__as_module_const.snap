@@ -1,7 +1,26 @@
 ---
 source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "\n          pub const data = <<\n            0x1,\n            2,\n            2:size(16),\n            0x4:size(32),\n            \"Gleam\":utf8,\n            // 4.2:float,\n            <<\n              <<1, 2, 3>>:bits,\n              \"Gleam\":utf8,\n              1024\n            >>:bits\n          >>\n        "
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+          pub const data = <<
+            0x1,
+            2,
+            2:size(16),
+            0x4:size(32),
+            "Gleam":utf8,
+            // 4.2:float,
+            <<
+              <<1, 2, 3>>:bits,
+              "Gleam":utf8,
+              1024
+            >>:bits
+          >>
+        
+
+----- COMPILED NIX
 let
   inherit
     (builtins.import ./../gleam.nix)

@@ -1,7 +1,18 @@
 ---
 source: compiler-core/src/nix/tests/functions.rs
 expression: "import inherit.{with as null} as or\n\npub fn in() {\n  let rec = or.with\n  null()\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+import inherit.{with as null} as or
+
+pub fn in() {
+  let rec = or.with
+  null()
+}
+
+
+----- COMPILED NIX
 let
   or'' = builtins.import ./../inherit.nix;
   null' = (builtins.import ./../inherit.nix).with';

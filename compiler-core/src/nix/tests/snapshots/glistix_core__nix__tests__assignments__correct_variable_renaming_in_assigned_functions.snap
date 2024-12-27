@@ -1,7 +1,22 @@
 ---
 source: compiler-core/src/nix/tests/assignments.rs
 expression: "\npub fn debug(x) {\n  let x = x\n  fn(x) {\n    x + 1\n    let x = x\n    let x = x\n    x\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub fn debug(x) {
+  let x = x
+  fn(x) {
+    x + 1
+    let x = x
+    let x = x
+    x
+  }
+}
+
+
+----- COMPILED NIX
 let
   debug =
     x:

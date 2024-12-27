@@ -1,5 +1,13 @@
 ---
 source: compiler-core/src/nix/tests/functions.rs
 expression: "\npub fn add(x, y) {\n    x + y\n}"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub fn add(x, y) {
+    x + y
+}
+
+----- COMPILED NIX
 let add = x: y: x + y; in { inherit add; }

@@ -3,6 +3,10 @@ source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "const a = <<\"hello\", \" \", \"world\">>"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+const a = <<"hello", " ", "world">>
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) toBitArray stringBits;
   

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    assert_no_warnings, assert_warning, assert_warnings_with_gleam_version,
-    assert_warnings_with_imports,
+    assert_js_no_warnings, assert_js_warning, assert_no_warnings, assert_warning,
+    assert_warnings_with_gleam_version, assert_warnings_with_imports,
 };
 
 #[test]
@@ -1375,7 +1375,67 @@ fn unused_module_select_constructor() {
 import wibble
 
 pub fn main() {
+  wibble.Wibble
+  1
+}
+"#
+    );
+}
+
+#[test]
+fn unused_module_select_constructor_call() {
+    assert_warning!(
+        ("wibble", "pub type Wibble { Wibble(Int) }"),
+        r#"
+import wibble
+
+pub fn main() {
   wibble.Wibble(1)
+  1
+}
+"#
+    );
+}
+
+#[test]
+fn unused_module_select_function() {
+    assert_warning!(
+        ("wibble", "pub fn println(a) { Nil }"),
+        r#"
+import wibble
+
+pub fn main() {
+  wibble.println
+  1
+}
+"#
+    );
+}
+
+#[test]
+fn unused_module_select_const() {
+    assert_warning!(
+        ("wibble", "pub const a = 1"),
+        r#"
+import wibble
+
+pub fn main() {
+  wibble.a
+  1
+}
+"#
+    );
+}
+
+#[test]
+fn calling_function_from_other_module_is_not_marked_unused() {
+    assert_no_warnings!(
+        ("wibble", "wibble", "pub fn println(a) { Nil }"),
+        r#"
+import wibble
+
+pub fn main() {
+  wibble.println("hello!")
   1
 }
 "#
@@ -2417,5 +2477,235 @@ pub fn main(a) {
   }
 }
 ",
+    );
+}
+
+#[test]
+fn record_update_variant_inference_requires_v1_6() {
+    assert_warnings_with_gleam_version!(
+        Range::higher_than(Version::new(1, 0, 0)),
+        "
+pub type Wibble {
+  Wibble(a: Int, b: Int)
+  Wobble(a: Int, c: Int)
+}
+
+pub fn main(wibble) {
+  case wibble {
+    Wibble(..) -> Wibble(..wibble, b: 10)
+    Wobble(..) -> panic
+  }
+}
+",
+    );
+}
+
+#[test]
+fn record_access_variant_inference_requires_v1_6() {
+    assert_warnings_with_gleam_version!(
+        Range::higher_than(Version::new(1, 0, 0)),
+        "
+pub type Wibble {
+  Wibble(a: Int, b: Int)
+  Wobble(a: Int, c: Int)
+}
+
+pub fn main(wibble) {
+  case wibble {
+    Wibble(..) -> wibble.b
+    Wobble(..) -> wibble.c
+  }
+}
+",
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_decimal() {
+    assert_js_warning!(
+        r#"
+pub fn go() {
+  [
+    9_007_199_254_740_990,
+    9_007_199_254_740_991,
+    9_007_199_254_740_992,
+    -9_007_199_254_740_990,
+    -9_007_199_254_740_991,
+    -9_007_199_254_740_992,
+  ]
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_binary() {
+    assert_js_warning!(
+        r#"
+pub fn go() {
+  [
+    0b11111111111111111111111111111111111111111111111111110,
+    0b11111111111111111111111111111111111111111111111111111,
+    0b100000000000000000000000000000000000000000000000000000,
+  ]
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_octal() {
+    assert_js_warning!(
+        r#"
+pub fn go() {
+  [
+    0o377777777777777776,
+    0o377777777777777777,
+    0o400000000000000000,
+  ]
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_hex() {
+    assert_js_warning!(
+        r#"
+pub fn go() {
+  [
+    0x1FFFFFFFFFFFFE,
+    0x1FFFFFFFFFFFFF,
+    0x20000000000000,
+  ]
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_in_tuple() {
+    assert_js_warning!(
+        r#"
+pub fn go() {
+  #(9_007_199_254_740_992)
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_segment_in_bit_array() {
+    assert_js_warning!(
+        r#"
+pub fn go() {
+  <<9_007_199_254_740_992:64>>
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_segment_size_in_bit_array() {
+    assert_js_warning!(
+        r#"
+pub fn go() {
+  [
+    <<0:9_007_199_254_740_992>>,
+    <<0:size(9_007_199_254_740_992)>>,
+  ]
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_in_const() {
+    assert_js_warning!(r#"pub const i = 9_007_199_254_740_992"#);
+}
+
+#[test]
+fn javascript_unsafe_int_in_const_tuple() {
+    assert_js_warning!(r#"pub const i = #(9_007_199_254_740_992)"#);
+}
+
+#[test]
+fn javascript_unsafe_int_segment_in_const_bit_array() {
+    assert_js_warning!(
+        r#"
+pub const i = <<9_007_199_254_740_992:64>>
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_segment_size_in_const_bit_array() {
+    assert_js_warning!(
+        r#"
+pub const ints = [
+  <<0:9_007_199_254_740_992>>,
+  <<0:size(9_007_199_254_740_992)>>,
+]
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_in_pattern() {
+    assert_js_warning!(
+        r#"
+pub fn go() {
+  let assert <<9_007_199_254_740_992:64>> = <<>>
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_segment_size_in_pattern() {
+    assert_js_warning!(
+        r#"
+pub fn go() {
+  let assert <<0:9_007_199_254_740_992>> = <<>>
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_with_external_implementation() {
+    assert_js_no_warnings!(
+        r#"
+@external(javascript, "./test.mjs", "go")
+pub fn go() -> Int {
+  9_007_199_254_740_992
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_segment_in_pattern_with_external_implementation() {
+    assert_js_no_warnings!(
+        r#"
+@external(javascript, "./test.mjs", "go")
+pub fn go(b: BitArray) -> BitArray {
+  let assert <<0xFFF0000000000000:64>> = b
+}
+"#
+    );
+}
+
+#[test]
+fn javascript_unsafe_int_with_external_function_call() {
+    assert_js_warning!(
+        r#"
+pub fn main() {
+  9_007_199_254_740_992 + helper()
+}
+
+@external(javascript, "a", "b")
+fn helper() -> Int
+"#
     );
 }

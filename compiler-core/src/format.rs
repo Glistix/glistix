@@ -16,7 +16,7 @@ use crate::{
     warning::WarningEmitter,
     Error, Result,
 };
-use ecow::EcoString;
+use ecow::{eco_format, EcoString};
 use itertools::Itertools;
 use std::{cmp::Ordering, sync::Arc};
 use vec1::Vec1;
@@ -207,11 +207,9 @@ impl<'comments> Formatter<'comments> {
         // and doc comments (///) remain. Freestanding comments aren't associated
         // with any statement, and are moved to the bottom of the module.
         let doc_comments = join(
-            self.doc_comments.iter().map(|comment| {
-                "///"
-                    .to_doc()
-                    .append(Document::String(comment.content.to_string()))
-            }),
+            self.doc_comments
+                .iter()
+                .map(|comment| "///".to_doc().append(EcoString::from(comment.content))),
             line(),
         );
 
@@ -221,11 +219,10 @@ impl<'comments> Formatter<'comments> {
         };
 
         let module_comments = if !self.module_comments.is_empty() {
-            let comments = self.module_comments.iter().map(|s| {
-                "////"
-                    .to_doc()
-                    .append(Document::String(s.content.to_string()))
-            });
+            let comments = self
+                .module_comments
+                .iter()
+                .map(|s| "////".to_doc().append(EcoString::from(s.content)));
             join(comments, line()).append(line())
         } else {
             nil()
@@ -549,7 +546,29 @@ impl<'comments> Formatter<'comments> {
             };
         }
 
-        let comma = flex_break(",", ", ");
+        let comma = match elements.first() {
+            // If the list is made of records and it gets too long we want to
+            // have each record on its own line instead of trying to fit as much
+            // as possible in each line. For example:
+            //
+            //    [
+            //       Some("wibble wobble"),
+            //       None,
+            //       Some("wobble wibble"),
+            //    ]
+            //
+            Some(Constant::Record { .. }) => break_(",", ", "),
+            // For all other items, if we have to break the list we still try to
+            // fit as much as possible into a single line instead of putting
+            // each item on its own separate line. For example:
+            //
+            //   [
+            //     1, 2, 3, 4,
+            //     5, 6, 7,
+            //   ]
+            //
+            Some(_) | None => flex_break(",", ", "),
+        };
         let elements = join(elements.iter().map(|e| self.const_expr(e)), comma);
 
         let doc = break_("[", "[").append(elements).nest(INDENT);
@@ -637,7 +656,7 @@ impl<'comments> Formatter<'comments> {
             None => nil(),
             Some(_) => join(
                 comments.map(|c| match c {
-                    Some(c) => "///".to_doc().append(Document::String(c.to_string())),
+                    Some(c) => "///".to_doc().append(EcoString::from(c)),
                     None => unreachable!("empty lines dropped by pop_doc_comments"),
                 }),
                 line(),
@@ -880,7 +899,7 @@ impl<'comments> Formatter<'comments> {
         let _ = self.pop_empty_lines(pattern.location().end);
 
         let keyword = match kind {
-            AssignmentKind::Let => "let ",
+            AssignmentKind::Let | AssignmentKind::Generated => "let ",
             AssignmentKind::Assert { .. } => "let assert ",
         };
 
@@ -940,11 +959,7 @@ impl<'comments> Formatter<'comments> {
 
             UntypedExpr::NegateBool { value, .. } => self.negate_bool(value),
 
-            UntypedExpr::Fn {
-                is_capture: true,
-                body,
-                ..
-            } => self.fn_capture(body),
+            UntypedExpr::Fn { kind, body, .. } if kind.is_capture() => self.fn_capture(body),
 
             UntypedExpr::Fn {
                 return_annotation,
@@ -1012,11 +1027,11 @@ impl<'comments> Formatter<'comments> {
             }
             UntypedExpr::RecordUpdate {
                 constructor,
-                spread,
+                record,
                 arguments: args,
                 location,
                 ..
-            } => self.record_update(constructor, spread, args, location),
+            } => self.record_update(constructor, record, args, location),
         };
         commented(document, comments)
     }
@@ -1321,14 +1336,14 @@ impl<'comments> Formatter<'comments> {
     pub fn record_update<'a>(
         &mut self,
         constructor: &'a UntypedExpr,
-        spread: &'a RecordUpdateSpread,
+        record: &'a RecordBeingUpdated,
         args: &'a [UntypedRecordUpdateArg],
         location: &SrcSpan,
     ) -> Document<'a> {
         use std::iter::once;
         let constructor_doc = self.expr(constructor);
-        let comments = self.pop_comments(spread.base.location().start);
-        let spread_doc = commented("..".to_doc().append(self.expr(&spread.base)), comments);
+        let comments = self.pop_comments(record.base.location().start);
+        let spread_doc = commented("..".to_doc().append(self.expr(&record.base)), comments);
         let arg_docs = args
             .iter()
             .map(|a| self.record_update_arg(a).group())
@@ -1436,11 +1451,7 @@ impl<'comments> Formatter<'comments> {
         for expr in expressions.iter().skip(1) {
             let comments = self.pop_comments(expr.location().start);
             let doc = match expr {
-                UntypedExpr::Fn {
-                    is_capture: true,
-                    body,
-                    ..
-                } => {
+                UntypedExpr::Fn { kind, body, .. } if kind.is_capture() => {
                     let body = match body.first() {
                         Statement::Expression(expression) => expression,
                         Statement::Assignment(_) | Statement::Use(_) => {
@@ -1488,12 +1499,15 @@ impl<'comments> Formatter<'comments> {
                 ..
             }) if name == CAPTURE_VARIABLE
         );
+        let first_argument_is_labelled = args.first().is_some_and(|arg| arg.label.is_some());
         let arity = args.len();
 
-        if hole_in_first_position && args.len() == 1 {
+        // If the first argument is labelled, we don't remove it as the label adds
+        // extra information and could be used to make code more readable.
+        if hole_in_first_position && args.len() == 1 && !first_argument_is_labelled {
             // x |> fun(_)
             self.expr(fun)
-        } else if hole_in_first_position {
+        } else if hole_in_first_position && !first_argument_is_labelled {
             // x |> fun(_, 2, 3)
             let args = args
                 .iter()
@@ -1613,10 +1627,12 @@ impl<'comments> Formatter<'comments> {
             .append(pub_(ct.publicity))
             .append(if ct.opaque { "opaque type " } else { "type " })
             .append(if ct.parameters.is_empty() {
-                Document::EcoString(ct.name.clone())
+                ct.name.clone().to_doc()
             } else {
                 let args = ct.parameters.iter().map(|(_, e)| e.to_doc()).collect_vec();
-                Document::EcoString(ct.name.clone())
+                ct.name
+                    .clone()
+                    .to_doc()
                     .append(self.wrap_args(args, ct.location.end))
                     .group()
             });
@@ -2625,7 +2641,7 @@ impl<'comments> Formatter<'comments> {
                 }
                 (_, None) => continue,
             };
-            doc.push("//".to_doc().append(Document::String(c.to_string())));
+            doc.push("//".to_doc().append(EcoString::from(c)));
             match comments.peek() {
                 // Next line is a comment
                 Some((_, Some(_))) => doc.push(line()),
@@ -2746,7 +2762,7 @@ fn printed_comments<'a, 'comments>(
             Some(c) => c,
             None => continue,
         };
-        doc.push("//".to_doc().append(Document::String(c.to_string())));
+        doc.push("//".to_doc().append(EcoString::from(c)));
         match comments.peek() {
             // Next line is a comment
             Some(Some(_)) => doc.push(line()),
@@ -2845,7 +2861,7 @@ where
         BitArrayOption::Unit { value, .. } => "unit"
             .to_doc()
             .append("(")
-            .append(Document::String(format!("{value}")))
+            .append(eco_format!("{value}"))
             .append(")"),
     }
 }

@@ -1,7 +1,16 @@
 ---
 source: compiler-core/src/nix/tests/panic.rs
 expression: "\nfn go(x) {\n  panic as x(5, \"abc\")\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(x) {
+  panic as x(5, "abc")
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError;
   

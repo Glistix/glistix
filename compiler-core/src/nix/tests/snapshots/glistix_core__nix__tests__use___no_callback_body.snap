@@ -3,6 +3,15 @@ source: compiler-core/src/nix/tests/use_.rs
 expression: "\npub fn main() {\n  let thingy = fn(f) { f() }\n  use <- thingy()\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub fn main() {
+  let thingy = fn(f) { f() }
+  use <- thingy()
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError;
   

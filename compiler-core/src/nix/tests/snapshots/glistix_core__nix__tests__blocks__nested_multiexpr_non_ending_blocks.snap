@@ -1,7 +1,24 @@
 ---
 source: compiler-core/src/nix/tests/blocks.rs
 expression: "\nfn go() {\n  let x = {\n    1\n    {\n      2\n      3\n    }\n    4\n  }\n  x\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go() {
+  let x = {
+    1
+    {
+      2
+      3
+    }
+    4
+  }
+  x
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) seqAll;
   

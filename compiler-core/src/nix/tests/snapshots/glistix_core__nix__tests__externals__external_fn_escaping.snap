@@ -1,7 +1,27 @@
 ---
 source: compiler-core/src/nix/tests/externals.rs
 expression: "\n@external(nix, \"./ffi.nix\", \"then\")\npub fn then(a: a) -> b\n\n@external(nix, \"./ffi.nix\", \"inherit\")\npub fn escaped_inherit(a: a) -> b\n\n@external(nix, \"./ffi.nix\", \"inherit'\")\npub fn inherit(a: a) -> b\n\n@external(nix, \"./ffi.nix\", \"builtins\")\npub fn not_escaped(a: a) -> b\n\n@external(nix, \"./ffi.nix\", \"a'b\")\npub fn also_not_escaped(a: a) -> b\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+@external(nix, "./ffi.nix", "then")
+pub fn then(a: a) -> b
+
+@external(nix, "./ffi.nix", "inherit")
+pub fn escaped_inherit(a: a) -> b
+
+@external(nix, "./ffi.nix", "inherit'")
+pub fn inherit(a: a) -> b
+
+@external(nix, "./ffi.nix", "builtins")
+pub fn not_escaped(a: a) -> b
+
+@external(nix, "./ffi.nix", "a'b")
+pub fn also_not_escaped(a: a) -> b
+
+
+----- COMPILED NIX
 let
   then' = (builtins.import ./ffi.nix)."then";
   escaped_inherit = (builtins.import ./ffi.nix)."inherit";

@@ -1,5 +1,14 @@
 ---
 source: compiler-core/src/nix/tests/tuples.rs
 expression: "\nfn go() {\n  #(\"1\", \"2\", \"3\")\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go() {
+  #("1", "2", "3")
+}
+
+
+----- COMPILED NIX
 let go = { }: [ "1" "2" "3" ]; in { }

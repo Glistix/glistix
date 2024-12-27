@@ -3,6 +3,29 @@ source: compiler-core/src/nix/tests/assignments.rs
 expression: "\n\nfn go(x, wibble) {\n  let a = 1\n  wibble(a)\n  let a = 2\n  wibble(a)\n  let assert #(a, 3) = x\n  let b = a\n  wibble(b)\n  let c = {\n    let a = a\n    #(a, b)\n  }\n  wibble(a)\n  // make sure arguments are counted in initial state\n  let x = c\n  x\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+
+fn go(x, wibble) {
+  let a = 1
+  wibble(a)
+  let a = 2
+  wibble(a)
+  let assert #(a, 3) = x
+  let b = a
+  wibble(b)
+  let c = {
+    let a = a
+    #(a, b)
+  }
+  wibble(a)
+  // make sure arguments are counted in initial state
+  let x = c
+  x
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError seqAll;
   

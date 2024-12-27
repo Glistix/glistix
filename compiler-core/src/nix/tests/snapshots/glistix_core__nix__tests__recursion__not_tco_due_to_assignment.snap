@@ -1,5 +1,18 @@
 ---
 source: compiler-core/src/nix/tests/recursion.rs
 expression: "\npub fn main(x) {\n  let z = {\n    let y = x\n    main(y - 1)\n  }\n  z\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub fn main(x) {
+  let z = {
+    let y = x
+    main(y - 1)
+  }
+  z
+}
+
+
+----- COMPILED NIX
 let main = x: let z = let y = x; in main (y - 1); in z; in { inherit main; }

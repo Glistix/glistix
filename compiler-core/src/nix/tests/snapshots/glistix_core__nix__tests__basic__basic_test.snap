@@ -3,6 +3,92 @@ source: compiler-core/src/nix/tests/basic.rs
 expression: "\npub type Amogus {\n  AmogusA\n  AmogusB(a: Int, b: Int)\n  AmogusC(Int, Float)\n}\n\npub const sumongus: Int = 5\n\npub fn sus(x: Int) -> Int {\n    5 + 5\n}\n\nfn go(x, wibble, boolthing, bmong) {\n  let a = 1\n  wibble\n  let a = 2\n  let z = [fn(y: Int) { y }, wibble(a, a, 50), fn(x: Int) { x }]\n  let d = {\n    \"aaa\"\n  }\n  let dd = {\n    let amogus = 5.5e5\n  }\n  let intdiv = 5 / 5\n  let floatdiv = 5.0 /. 5.0\n  let remm = 5 % 5\n  let g = 0.5\n  let b = a\n  wibble(a, a, 50)\n  let c = {\n    let a = a\n    [a]\n  }\n  wibble\n  let www = a == 5\n  let wwww = {a + a} == {10 - 5 * 5}\n  let first_list = [1 < 4, 3 >= 5]\n  let list_thing = [www, ..first_list]\n  let pipes =\n    a\n    |> wibble(_, a, 50)\n    |> fn(x) { x }\n  let pipes2 = a |> fn(i: Int) { i }\n  panic as \"amongus\"\n  todo as \"amongus\"\n  panic\n  todo\n  // let mongus: Amogus = bmong\n  // let mongus = bmong.a\n  // let mongus = Amogus(..bmong, a: 6)\n  let y = -500 + 10 - {-a} - {-5}\n  let yy = [ -a, -5, -y ]\n  let f = -5.5 -. 5.2e-5\n  let f = 5.5 -. 5.2e5\n  // TODO: fix string escaping\n  let ss = \"a\" <> \"b\" <> \"c d\"\n  let ff = [ -5.2e-5, -5.5 ]\n  let z = !boolthing\n  let tupdatup = #(1, 2, \"a\", -5.5, #(1, 2, 3))\n  let tata = tupdatup.1 + tupdatup.0 + 20\n  let mabool = True\n  let mnotbool = False\n  let amagus_a = AmogusA\n  let amagus_b = AmogusB(10, b: 15)\n  let amagus_c = AmogusC(10, 5.5)\n  let simplefunc = fn() { 5 }\n  let gg = simplefunc() + 10\n  let less_simple_func = fn(x) { fn() { x } }\n  let gg = less_simple_func(5)() + 10\n  let mnull = Nil\n  let sus = \"hey! I'm still sus :(\"\n  // make sure arguments are counted in initial state\n  let x = tata\n  x\n}\n\nfn mongus(a, b, c) {\n  let x = fn() { 5 + 5 }\n  let y = x()\n  #(1, 2, 3, fn(x: Int) { x + 1 }, { 5 6 10 {10 + 5} })\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub type Amogus {
+  AmogusA
+  AmogusB(a: Int, b: Int)
+  AmogusC(Int, Float)
+}
+
+pub const sumongus: Int = 5
+
+pub fn sus(x: Int) -> Int {
+    5 + 5
+}
+
+fn go(x, wibble, boolthing, bmong) {
+  let a = 1
+  wibble
+  let a = 2
+  let z = [fn(y: Int) { y }, wibble(a, a, 50), fn(x: Int) { x }]
+  let d = {
+    "aaa"
+  }
+  let dd = {
+    let amogus = 5.5e5
+  }
+  let intdiv = 5 / 5
+  let floatdiv = 5.0 /. 5.0
+  let remm = 5 % 5
+  let g = 0.5
+  let b = a
+  wibble(a, a, 50)
+  let c = {
+    let a = a
+    [a]
+  }
+  wibble
+  let www = a == 5
+  let wwww = {a + a} == {10 - 5 * 5}
+  let first_list = [1 < 4, 3 >= 5]
+  let list_thing = [www, ..first_list]
+  let pipes =
+    a
+    |> wibble(_, a, 50)
+    |> fn(x) { x }
+  let pipes2 = a |> fn(i: Int) { i }
+  panic as "amongus"
+  todo as "amongus"
+  panic
+  todo
+  // let mongus: Amogus = bmong
+  // let mongus = bmong.a
+  // let mongus = Amogus(..bmong, a: 6)
+  let y = -500 + 10 - {-a} - {-5}
+  let yy = [ -a, -5, -y ]
+  let f = -5.5 -. 5.2e-5
+  let f = 5.5 -. 5.2e5
+  // TODO: fix string escaping
+  let ss = "a" <> "b" <> "c d"
+  let ff = [ -5.2e-5, -5.5 ]
+  let z = !boolthing
+  let tupdatup = #(1, 2, "a", -5.5, #(1, 2, 3))
+  let tata = tupdatup.1 + tupdatup.0 + 20
+  let mabool = True
+  let mnotbool = False
+  let amagus_a = AmogusA
+  let amagus_b = AmogusB(10, b: 15)
+  let amagus_c = AmogusC(10, 5.5)
+  let simplefunc = fn() { 5 }
+  let gg = simplefunc() + 10
+  let less_simple_func = fn(x) { fn() { x } }
+  let gg = less_simple_func(5)() + 10
+  let mnull = Nil
+  let sus = "hey! I'm still sus :("
+  // make sure arguments are counted in initial state
+  let x = tata
+  x
+}
+
+fn mongus(a, b, c) {
+  let x = fn() { 5 + 5 }
+  let y = x()
+  #(1, 2, 3, fn(x: Int) { x + 1 }, { 5 6 10 {10 + 5} })
+}
+
+
+----- COMPILED NIX
 let
   inherit
     (builtins.import ./../gleam.nix)

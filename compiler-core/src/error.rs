@@ -1,16 +1,14 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use crate::build::{Outcome, Runtime, Target};
 use crate::diagnostic::{Diagnostic, ExtraLabel, Label, Location};
-use crate::type_::error::{MissingAnnotation, UnknownTypeHint};
-use crate::type_::error::{Named, RecordVariants};
+use crate::type_::collapse_links;
+use crate::type_::error::{
+    MissingAnnotation, Named, UnknownField, UnknownTypeHint, UnsafeRecordUpdateReason,
+};
+use crate::type_::printer::{Names, Printer};
 use crate::type_::{error::PatternMatchKind, FieldAccessUsage};
 use crate::{ast::BinOp, parse::error::ParseErrorType, type_::Type};
-use crate::{
-    bit_array,
-    diagnostic::Level,
-    javascript,
-    type_::{pretty::Printer, UnifyErrorSituation},
-};
+use crate::{bit_array, diagnostic::Level, javascript, type_::UnifyErrorSituation};
 use ecow::EcoString;
 use heck::{ToSnakeCase, ToTitleCase, ToUpperCamelCase};
 use hexpm::version::ResolutionError;
@@ -23,6 +21,7 @@ use std::env;
 use std::fmt::{Debug, Display};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use termcolor::Buffer;
 use thiserror::Error;
 use vec1::Vec1;
@@ -69,6 +68,7 @@ pub enum Error {
         path: Utf8PathBuf,
         src: EcoString,
         errors: Vec1<crate::type_::Error>,
+        names: Names,
     },
 
     #[error("unknown import {import}")]
@@ -412,7 +412,7 @@ The conflicting packages are:
 
 {}
 ",
-                    conflicting_packages.into_iter().map(|s| format!("- {}", s)).join("\n"))
+                    conflicting_packages.into_iter().map(|s| format!("- {s}")).join("\n"))
             }
 
             ResolutionError::ErrorRetrievingDependencies {
@@ -700,7 +700,7 @@ fn did_you_mean(name: &str, options: &[EcoString]) -> Option<String> {
     if options.len() == 1 {
         return options
             .first()
-            .map(|option| format!("Did you mean `{}`?", option));
+            .map(|option| format!("Did you mean `{option}`?"));
     }
 
     // Check for case-insensitive matches.
@@ -710,7 +710,7 @@ fn did_you_mean(name: &str, options: &[EcoString]) -> Option<String> {
         .iter()
         .find(|&option| option.eq_ignore_ascii_case(name))
     {
-        return Some(format!("Did you mean `{}`?", exact_match));
+        return Some(format!("Did you mean `{exact_match}`?"));
     }
 
     // Calculate the threshold as one third of the name's length, with a minimum of 1.
@@ -726,7 +726,7 @@ fn did_you_mean(name: &str, options: &[EcoString]) -> Option<String> {
                 .map(|distance| (option, distance))
         })
         .min_by_key(|&(_, distance)| distance)
-        .map(|(option, _)| format!("Did you mean `{}`?", option))
+        .map(|(option, _)| format!("Did you mean `{option}`?"))
 }
 
 impl Error {
@@ -958,8 +958,7 @@ resulting in compilation errors!"
                 hint: Some(format!(
                     "Remove the version constraint from your `gleam.toml` or update it to be:
 
-    gleam = \">= {}\"",
-                    minimum_required_version
+    gleam = \">= {minimum_required_version}\""
                 )),
                 location: None,
             }],
@@ -1214,7 +1213,7 @@ Second: {second}"
                     }
                     None => "".into(),
                 };
-                let text = format!(
+                let mut text = format!(
                     "An error occurred while trying to {} this {}:
 
     {}
@@ -1224,6 +1223,14 @@ Second: {second}"
                     path,
                     err,
                 );
+                if cfg!(target_family = "windows") && action == &FileIoAction::Link {
+                    text.push_str("
+
+Windows does not support symbolic links without developer mode
+or admin privileges. Please enable developer mode and try again.
+
+https://learn.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development#activate-developer-mode");
+                }
                 vec![Diagnostic {
                     title: "File IO failure".into(),
                     text,
@@ -1262,7 +1269,7 @@ Second: {second}"
                 }]
             }
 
-            Error::Type { path, src, errors: error } => error
+            Error::Type { path, src, errors: error, names } => error
                 .iter()
                 .map(|error| {
                     match error {
@@ -1567,10 +1574,10 @@ Hint: Add some type annotations and try again.")
                 }
 
                 TypeError::NotFn { location, type_ } => {
-                    let mut printer = Printer::new();
+                    let mut printer = Printer::new(names);
                     let text = format!(
-                        "This value is being called as a function but its type is:\n\n{}",
-                        printer.pretty_print(type_, 4)
+                        "This value is being called as a function but its type is:\n\n    {}",
+                        printer.print_type(type_)
                     );
                     Diagnostic {
                         title: "Type mismatch".into(),
@@ -1595,21 +1602,25 @@ Hint: Add some type annotations and try again.")
                     type_,
                     label,
                     fields,
-                    variants,
+                    unknown_field: variants,
                 } => {
-                    let mut printer = Printer::new();
+                    let mut printer = Printer::new(names);
 
                     // Give a hint about what type this value has.
                     let mut text = format!(
-                        "The value being accessed has this type:\n\n{}\n",
-                        printer.pretty_print(type_, 4)
+                        "The value being accessed has this type:\n\n    {}\n",
+                        printer.print_type(type_)
                     );
 
                     // Give a hint about what record fields this value has, if any.
                     if fields.is_empty() {
-                        text.push_str("\nIt does not have any fields.");
+                        if variants == &UnknownField::NoFields {
+                            text.push_str("\nIt does not have any fields.");
+                        } else {
+                            text.push_str("\nIt does not have any fields shared by all variants.");
+                        }
                     } else {
-                        text.push_str("\nIt has these fields:\n");
+                        text.push_str("\nIt has these accessible fields:\n");
                     }
                     for field in fields.iter().sorted() {
                         text.push_str("\n    .");
@@ -1617,17 +1628,29 @@ Hint: Add some type annotations and try again.")
                     }
 
                     match variants {
-                        RecordVariants::HasVariants => {
+                        UnknownField::AppearsInAVariant => {
                             let msg = wrap(
                                 "Note: The field you are trying to \
 access might not be consistently present or positioned across the custom \
 type's variants, preventing reliable access. Ensure the field exists in the \
-same position and has the same type in all variants to enable direct accessor syntax.",
+same position and has the same type in all variants, or pattern matching on it \
+to enable direct accessor syntax.",
                             );
                             text.push_str("\n\n");
                             text.push_str(&msg);
                         }
-                        RecordVariants::NoVariants => (),
+                        UnknownField::AppearsInAnImpossibleVariant => {
+                            let msg = wrap(
+                                "Note: The field you are trying to \
+access exists but not on the variant which is this value always is. \
+A field that is not present in all variants can only be accessed when \
+the value is inferred to be one variant.",
+                            );
+                            text.push_str("\n\n");
+                            text.push_str(&msg);
+                        }
+                        UnknownField::TrulyUnknown => (),
+                        UnknownField::NoFields => (),
                     }
 
                     // Give a hint about Gleam not having OOP methods if it
@@ -1644,7 +1667,7 @@ to call a method on this value you may want to use the function syntax instead."
                             text.push_str(label);
                             text.push_str("(value)");
                         }
-                        FieldAccessUsage::Other => (),
+                        FieldAccessUsage::Other | FieldAccessUsage::RecordUpdate => (),
                     }
 
                     let label = did_you_mean(label, fields)
@@ -1671,21 +1694,19 @@ to call a method on this value you may want to use the function syntax instead."
                     expected,
                     given,
                     situation: Some(UnifyErrorSituation::Operator(op)),
-                    rigid_type_names: annotated_names,
                 } => {
-                    let mut printer = Printer::new();
-                    printer.with_names(annotated_names.clone());
+                    let mut printer = Printer::new(names);
                     let mut text = format!(
                         "The {op} operator expects arguments of this type:
 
-{expected}
+    {expected}
 
 But this argument has this type:
 
-{given}\n",
+    {given}\n",
                         op = op.name(),
-                        expected = printer.pretty_print(expected, 4),
-                        given = printer.pretty_print(given, 4),
+                        expected = printer.print_type(expected),
+                        given = printer.print_type(given),
                     );
                     if let Some(hint) = hint_alternative_operator(op, given) {
                         text.push('\n');
@@ -1714,7 +1735,6 @@ But this argument has this type:
                     expected,
                     given,
                     situation: Some(UnifyErrorSituation::PipeTypeMismatch),
-                    rigid_type_names: annotated_names,
                 } => {
                     // Remap the pipe function type into just the type expected by the pipe.
                     let expected = expected
@@ -1727,20 +1747,19 @@ But this argument has this type:
                         .and_then(|(args, _)| args.first().cloned())
                         .unwrap_or_else(|| given.clone());
 
-                    let mut printer = Printer::new();
-                    printer.with_names(annotated_names.clone());
+                    let mut printer = Printer::new(names);
                     let text = format!(
                         "The argument is:
 
-{given}
+    {given}
 
 But function expects:
 
-{expected}",
+    {expected}",
                         expected = expected
-                            .map(|v| printer.pretty_print(&v, 4))
+                            .map(|v| printer.print_type(&v))
                             .unwrap_or_else(|| "    No arguments".into()),
-                        given = printer.pretty_print(&given, 4)
+                        given = printer.print_type(&given)
                     );
 
                     Diagnostic {
@@ -1765,10 +1784,9 @@ But function expects:
                     expected,
                     given,
                     situation,
-                    rigid_type_names: annotated_names,
                 } => {
-                    let mut printer = Printer::new();
-                    printer.with_names(annotated_names.clone());
+                    let mut printer = Printer::new(names);
+                    let hint = hint_unwrap_result(expected, given, &mut printer);
                     let mut text = if let Some(description) = situation.as_ref().and_then(|s| s.description()) {
                         let mut text = description.to_string();
                         text.push('\n');
@@ -1777,14 +1795,17 @@ But function expects:
                     } else {
                         "".into()
                     };
-                    text.push_str("Expected type:\n\n");
-                    text.push_str(&printer.pretty_print(expected, 4));
-                    text.push_str("\n\nFound type:\n\n");
-                    text.push_str(&printer.pretty_print(given, 4));
+                    text.push_str("Expected type:\n\n    ");
+                    text.push_str(&printer.print_type(expected));
+                    text.push_str("\n\nFound type:\n\n    ");
+                    text.push_str(&printer.print_type(given));
+                    if hint.is_some() {
+                        text.push('\n');
+                    }
                     Diagnostic {
                         title: "Type mismatch".into(),
                         text,
-                        hint: None,
+                        hint,
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -1889,31 +1910,57 @@ assigned variables to all of them."
                     }
                 }
 
-                TypeError::UpdateMultiConstructorType { location } => {
-                    let text = wrap("This type has multiple constructors \
-so it cannot be safely updated. If this value was one of the other variants \
-then the update would be produce incorrect results.
+                TypeError::UnsafeRecordUpdate { location, reason } =>
+                    match reason {
+                        UnsafeRecordUpdateReason::UnknownVariant {constructed_variant} => {
+                            let text = wrap_format!("
+This value cannot be used to build an updated `{constructed_variant}` \
+as it could be some other variant.
 
-Consider pattern matching on it with a case expression and then\
-constructing a new record with its values."
-                );
+Consider pattern matching on it with a case expression and then \
+constructing a new record with its values.");
 
-                    Diagnostic {
-                        title: "Unsafe record update".into(),
-                        text,
-                        hint: None,
-                        level: Level::Error,
-                        location: Some(Location {
-                            label: Label {
-                                text: Some("I can't tell this is always the right constructor".into()),
-                                span: *location,
-                            },
-                            path: path.clone(),
-                            src: src.clone(),
-                            extra_labels: vec![],
-                        }),
+                            Diagnostic {
+                                title: "Unsafe record update".into(),
+                                text,
+                                hint: None,
+                                level: Level::Error,
+                                location: Some(Location {
+                                    label: Label {
+                                        text: Some(format!("I'm not sure this is always a `{constructed_variant}`")),
+                                        span: *location,
+                                    },
+                                    path: path.clone(),
+                                    src: src.clone(),
+                                    extra_labels: vec![],
+                                }),
+                            }
+                        },
+                        UnsafeRecordUpdateReason::WrongVariant {constructed_variant, spread_variant} => {
+                            let text = wrap_format!("This value is a `{spread_variant}` so \
+it cannot be used to build a `{constructed_variant}`, even if they share some fields.
+
+Note: If you want to change one variant of a type into another, you should \
+specify all fields explicitly instead of using the record update syntax.");
+
+                            Diagnostic {
+                                title: "Incorrect record update".into(),
+                                text,
+                                hint: None,
+                                level: Level::Error,
+                                location: Some(Location {
+                                    label: Label {
+                                        text: Some(format!("This is a `{spread_variant}`")),
+                                        span: *location,
+                                    },
+                                    path: path.clone(),
+                                    src: src.clone(),
+                                    extra_labels: vec![],
+                                }),
+                            }
+                        },
                     }
-                }
+
 
                 TypeError::UnknownType {
                     location,
@@ -1986,7 +2033,7 @@ but no type in scope with that name."
                 }
 
                 TypeError::PrivateTypeLeak { location, leaked } => {
-                    let mut printer = Printer::new();
+                    let mut printer = Printer::new(names);
 
                     // TODO: be more precise.
                     // - is being returned by this public function
@@ -1997,10 +2044,10 @@ but no type in scope with that name."
                         "The following type is private, but is \
 being used by this public export.
 
-{}
+    {}
 
 Private types can only be used within the module that defines them.",
-                        printer.pretty_print(leaked, 4),
+                        printer.print_type(leaked),
                     );
                     Diagnostic {
                         title: "Private type used in public interface".into(),
@@ -2298,12 +2345,12 @@ tuple has {} elements so the highest valid index is {}.",
                 }
 
                 TypeError::NotATuple { location, given } => {
-                    let mut printer = Printer::new();
+                    let mut printer = Printer::new(names);
                     let text = format!(
                         "To index into this value it needs to be a tuple, however it has this type:
 
-{}",
-                        printer.pretty_print(given, 4),
+    {}",
+                        printer.print_type(given),
                     );
                     Diagnostic {
                         title: "Type mismatch".into(),
@@ -2946,15 +2993,15 @@ Rename or remove one of them.",
                 },
 
                 TypeError::NotFnInUse { location, type_ } => {
-                    let mut printer = Printer::new();
+                    let mut printer = Printer::new(names);
                     let text = wrap_format!(
                         "In a use expression, there should be a function on \
 the right hand side of `<-`, but this value has type:
 
-{}
+    {}
 
 See: https://tour.gleam.run/advanced-features/use/",
-                        printer.pretty_print(type_, 4)
+                        printer.print_type(type_)
                     );
 
                     Diagnostic {
@@ -3047,15 +3094,15 @@ so it cannot take the the `use` callback function as a final argument.\n")
                 },
 
                 TypeError::UseFnDoesntTakeCallback { location, actual_type: Some(actual) } => {
-                    let mut printer = Printer::new();
+                    let mut printer = Printer::new(names);
                     let text = wrap_format!("The function on the right hand side of `<-` \
 has to take a callback function as its last argument. \
 But the last argument of this function has type:
 
-{}
+    {}
 
 See: https://tour.gleam.run/advanced-features/use/",
-                        printer.pretty_print(actual, 4)
+                        printer.print_type(actual)
                     );
                     Diagnostic {
                         title: "Type mismatch".into(),
@@ -3765,6 +3812,31 @@ fn hint_alternative_operator(op: &BinOp, given: &Type) -> Option<String> {
         BinOp::AddFloat if given.is_string() => Some(hint_string_message()),
 
         _ => None,
+    }
+}
+
+fn hint_unwrap_result(
+    expected: &Arc<Type>,
+    given: &Arc<Type>,
+    printer: &mut Printer<'_>,
+) -> Option<String> {
+    // If the got type is `Result(a, _)` and the expected one is
+    // `a` then we can display the hint.
+    let wrapped_type = given.result_ok_type()?;
+    let expected = collapse_links(expected.clone());
+    if collapse_links(wrapped_type) != expected {
+        None
+    } else {
+        Some(wrap_format!(
+            "If you want to get a `{}` out of a `{}` you can pattern match on it:
+
+    case result {{
+      Ok(value) -> todo
+      Error(error) -> todo
+    }}",
+            printer.print_type(&expected),
+            printer.print_type(given),
+        ))
     }
 }
 

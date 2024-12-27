@@ -1,7 +1,20 @@
 ---
 source: compiler-core/src/nix/tests/strings.rs
 expression: "\npub fn go() {\n  let form_feed = \"\\f a\\fb \\f\"\n  case form_feed {\n    \"\\f \" as ff <> rest -> rest\n    _ -> \"\\f\"\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub fn go() {
+  let form_feed = "\f a\fb \f"
+  case form_feed {
+    "\f " as ff <> rest -> rest
+    _ -> "\f"
+  }
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) strHasPrefix parseEscape;
   

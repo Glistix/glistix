@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use ecow::{eco_format, EcoString};
 use itertools::Itertools;
 use std::sync::OnceLock;
 
@@ -161,7 +161,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
         for segment in &self.path {
             path =
                 match segment {
-                    Index::Int(i) => path.add_right_component(Document::String(format!("._{i}"))),
+                    Index::Int(i) => path.add_right_component(eco_format!("._{i}").to_doc()),
                     Index::Tuple(i) => path
                         .add_component("(builtins.elemAt ".to_doc(), docvec!(" ", i.to_doc(), ")")),
                     Index::String(s) => path.add_right_component(docvec!(
@@ -1025,13 +1025,14 @@ impl<'a> Check<'a> {
             } => {
                 tracker.bit_array_byte_size_used = true;
 
-                let length_check = Document::String(if has_tail_spread {
+                let length_check = (if has_tail_spread {
                     let operator = if match_desired { ">=" } else { "<" };
-                    format!(" {operator} {expected_bytes}")
+                    eco_format!(" {operator} {expected_bytes}")
                 } else {
                     let operator = if match_desired { "==" } else { "!=" };
-                    format!(" {operator} {expected_bytes}")
-                });
+                    eco_format!(" {operator} {expected_bytes}")
+                })
+                .to_doc();
                 let len =
                     syntax::fn_call("byteSize".to_doc(), [path.into_doc_with_subject(subject)]);
 

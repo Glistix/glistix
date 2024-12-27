@@ -1,7 +1,15 @@
 ---
 source: compiler-core/src/nix/tests/custom_types.rs
 expression: "import other.{Two}\npub fn main() {\n  Two(field: 1)\n}"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+import other.{Two}
+pub fn main() {
+  Two(field: 1)
+}
+
+----- COMPILED NIX
 let
   other' = builtins.import ./../other.nix;
   inherit (builtins.import ./../other.nix) Two;

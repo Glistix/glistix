@@ -1,7 +1,24 @@
 ---
 source: compiler-core/src/nix/tests/bools.rs
 expression: "\nfn go(a, b) {\n  a == True\n  a != True\n  a == False\n  a != False\n  a == a\n  a != a\n  b == Nil\n  b != Nil\n  b == b\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(a, b) {
+  a == True
+  a != True
+  a == False
+  a != False
+  a == a
+  a != a
+  b == Nil
+  b != Nil
+  b == b
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) seqAll;
   

@@ -1,7 +1,19 @@
 ---
 source: compiler-core/src/nix/tests/case.rs
 expression: "\nfn main() {\n  case Ok([\"b c\", \"d\"]) {\n    Ok([\"b \" <> _, \"d\"]) -> 1\n    _ -> 1\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn main() {
+  case Ok(["b c", "d"]) {
+    Ok(["b " <> _, "d"]) -> 1
+    _ -> 1
+  }
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) Ok strHasPrefix toList listHasLength;
   

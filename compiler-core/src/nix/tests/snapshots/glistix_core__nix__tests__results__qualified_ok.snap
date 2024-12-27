@@ -1,7 +1,13 @@
 ---
 source: compiler-core/src/nix/tests/results.rs
 expression: "import gleam\npub fn main() { gleam.Ok(1) }"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+import gleam
+pub fn main() { gleam.Ok(1) }
+
+----- COMPILED NIX
 let
   gleam' = builtins.import ./../gleam.nix;
   

@@ -1,5 +1,13 @@
 ---
 source: compiler-core/src/nix/tests/functions.rs
 expression: "pub fn main(with: Int) -> Nil {\n  main(with - 1)\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+pub fn main(with: Int) -> Nil {
+  main(with - 1)
+}
+
+
+----- COMPILED NIX
 let main = with': main (with' - 1); in { inherit main; }

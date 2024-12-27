@@ -3,6 +3,14 @@ source: compiler-core/src/nix/tests/panic.rs
 expression: "\nfn go() {\n  panic\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go() {
+  panic
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError;
   

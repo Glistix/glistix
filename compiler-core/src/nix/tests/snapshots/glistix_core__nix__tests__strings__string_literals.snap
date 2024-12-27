@@ -1,5 +1,14 @@
 ---
 source: compiler-core/src/nix/tests/strings.rs
 expression: "\nfn go() {\n  \"Hello, Gleam!\"\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go() {
+  "Hello, Gleam!"
+}
+
+
+----- COMPILED NIX
 let go = { }: "Hello, Gleam!"; in { }

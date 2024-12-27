@@ -154,9 +154,9 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
 
     fn path_document(&self) -> Document<'a> {
         concat(self.path.iter().map(|segment| match segment {
-            Index::Int(i) => Document::String(format!("[{i}]")),
+            Index::Int(i) => eco_format!("[{i}]").to_doc(),
             // TODO: escape string if needed
-            Index::String(s) => docvec!(".", s),
+            Index::String(s) => docvec!(".", maybe_escape_property_doc(s)),
             Index::ByteAt(i) => docvec!(".byteAt(", i, ")"),
             Index::IntFromSlice {
                 start,
@@ -365,7 +365,11 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
             ClauseGuard::FieldAccess {
                 label, container, ..
             } => {
-                docvec!(self.guard(container)?, ".", label)
+                docvec!(
+                    self.guard(container)?,
+                    ".",
+                    maybe_escape_property_doc(label)
+                )
             }
 
             ClauseGuard::ModuleSelect {
@@ -636,7 +640,7 @@ impl<'module_ctx, 'expression_gen, 'a> Generator<'module_ctx, 'expression_gen, '
                                         self.push_byte_at(offset.bytes);
                                         self.push_equality_check(
                                             subject.clone(),
-                                            EcoString::from(format!("0x{:X}", byte)).to_doc(),
+                                            EcoString::from(format!("0x{byte:X}")).to_doc(),
                                         );
                                         self.pop();
                                         offset.increment(1);
@@ -958,11 +962,11 @@ impl<'a> Check<'a> {
                 expected_length,
                 has_tail_spread,
             } => {
-                let length_check = Document::String(if has_tail_spread {
-                    format!(".atLeastLength({expected_length})")
+                let length_check = if has_tail_spread {
+                    eco_format!(".atLeastLength({expected_length})").to_doc()
                 } else {
-                    format!(".hasLength({expected_length})")
-                });
+                    eco_format!(".hasLength({expected_length})").to_doc()
+                };
                 if match_desired {
                     docvec![subject, path, length_check,]
                 } else {
@@ -975,11 +979,11 @@ impl<'a> Check<'a> {
                 expected_bytes,
                 has_tail_spread,
             } => {
-                let length_check = Document::String(if has_tail_spread {
-                    format!(".length >= {expected_bytes}")
+                let length_check = if has_tail_spread {
+                    eco_format!(".length >= {expected_bytes}").to_doc()
                 } else {
-                    format!(".length == {expected_bytes}")
-                });
+                    eco_format!(".length == {expected_bytes}").to_doc()
+                };
                 if match_desired {
                     docvec![subject, path, length_check,]
                 } else {

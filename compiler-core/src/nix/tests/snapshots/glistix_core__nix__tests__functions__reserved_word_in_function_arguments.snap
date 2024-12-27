@@ -1,5 +1,13 @@
 ---
 source: compiler-core/src/nix/tests/functions.rs
 expression: "pub fn main(arguments, eval) {\n  #(arguments, eval)\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+pub fn main(arguments, eval) {
+  #(arguments, eval)
+}
+
+
+----- COMPILED NIX
 let main = arguments: eval: [ arguments eval ]; in { inherit main; }

@@ -693,3 +693,77 @@ pub fn main() {
 "#
     );
 }
+
+// https://github.com/gleam-lang/gleam/issues/3813
+#[test]
+fn record_with_field_named_constructor() {
+    assert_js!(
+        r#"
+pub type Thing {
+  Thing(constructor: Nil)
+}
+
+pub fn main() {
+  let a = Thing(constructor: Nil)
+  let b = Thing(..a, constructor: Nil)
+  b.constructor
+}
+"#
+    );
+}
+
+#[test]
+fn record_with_field_named_then() {
+    assert_js!(
+        r#"
+pub type Thing {
+  Thing(then: Nil)
+}
+
+pub fn main() {
+  let a = Thing(then: Nil)
+  let b = Thing(..a, then: Nil)
+  b.then
+}
+"#
+    );
+}
+#[test]
+fn record_access_in_guard_with_reserved_field_name() {
+    assert_js!(
+        r#"
+pub type Thing {
+  Thing(constructor: Nil)
+}
+
+pub fn main() {
+  let a = Thing(constructor: Nil)
+  case Nil {
+      Nil if a.constructor == Nil -> a.constructor
+      _ -> Nil
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn record_access_in_pattern_with_reserved_field_name() {
+    assert_js!(
+        r#"
+pub type Thing {
+  Thing(constructor: Nil)
+}
+
+pub fn main() {
+  let a = Thing(constructor: Nil)
+  let Thing(constructor: ctor) = a
+  case a {
+      a if a.constructor == ctor -> Nil
+      Thing(constructor:) if ctor == constructor -> Nil
+      _ -> Nil
+  }
+}
+"#
+    );
+}

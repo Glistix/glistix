@@ -3,6 +3,15 @@ source: compiler-core/src/nix/tests/assignments.rs
 expression: "\npub fn main(x) {\n  let assert \"Game \" <> id = x\n  id\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub fn main(x) {
+  let assert "Game " <> id = x
+  id
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) strHasPrefix makeError;
   

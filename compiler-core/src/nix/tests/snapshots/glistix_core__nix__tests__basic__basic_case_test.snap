@@ -1,7 +1,53 @@
 ---
 source: compiler-core/src/nix/tests/basic.rs
 expression: "\nfn condman(a, b) {\n  let p1 = case a > b {\n    True -> 5\n    False -> 6\n  }\n\n  let p2 = case a > b {\n    True -> 5\n    _ -> 6\n  }\n\n  let p3 = case a > b {\n    False -> 6\n    True -> 5\n  }\n\n  let p4 = case a > b {\n    False -> 6\n    _ -> 5\n  }\n\n  let v1 = True\n  let v2 = False\n  let vv1 = case v1 { _ -> 10 }\n  let vv2 = case v2 { True -> 50 _ -> 10 }\n  let vv3 = case True { True -> 50 _ -> 10 }\n\n  #(p1, p2, p3, p4, vv1, vv2, vv3)\n}\n\npub fn fact(n: Int) -> #(Nil, Int) {\n  let res = case n < 0 {\n    True -> panic as \"Don't.\"\n    False -> Nil\n  }\n  #(res, case n {\n    0 -> 1\n    _ -> n * fact(n - 1).1\n  })\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn condman(a, b) {
+  let p1 = case a > b {
+    True -> 5
+    False -> 6
+  }
+
+  let p2 = case a > b {
+    True -> 5
+    _ -> 6
+  }
+
+  let p3 = case a > b {
+    False -> 6
+    True -> 5
+  }
+
+  let p4 = case a > b {
+    False -> 6
+    _ -> 5
+  }
+
+  let v1 = True
+  let v2 = False
+  let vv1 = case v1 { _ -> 10 }
+  let vv2 = case v2 { True -> 50 _ -> 10 }
+  let vv3 = case True { True -> 50 _ -> 10 }
+
+  #(p1, p2, p3, p4, vv1, vv2, vv3)
+}
+
+pub fn fact(n: Int) -> #(Nil, Int) {
+  let res = case n < 0 {
+    True -> panic as "Don't."
+    False -> Nil
+  }
+  #(res, case n {
+    0 -> 1
+    _ -> n * fact(n - 1).1
+  })
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError;
   

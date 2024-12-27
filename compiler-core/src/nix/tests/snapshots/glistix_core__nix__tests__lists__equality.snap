@@ -1,7 +1,17 @@
 ---
 source: compiler-core/src/nix/tests/lists.rs
 expression: "\nfn go() {\n  [] == [1]\n  [] != [1]\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go() {
+  [] == [1]
+  [] != [1]
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) toList;
   

@@ -3,6 +3,15 @@ source: compiler-core/src/nix/tests/consts.rs
 expression: "import gleam\npub type X {\n  Ok\n}\npub const y = gleam.Ok\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+import gleam
+pub type X {
+  Ok
+}
+pub const y = gleam.Ok
+
+
+----- COMPILED NIX
 let
   gleam' = builtins.import ./../gleam.nix;
   inherit (builtins.import ./../gleam.nix) Ok;

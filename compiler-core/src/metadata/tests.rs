@@ -77,6 +77,7 @@ fn bit_array_segment_option_module(option: TypedConstantBitArraySegmentOption) -
             value: Box::new(Constant::Int {
                 location: Default::default(),
                 value: "1".into(),
+                int_value: 1.into(),
             }),
             options: vec![option],
             type_: type_::int(),
@@ -714,12 +715,12 @@ fn record_value() {
                     module: "themodule".into(),
                     field_map: None,
                     arity: random.gen(),
-                    constructors_count: random.gen(),
+                    variants_count: random.gen(),
                     location: SrcSpan {
                         start: random.gen(),
                         end: random.gen(),
                     },
-                    constructor_index: random.gen(),
+                    variant_index: random.gen(),
                 },
             },
         )]
@@ -760,8 +761,8 @@ fn record_value_with_field_map() {
                         fields: [("ok".into(), random.gen()), ("ko".into(), random.gen())].into(),
                     }),
                     arity: random.gen(),
-                    constructors_count: random.gen(),
-                    constructor_index: random.gen(),
+                    variants_count: random.gen(),
+                    variant_index: random.gen(),
                     location: SrcSpan {
                         start: random.gen(),
                         end: random.gen(),
@@ -780,6 +781,34 @@ fn record_value_with_field_map() {
 
 #[test]
 fn accessors() {
+    let accessors1 = [
+        (
+            "a".into(),
+            RecordAccessor {
+                index: 6,
+                label: "siiixxx".into(),
+                type_: type_::nil(),
+            },
+        ),
+        (
+            "a".into(),
+            RecordAccessor {
+                index: 5,
+                label: "fiveee".into(),
+                type_: type_::float(),
+            },
+        ),
+    ];
+
+    let accessors2 = [(
+        "a".into(),
+        RecordAccessor {
+            index: 1,
+            label: "ok".into(),
+            type_: type_::float(),
+        },
+    )];
+
     let module = ModuleInterface {
         warnings: vec![],
         is_internal: false,
@@ -795,25 +824,8 @@ fn accessors() {
                 AccessorsMap {
                     publicity: Publicity::Public,
                     type_: type_::int(),
-                    accessors: [
-                        (
-                            "a".into(),
-                            RecordAccessor {
-                                index: 6,
-                                label: "siiixxx".into(),
-                                type_: type_::nil(),
-                            },
-                        ),
-                        (
-                            "a".into(),
-                            RecordAccessor {
-                                index: 5,
-                                label: "fiveee".into(),
-                                type_: type_::float(),
-                            },
-                        ),
-                    ]
-                    .into(),
+                    shared_accessors: accessors1.clone().into(),
+                    variant_specific_accessors: vec![accessors1.into()],
                 },
             ),
             (
@@ -821,15 +833,8 @@ fn accessors() {
                 AccessorsMap {
                     publicity: Publicity::Public,
                     type_: type_::int(),
-                    accessors: [(
-                        "a".into(),
-                        RecordAccessor {
-                            index: 1,
-                            label: "ok".into(),
-                            type_: type_::float(),
-                        },
-                    )]
-                    .into(),
+                    shared_accessors: accessors2.clone().into(),
+                    variant_specific_accessors: vec![accessors2.into()],
                 },
             ),
         ]
@@ -847,6 +852,7 @@ fn constant_int() {
     let module = constant_module(Constant::Int {
         location: Default::default(),
         value: "100".into(),
+        int_value: 100.into(),
     });
 
     assert_eq!(roundtrip(&module), module);
@@ -880,6 +886,7 @@ fn constant_tuple() {
             Constant::Int {
                 location: Default::default(),
                 value: "1".into(),
+                int_value: 1.into(),
             },
             Constant::Float {
                 location: Default::default(),
@@ -891,6 +898,7 @@ fn constant_tuple() {
                     Constant::Int {
                         location: Default::default(),
                         value: "1".into(),
+                        int_value: 1.into(),
                     },
                     Constant::Float {
                         location: Default::default(),
@@ -913,14 +921,17 @@ fn constant_list() {
             Constant::Int {
                 location: Default::default(),
                 value: "1".into(),
+                int_value: 1.into(),
             },
             Constant::Int {
                 location: Default::default(),
                 value: "2".into(),
+                int_value: 2.into(),
             },
             Constant::Int {
                 location: Default::default(),
                 value: "3".into(),
+                int_value: 3.into(),
             },
         ],
     });
@@ -951,6 +962,7 @@ fn constant_record() {
                 value: Constant::Int {
                     location: Default::default(),
                     value: "1".into(),
+                    int_value: 1.into(),
                 },
             },
         ],
@@ -967,6 +979,7 @@ fn constant_var() {
     let one_original = Constant::Int {
         location: Default::default(),
         value: "1".into(),
+        int_value: 1.into(),
     };
 
     let one = Constant::Var {
@@ -1103,6 +1116,7 @@ fn constant_bit_array_size() {
         value: Box::new(Constant::Int {
             location: Default::default(),
             value: "1".into(),
+            int_value: 1.into(),
         }),
         short_form: false,
     });
@@ -1116,6 +1130,7 @@ fn constant_bit_array_size_short_form() {
         value: Box::new(Constant::Int {
             location: Default::default(),
             value: "1".into(),
+            int_value: 1.into(),
         }),
         short_form: true,
     });

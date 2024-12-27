@@ -1,7 +1,15 @@
 ---
 source: compiler-core/src/nix/tests/modules.rs
 expression: "\nimport rocket_ship/launcher\npub fn go() { launcher.x }\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+import rocket_ship/launcher
+pub fn go() { launcher.x }
+
+
+----- COMPILED NIX
 let
   launcher' = builtins.import ./../rocket_ship/launcher.nix;
   

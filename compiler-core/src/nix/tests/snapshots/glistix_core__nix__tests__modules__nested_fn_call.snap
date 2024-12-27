@@ -1,7 +1,13 @@
 ---
 source: compiler-core/src/nix/tests/modules.rs
 expression: "import one/two\npub fn go() { two.go() }"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+import one/two
+pub fn go() { two.go() }
+
+----- COMPILED NIX
 let
   two' = builtins.import ./../one/two.nix;
   

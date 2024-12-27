@@ -1,5 +1,12 @@
 ---
 source: compiler-core/src/nix/tests/bools.rs
 expression: "pub fn negate(x) {\n    !x\n}"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+pub fn negate(x) {
+    !x
+}
+
+----- COMPILED NIX
 let negate = x: !x; in { inherit negate; }

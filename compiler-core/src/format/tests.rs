@@ -6424,3 +6424,36 @@ pub fn init(
 "#
     );
 }
+
+// https://github.com/gleam-lang/gleam/issues/3627
+#[test]
+fn big_grapheme_cluster() {
+    assert_format!(
+        r#"pub fn main() {
+  sw("👩‍👩‍👧‍👦👩‍👩‍👧‍👦👩‍👩‍👧‍👦", [])
+}
+"#
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/3720
+#[test]
+fn record_inside_const_list() {
+    assert_format_rewrite!(
+        r#"const commands = [
+  Command(
+    "dev",
+    "Start a file watcher that automatically re-compiles your app on all file changes.",
+  ), Command("help", "Show this help text."),
+]
+"#,
+        r#"const commands = [
+  Command(
+    "dev",
+    "Start a file watcher that automatically re-compiles your app on all file changes.",
+  ),
+  Command("help", "Show this help text."),
+]
+"#
+    );
+}
