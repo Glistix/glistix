@@ -1,5 +1,13 @@
 ---
 source: compiler-core/src/nix/tests/custom_types.rs
 expression: "\npub fn one() { One }\npub type One { One }\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub fn one() { One }
+pub type One { One }
+
+
+----- COMPILED NIX
 let One = { __gleamTag = "One"; }; one = { }: One; in { inherit One one; }

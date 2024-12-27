@@ -1,5 +1,12 @@
 ---
 source: compiler-core/src/nix/tests/numbers.rs
 expression: "\nconst x = 09_179\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+const x = 09_179
+
+
+----- COMPILED NIX
 let x = 9179; in { }

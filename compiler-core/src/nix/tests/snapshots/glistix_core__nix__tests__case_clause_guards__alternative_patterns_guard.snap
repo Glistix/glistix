@@ -1,7 +1,18 @@
 ---
 source: compiler-core/src/nix/tests/case_clause_guards.rs
-expression: "pub fn main(xs) -> Int {\n  case xs {\n    [x] | [_, x] if x == 1 -> x\n    _ -> 0\n  }\n}   \n"
+expression: "pub fn main(xs) -> Int {\n  case xs {\n    [x] | [_, x] if x == 1 -> x\n    _ -> 0\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+pub fn main(xs) -> Int {
+  case xs {
+    [x] | [_, x] if x == 1 -> x
+    _ -> 0
+  }
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) listHasLength;
   

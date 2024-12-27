@@ -3,6 +3,16 @@ source: compiler-core/src/nix/tests/panic.rs
 expression: "\nfn go(x) {\n  case x {\n    _ -> panic\n  }\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(x) {
+  case x {
+    _ -> panic
+  }
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError;
   

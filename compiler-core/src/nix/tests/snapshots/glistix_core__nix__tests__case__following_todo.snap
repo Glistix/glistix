@@ -3,6 +3,17 @@ source: compiler-core/src/nix/tests/case.rs
 expression: "\nfn go(x) {\n  case x {\n    True -> todo\n    _ -> 1\n  }\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(x) {
+  case x {
+    True -> todo
+    _ -> 1
+  }
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError;
   

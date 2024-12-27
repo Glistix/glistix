@@ -1,7 +1,16 @@
 ---
 source: compiler-core/src/nix/tests/strings.rs
 expression: "\npub fn y() -> String {\n  \"\\u{79}\"\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub fn y() -> String {
+  "\u{79}"
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) parseEscape;
   

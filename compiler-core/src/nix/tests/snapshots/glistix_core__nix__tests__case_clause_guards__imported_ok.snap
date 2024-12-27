@@ -1,7 +1,22 @@
 ---
 source: compiler-core/src/nix/tests/case_clause_guards.rs
 expression: "import gleam\npub type X {\n  Ok\n}\nfn func(x) {\n  case gleam.Ok {\n    _ if [] == [ gleam.Ok ] -> True\n    _ -> False\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+import gleam
+pub type X {
+  Ok
+}
+fn func(x) {
+  case gleam.Ok {
+    _ if [] == [ gleam.Ok ] -> True
+    _ -> False
+  }
+}
+
+
+----- COMPILED NIX
 let
   gleam' = builtins.import ./../gleam.nix;
   inherit (builtins.import ./../gleam.nix) toList;

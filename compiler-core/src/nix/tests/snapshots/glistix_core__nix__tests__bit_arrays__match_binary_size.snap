@@ -3,6 +3,16 @@ source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "\nfn go(x) {\n  let assert <<_, a:2-bytes>> = x\n  let assert <<_, b:bytes-size(2)>> = x\n  #(a, b)\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(x) {
+  let assert <<_, a:2-bytes>> = x
+  let assert <<_, b:bytes-size(2)>> = x
+  #(a, b)
+}
+
+
+----- COMPILED NIX
 let
   inherit
     (builtins.import ./../gleam.nix)

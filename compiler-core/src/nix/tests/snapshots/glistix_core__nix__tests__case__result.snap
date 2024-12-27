@@ -1,5 +1,17 @@
 ---
 source: compiler-core/src/nix/tests/case.rs
 expression: "\nfn go(x) {\n  case x {\n    Ok(_) -> 1\n    Error(_) -> 0\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(x) {
+  case x {
+    Ok(_) -> 1
+    Error(_) -> 0
+  }
+}
+
+
+----- COMPILED NIX
 let go = x: if x.__gleamTag == "Ok" then 1 else 0; in { }

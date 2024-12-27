@@ -1,7 +1,13 @@
 ---
 source: compiler-core/src/nix/tests/results.rs
 expression: "import gleam.{Error as Thing}\npub fn main() { Thing(1) }"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+import gleam.{Error as Thing}
+pub fn main() { Thing(1) }
+
+----- COMPILED NIX
 let
   gleam' = builtins.import ./../gleam.nix;
   Thing = (builtins.import ./../gleam.nix).Error;

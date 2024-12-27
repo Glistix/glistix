@@ -1,5 +1,14 @@
 ---
 source: compiler-core/src/nix/tests/bools.rs
 expression: "\nconst a = True\nconst b = False\nconst c = Nil\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+const a = True
+const b = False
+const c = Nil
+
+
+----- COMPILED NIX
 let a = true; b = false; c = null; in { }

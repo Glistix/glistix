@@ -1,5 +1,18 @@
 ---
 source: compiler-core/src/nix/tests/assignments.rs
-expression: "pub fn x() { \n  Nil\n}\n        \npub fn main() {\n  let x = False\n  x\n}\n"
+expression: "pub fn x() {\n  Nil\n}\n\npub fn main() {\n  let x = False\n  x\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+pub fn x() {
+  Nil
+}
+
+pub fn main() {
+  let x = False
+  x
+}
+
+
+----- COMPILED NIX
 let x = { }: null; main = { }: let x'1 = false; in x'1; in { inherit x main; }

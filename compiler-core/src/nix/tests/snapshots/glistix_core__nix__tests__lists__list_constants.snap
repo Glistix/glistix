@@ -1,7 +1,15 @@
 ---
 source: compiler-core/src/nix/tests/lists.rs
 expression: "\nconst a = []\nconst b = [1, 2, 3]\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+const a = []
+const b = [1, 2, 3]
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) toList;
   

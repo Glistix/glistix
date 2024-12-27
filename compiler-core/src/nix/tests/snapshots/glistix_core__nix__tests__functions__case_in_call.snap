@@ -1,5 +1,16 @@
 ---
 source: compiler-core/src/nix/tests/functions.rs
 expression: "pub fn main(f, x) {\n  f(case x {\n    1 -> 2\n    _ -> 0\n  })\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+pub fn main(f, x) {
+  f(case x {
+    1 -> 2
+    _ -> 0
+  })
+}
+
+
+----- COMPILED NIX
 let main = f: x: f (if x == 1 then 2 else 0); in { inherit main; }

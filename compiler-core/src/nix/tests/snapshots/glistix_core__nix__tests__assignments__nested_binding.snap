@@ -3,6 +3,14 @@ source: compiler-core/src/nix/tests/assignments.rs
 expression: "\nfn go(x) {\n  let assert #(a, #(b, c, 2) as t, _, 1) = x\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(x) {
+  let assert #(a, #(b, c, 2) as t, _, 1) = x
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError;
   

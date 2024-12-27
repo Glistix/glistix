@@ -1,7 +1,18 @@
 ---
 source: compiler-core/src/nix/tests/case_clause_guards.rs
 expression: "pub fn main(xs) {\n  case xs {\n    #(x) if x == 1 -> x\n    _ -> 0\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+pub fn main(xs) {
+  case xs {
+    #(x) if x == 1 -> x
+    _ -> 0
+  }
+}
+
+
+----- COMPILED NIX
 let
   main =
     xs:

@@ -1,7 +1,18 @@
 ---
 source: compiler-core/src/nix/tests/externals.rs
 expression: "\n@external(nix, \"./the/module.nix\", \"dup\")\npub fn one() -> Nil\n\n@external(nix, \"./the/module.nix\", \"dup\")\npub fn two() -> Nil\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+@external(nix, "./the/module.nix", "dup")
+pub fn one() -> Nil
+
+@external(nix, "./the/module.nix", "dup")
+pub fn two() -> Nil
+
+
+----- COMPILED NIX
 let
   one = (builtins.import ./the/module.nix).dup;
   two = (builtins.import ./the/module.nix).dup;

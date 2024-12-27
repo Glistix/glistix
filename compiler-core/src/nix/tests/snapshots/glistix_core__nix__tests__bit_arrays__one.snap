@@ -1,7 +1,16 @@
 ---
 source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "\nfn go() {\n  <<256>>\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go() {
+  <<256>>
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) toBitArray;
   

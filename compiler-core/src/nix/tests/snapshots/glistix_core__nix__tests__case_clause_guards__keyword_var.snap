@@ -1,7 +1,28 @@
 ---
 source: compiler-core/src/nix/tests/case_clause_guards.rs
 expression: "\npub const inherit = 5\npub const builtins = 10\npub fn main() {\n  let then = 5\n  let or = 10\n  let in = 7\n  case in {\n    _ if or == then -> True\n    _ if [or] == [5] -> True\n    inherit if #(inherit) == #(5) -> False\n    _ if inherit == builtins -> True\n    with if with > 5 -> False\n    rec -> False\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub const inherit = 5
+pub const builtins = 10
+pub fn main() {
+  let then = 5
+  let or = 10
+  let in = 7
+  case in {
+    _ if or == then -> True
+    _ if [or] == [5] -> True
+    inherit if #(inherit) == #(5) -> False
+    _ if inherit == builtins -> True
+    with if with > 5 -> False
+    rec -> False
+  }
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) toList;
   

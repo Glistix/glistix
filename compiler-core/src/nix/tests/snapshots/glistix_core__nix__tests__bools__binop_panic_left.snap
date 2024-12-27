@@ -3,6 +3,12 @@ source: compiler-core/src/nix/tests/bools.rs
 expression: "pub fn negate(x) {\n    panic && x\n}"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+pub fn negate(x) {
+    panic && x
+}
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError;
   

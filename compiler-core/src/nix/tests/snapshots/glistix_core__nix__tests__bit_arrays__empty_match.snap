@@ -3,6 +3,14 @@ source: compiler-core/src/nix/tests/bit_arrays.rs
 expression: "\nfn go(x) {\n  let assert <<>> = x\n}\n"
 snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(x) {
+  let assert <<>> = x
+}
+
+
+----- COMPILED NIX
 let
   inherit (builtins.import ./../gleam.nix) makeError byteSize;
   

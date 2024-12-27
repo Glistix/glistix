@@ -1,5 +1,15 @@
 ---
 source: compiler-core/src/nix/tests/functions.rs
 expression: "const in = 1\n\npub fn rec() {\n  in\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+const in = 1
+
+pub fn rec() {
+  in
+}
+
+
+----- COMPILED NIX
 let in' = 1; rec' = { }: in'; in { inherit rec'; }

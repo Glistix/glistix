@@ -1,7 +1,22 @@
 ---
 source: compiler-core/src/nix/tests/custom_types.rs
 expression: "\ntype Mine {\n    This\n    ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant\n}\n\nfn go() {\n    This\n    ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+type Mine {
+    This
+    ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant
+}
+
+fn go() {
+    This
+    ThatOneIsAMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchMuchLongerVariant
+}
+
+
+----- COMPILED NIX
 let
   This = { __gleamTag = "This"; };
   

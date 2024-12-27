@@ -1,7 +1,17 @@
 ---
 source: compiler-core/src/nix/tests/records.rs
 expression: "\npub type Person {\n    Teacher(name: String, title: String)\n    Student(name: String, age: Int)\n}\npub fn get_name(person: Person) { person.name }"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+pub type Person {
+    Teacher(name: String, title: String)
+    Student(name: String, age: Int)
+}
+pub fn get_name(person: Person) { person.name }
+
+----- COMPILED NIX
 let
   Teacher = name: title: { __gleamTag = "Teacher"; inherit name title; };
   

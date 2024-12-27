@@ -1,5 +1,18 @@
 ---
 source: compiler-core/src/nix/tests/case.rs
 expression: "\nfn go(x, y) {\n  case x, y {\n    True, _ -> 1\n    _, True -> 2\n    False, False -> 0\n  }\n}\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+fn go(x, y) {
+  case x, y {
+    True, _ -> 1
+    _, True -> 2
+    False, False -> 0
+  }
+}
+
+
+----- COMPILED NIX
 let go = x: y: if x then 1 else if y then 2 else 0; in { }

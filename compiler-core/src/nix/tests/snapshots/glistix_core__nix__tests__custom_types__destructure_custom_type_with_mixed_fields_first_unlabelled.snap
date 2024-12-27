@@ -1,7 +1,24 @@
 ---
 source: compiler-core/src/nix/tests/custom_types.rs
 expression: "\ntype Cat {\n  Cat(String, cuteness: Int)\n}\n\nfn go(cat) {\n  let Cat(x, y) = cat\n  let Cat(cuteness: y, ..) = cat\n  let Cat(x, cuteness: y) = cat\n  x\n}\n\n"
+snapshot_kind: text
 ---
+----- SOURCE CODE
+
+type Cat {
+  Cat(String, cuteness: Int)
+}
+
+fn go(cat) {
+  let Cat(x, y) = cat
+  let Cat(cuteness: y, ..) = cat
+  let Cat(x, cuteness: y) = cat
+  x
+}
+
+
+
+----- COMPILED NIX
 let
   Cat = x0: cuteness: { __gleamTag = "Cat"; inherit cuteness; _0 = x0; };
   
