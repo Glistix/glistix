@@ -1,0 +1,48 @@
+---
+source: compiler-cli/src/new/tests.rs
+expression: "crate::fs::read(Utf8PathBuf::from_path_buf(file_path.to_path_buf()).expect(\"Non Utf8 Path\"),).unwrap()"
+snapshot_kind: text
+---
+name = "my_project"
+version = "1.0.0"
+target = "nix"
+
+# Fill out these fields if you intend to generate HTML documentation or publish
+# your project to the Hex package manager.
+#
+# description = ""
+# licences = ["Apache-2.0"]
+# repository = { type = "github", user = "", repo = "" }
+# links = [{ title = "Website", href = "" }]
+#
+# For a full reference of all the available options, you can have a look at
+# https://gleam.run/writing-gleam/gleam-toml/.
+
+[dependencies]
+# Run 'git submodule add --name stdlib -- https://github.com/glistix/stdlib external/stdlib'
+# to clone Glistix's stdlib patch to the local path specified below. This is needed so stdlib
+# will work on the Nix target. Hex dependents will use the stdlib version specified below,
+# in [glistix.preview.hex-patch], instead.
+gleam_stdlib = { path = "./external/stdlib" }
+
+[dev-dependencies]
+glistix_gleeunit = ">= 1.0.0 and < 2.0.0"
+
+# The [glistix.preview] namespace contains useful settings which will be needed
+# during Glistix beta. In the future, it's likely these won't be necessary
+# anymore.
+[glistix.preview]
+# If you're patching a package using a local dependency/Git submodule and you
+# get a local dependency conflict error, add it to the list below.
+local-overrides = ["gleam_stdlib"]
+
+# The section below allows publishing your package to Hex despite having
+# local dependencies, by declaring that you depend on another Hex package
+# instead.
+# This is needed to be able to patch stdlib etc. locally during development
+# and at the same time publish to Hex without the patch.
+# The section below should only be used for this purpose. Please do not abuse
+# this feature, as it is mostly a temporary workaround while Gleam doesn't have
+# a proper dependency patching system.
+[glistix.preview.hex-patch]
+gleam_stdlib = ">= 0.34.0 and < 2.0.0"
