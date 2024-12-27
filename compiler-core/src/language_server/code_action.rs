@@ -1463,8 +1463,7 @@ impl<'a> QualifiedToUnqualifiedImportSecondPass<'a> {
             import: ast::Import { location, .. },
             ..
         } = self.qualified_constructor;
-        self
-            .module
+        self.module
             .code
             .get(location.start as usize..location.end as usize)
             .expect("import not found")
