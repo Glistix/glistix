@@ -20,6 +20,7 @@ test: ## Run the compiler unit tests
 	cargo clippy
 	cd test/language && make
 	cd test/javascript_prelude && make test
+	cd test/nix_prelude && make test
 	cd test/project_erlang && cargo run clean && cargo run check && cargo run test
 	cd test/project_javascript && cargo run clean && cargo run check && cargo run test
 	cd test/project_deno && cargo run clean && cargo run check && cargo run test
