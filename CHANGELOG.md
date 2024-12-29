@@ -1,6 +1,6 @@
 # Gleam's Changelog
 
-## Unreleased
+## 1.7.0-rc1 - 2024-12-29
 
 ### Compiler
 
