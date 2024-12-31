@@ -1554,8 +1554,10 @@ impl<'comments> Formatter<'comments> {
             // In all other cases we print it like a regular function call
             // without changing it.
             //
-            (FnCapturePosition::RightHandSideOfPipe, arguments)
-            | (FnCapturePosition::EverywhereElse, arguments) => {
+            (
+                FnCapturePosition::RightHandSideOfPipe | FnCapturePosition::EverywhereElse,
+                arguments,
+            ) => {
                 let expr = self.expr(fun);
                 let arity = arguments.len();
                 self.append_inlinable_wrapped_args(
