@@ -1,6 +1,6 @@
 # Gleam's Changelog
 
-## Unreleased
+## 1.7.0-rc3 - 2025-12-02
 
 ### Formatter
 
