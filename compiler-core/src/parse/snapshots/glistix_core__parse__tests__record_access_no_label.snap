@@ -1,7 +1,6 @@
 ---
 source: compiler-core/src/parse/tests.rs
 expression: "\ntype Wibble {\n    Wibble(wibble: String)\n}\n\nfn wobble() {\n  Wibble(\"a\").\n}\n"
-snapshot_kind: text
 ---
 Parsed {
     module: Module {
@@ -65,6 +64,7 @@ Parsed {
                                     },
                                 ],
                                 documentation: None,
+                                deprecation: NotDeprecated,
                             },
                         ],
                         documentation: None,

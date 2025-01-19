@@ -39,6 +39,9 @@ expression: "let assert [x]: List(Int) = [2]"
                         },
                         name: "x",
                         type_: (),
+                        origin: Variable(
+                            "x",
+                        ),
                     },
                 ],
                 tail: None,
@@ -49,6 +52,7 @@ expression: "let assert [x]: List(Int) = [2]"
                     start: 4,
                     end: 10,
                 },
+                message: None,
             },
             annotation: Some(
                 Constructor(

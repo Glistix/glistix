@@ -1,6 +1,6 @@
 ---
 source: compiler-core/src/docs/tests.rs
-expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMarkdownPagesOpts::default())"
+expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMarkdownPagesOpts { hex_publish: Some(DocContext::Build) })"
 ---
 //// LICENSE.html
 
@@ -18,7 +18,7 @@ expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMar
          between multiple versions of the same package. -->
     <script src="./docs_config.js"></script>
     <link id="syntax-theme" rel="stylesheet" href="./css/atom-one-light.min.css?v=GLEAM_VERSION_HERE"/>
-    <link rel="canonical" href="https://hexdocs.pm/test_project_name/LICENSE.html" />
+    
   </head>
   <body class="prewrap-off theme-light drawer-closed">
     <script>
@@ -214,13 +214,6 @@ expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMar
         </ul>
         
 
-        
-        <h2>Links</h2>
-        <ul>
-        
-          <li><a href="https://hex.pm/packages/test_project_name">Hex</a></li>
-        
-        </ul>
         
 
         <h2>Modules</h2>
@@ -305,6 +298,7 @@ expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMar
     <script src="./js/highlightjs-elixir.min.js?v=GLEAM_VERSION_HERE"></script>
     <script src="./js/highlightjs-javascript.min.js?v=GLEAM_VERSION_HERE"></script>
     <script src="./js/highlightjs-typescript.min.js?v=GLEAM_VERSION_HERE"></script>
+    <script src="./js/highlightjs-nix.min.js?v=GLEAM_VERSION_HERE"></script>
     <script>
       document.querySelectorAll("pre code").forEach((elem) => {
         if (elem.className === "") {
@@ -337,7 +331,7 @@ expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMar
          between multiple versions of the same package. -->
     <script src="./docs_config.js"></script>
     <link id="syntax-theme" rel="stylesheet" href="./css/atom-one-light.min.css?v=GLEAM_VERSION_HERE"/>
-    <link rel="canonical" href="https://hexdocs.pm/test_project_name/app.html" />
+    
   </head>
   <body class="prewrap-off theme-light drawer-closed">
     <script>
@@ -533,13 +527,6 @@ expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMar
         </ul>
         
 
-        
-        <h2>Links</h2>
-        <ul>
-        
-          <li><a href="https://hex.pm/packages/test_project_name">Hex</a></li>
-        
-        </ul>
         
 
         <h2>Modules</h2>
@@ -670,6 +657,7 @@ expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMar
     <script src="./js/highlightjs-elixir.min.js?v=GLEAM_VERSION_HERE"></script>
     <script src="./js/highlightjs-javascript.min.js?v=GLEAM_VERSION_HERE"></script>
     <script src="./js/highlightjs-typescript.min.js?v=GLEAM_VERSION_HERE"></script>
+    <script src="./js/highlightjs-nix.min.js?v=GLEAM_VERSION_HERE"></script>
     <script>
       document.querySelectorAll("pre code").forEach((elem) => {
         if (elem.className === "") {
@@ -702,7 +690,7 @@ expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMar
          between multiple versions of the same package. -->
     <script src="../../docs_config.js"></script>
     <link id="syntax-theme" rel="stylesheet" href="../../css/atom-one-light.min.css?v=GLEAM_VERSION_HERE"/>
-    <link rel="canonical" href="https://hexdocs.pm/test_project_name/gleam/otp/actor.html" />
+    
   </head>
   <body class="prewrap-off theme-light drawer-closed">
     <script>
@@ -899,13 +887,6 @@ expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMar
         
 
         
-        <h2>Links</h2>
-        <ul>
-        
-          <li><a href="https://hex.pm/packages/test_project_name">Hex</a></li>
-        
-        </ul>
-        
 
         <h2>Modules</h2>
         <ul>
@@ -1035,6 +1016,7 @@ expression: "compile_with_markdown_pages(config, modules, pages,\nCompileWithMar
     <script src="../../js/highlightjs-elixir.min.js?v=GLEAM_VERSION_HERE"></script>
     <script src="../../js/highlightjs-javascript.min.js?v=GLEAM_VERSION_HERE"></script>
     <script src="../../js/highlightjs-typescript.min.js?v=GLEAM_VERSION_HERE"></script>
+    <script src="../../js/highlightjs-nix.min.js?v=GLEAM_VERSION_HERE"></script>
     <script>
       document.querySelectorAll("pre code").forEach((elem) => {
         if (elem.className === "") {
