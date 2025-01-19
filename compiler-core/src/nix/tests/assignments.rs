@@ -179,3 +179,27 @@ pub fn main(x) {
 "#
     );
 }
+
+#[test]
+fn message() {
+    assert_nix!(
+        r#"
+pub fn unwrap_or_panic(value) {
+  let assert Ok(inner) = value as "Oops, there was an error"
+  inner
+}
+"#
+    );
+}
+
+#[test]
+fn variable_message() {
+    assert_nix!(
+        r#"
+pub fn expect(value, message) {
+  let assert Ok(inner) = value as message
+  inner
+}
+"#
+    );
+}
