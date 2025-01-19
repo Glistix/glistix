@@ -79,3 +79,22 @@ pub fn get_name(person: Person) { person.name }
 pub fn get_age(person: Person) { person.age }"
     );
 }
+
+// https://github.com/gleam-lang/gleam/pull/3878
+#[test]
+fn nested_record_update() {
+    assert_nix!(
+        "pub type Wibble {
+  Wibble(a: Int, b: Wobble, c: Int)
+}
+
+pub type Wobble {
+  Wobble(a: Int, b: Int)
+}
+
+pub fn main() {
+  let base = Wibble(1, Wobble(2, 3), 4)
+  Wibble(..base, b: Wobble(..base.b, b: 5))
+}"
+    );
+}
