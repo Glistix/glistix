@@ -91,18 +91,22 @@ impl<'module> Generator<'module> {
 
     /// Every statement, in Nix, must be an assignment, even an expression.
     fn statement<'a>(&mut self, statement: &'a TypedStatement) -> Output<'a> {
-        match statement {
-            Statement::Expression(expression) => {
-                let subject = self.expression(expression)?;
-                let name = self.next_anonymous_var();
-                // Convert expression to assignment with irrelevant name
-                Ok(syntax::assignment_line(name, subject))
-            }
-            Statement::Assignment(assignment) => self.assignment(assignment, false),
-            Statement::Use(_use) => {
-                unreachable!("Use must not be present for Nix generation")
-            }
-        }
+        let expression = match statement {
+            Statement::Expression(expression) => expression,
+
+            // Unfortunately, we can't unify the two branches since '.call'
+            // is boxed, whereas 'expression' above is not
+            Statement::Use(use_) => &use_.call,
+
+            // This is already a prepared assignment, so we just return it
+            Statement::Assignment(assignment) => return self.assignment(assignment, false),
+        };
+
+        // Assume we have an expression to assign to (assignment not yet ready)
+        let subject = self.expression(expression)?;
+        let name = self.next_anonymous_var();
+        // Convert expression to assignment with irrelevant name
+        Ok(syntax::assignment_line(name, subject))
     }
 
     pub fn expression<'a>(&mut self, expression: &'a TypedExpr) -> Output<'a> {
@@ -569,15 +573,25 @@ impl<'module> Generator<'module> {
                 if self.strict_eval_vars.is_empty() {
                     self.expression(expression)?
                 } else {
+                    // It will be a parameter of 'seq' / 'seqAll' below, so it
+                    // must be wrapped in parentheses if necessary
                     self.wrap_child_expression(expression)?
                 }
             }
 
-            Statement::Assignment(assignment) => self.assignment(assignment, true)?,
-
-            Statement::Use(_) => {
-                unreachable!("use statements must not be present for Nix generation")
+            // NOTE: Can't unify with the branch above as 'use_.call' is a
+            // boxed expression, but the code should be the same
+            Statement::Use(use_) => {
+                if self.strict_eval_vars.is_empty() {
+                    self.expression(&use_.call)?
+                } else {
+                    // It will be a parameter of 'seq' / 'seqAll' below, so it
+                    // must be wrapped in parentheses if necessary
+                    self.wrap_child_expression(&use_.call)?
+                }
             }
+
+            Statement::Assignment(assignment) => self.assignment(assignment, true)?,
         };
 
         let mut strict_eval_vars = std::mem::take(&mut self.strict_eval_vars)
