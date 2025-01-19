@@ -72,7 +72,7 @@ jobs:
       - name: Verify binary architecture
         shell: bash
         run: |
-          BINARY_PATH="target/${{ matrix.target }}/release/gleam"
+          BINARY_PATH="target/${{ matrix.target }}/release/glistix"
           if [[ "${{ matrix.target }}" == *"windows"* ]]; then
             BINARY_PATH="${BINARY_PATH}.exe"
           fi

@@ -138,7 +138,7 @@ jobs:
       - name: Verify binary architecture
         shell: bash
         run: |
-          BINARY_PATH="${CARGO_HOME}/bin/gleam"
+          BINARY_PATH="${CARGO_HOME}/bin/glistix"
           if [[ "${{ matrix.target }}" == *"windows"* ]]; then
             BINARY_PATH="${BINARY_PATH}.exe"
           fi
