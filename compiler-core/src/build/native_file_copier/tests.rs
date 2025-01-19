@@ -550,3 +550,25 @@ fn glistix_all_nix_files_are_copied_from_test_subfolders() {
         fs.into_contents(),
     );
 }
+
+#[test]
+fn glistix_conflicting_gleam_and_nix_modules_result_in_an_error() {
+    let fs = InMemoryFileSystem::new();
+    fs.write(&Utf8Path::new("/src/wibble.gleam"), "1").unwrap();
+    fs.write(&Utf8Path::new("/src/wibble.nix"), "1").unwrap();
+
+    let copier = NativeFileCopier::new(fs.clone(), root(), root_out());
+    assert!(copier.run().is_err());
+}
+
+#[test]
+fn glistix_differently_nested_gleam_and_nix_modules_with_same_name_are_ok() {
+    let fs = InMemoryFileSystem::new();
+    fs.write(&Utf8Path::new("/src/a/b/c/wibble.gleam"), "1")
+        .unwrap();
+    fs.write(&Utf8Path::new("/src/d/e/wibble.nix"), "1")
+        .unwrap();
+
+    let copier = NativeFileCopier::new(fs.clone(), root(), root_out());
+    assert!(copier.run().is_ok());
+}
