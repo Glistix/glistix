@@ -502,3 +502,51 @@ fn differently_nested_gleam_and_javascript_modules_with_same_name_are_ok() {
     let copier = NativeFileCopier::new(fs.clone(), root(), root_out());
     assert!(copier.run().is_ok());
 }
+
+#[test]
+fn glistix_all_nix_files_are_copied_from_src_subfolders() {
+    let fs = InMemoryFileSystem::new();
+    fs.write(&Utf8Path::new("/src/abc/def/wibble.nix"), "1")
+        .unwrap();
+    fs.write(&Utf8Path::new("/src/def/wobble.nix"), "2")
+        .unwrap();
+
+    let copier = NativeFileCopier::new(fs.clone(), root(), root_out());
+    let copied = copier.run().unwrap();
+
+    assert!(!copied.any_elixir);
+    assert!(copied.to_compile.is_empty());
+    assert_eq!(
+        HashMap::from([
+            (Utf8PathBuf::from("/src/abc/def/wibble.nix"), "1".into()),
+            (Utf8PathBuf::from("/out/abc/def/wibble.nix"), "1".into()),
+            (Utf8PathBuf::from("/src/def/wobble.nix"), "2".into()),
+            (Utf8PathBuf::from("/out/def/wobble.nix"), "2".into())
+        ]),
+        fs.into_contents(),
+    );
+}
+
+#[test]
+fn glistix_all_nix_files_are_copied_from_test_subfolders() {
+    let fs = InMemoryFileSystem::new();
+    fs.write(&Utf8Path::new("/test/abc/def/wibble.nix"), "1")
+        .unwrap();
+    fs.write(&Utf8Path::new("/test/def/wobble.nix"), "2")
+        .unwrap();
+
+    let copier = NativeFileCopier::new(fs.clone(), root(), root_out());
+    let copied = copier.run().unwrap();
+
+    assert!(!copied.any_elixir);
+    assert!(copied.to_compile.is_empty());
+    assert_eq!(
+        HashMap::from([
+            (Utf8PathBuf::from("/test/abc/def/wibble.nix"), "1".into()),
+            (Utf8PathBuf::from("/out/abc/def/wibble.nix"), "1".into()),
+            (Utf8PathBuf::from("/test/def/wobble.nix"), "2".into()),
+            (Utf8PathBuf::from("/out/def/wobble.nix"), "2".into())
+        ]),
+        fs.into_contents(),
+    );
+}
