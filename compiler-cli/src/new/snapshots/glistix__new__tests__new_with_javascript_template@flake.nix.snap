@@ -1,7 +1,6 @@
 ---
 source: compiler-cli/src/new/tests.rs
 expression: "crate::fs::read(Utf8PathBuf::from_path_buf(file_path.to_path_buf()).expect(\"Non Utf8 Path\"),).unwrap()"
-snapshot_kind: text
 ---
 # Make sure to run "nix flake update" at least once to generate your flake.lock.
 # Run your main function from Nix by importing this flake as follows:
@@ -26,7 +25,7 @@ snapshot_kind: text
     };
 
     # Pick your Glistix version here.
-    glistix.url = "github:glistix/glistix/v0.5.0";
+    glistix.url = "github:glistix/glistix/v0.6.0";
 
     # Submodules
     # Add any submodules which you use as dependencies here,
