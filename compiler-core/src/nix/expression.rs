@@ -1,7 +1,7 @@
 use crate::ast::{
     Arg, BinOp, BitArrayOption, CallArg, Constant, SrcSpan, Statement, TypedArg, TypedAssignment,
     TypedClause, TypedConstant, TypedConstantBitArraySegment, TypedExpr, TypedExprBitArraySegment,
-    TypedModule, TypedPattern, TypedRecordUpdateArg, TypedStatement,
+    TypedModule, TypedPattern, TypedStatement,
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
@@ -10,7 +10,9 @@ use crate::nix::{
     syntax, Error, Output, UsageTracker, INDENT,
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
-use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
+use crate::type_::{
+    ModuleValueConstructor, Type, TypedCallArg, ValueConstructor, ValueConstructorVariant,
+};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
 use regex::Regex;
@@ -151,7 +153,12 @@ impl<'module> Generator<'module> {
             TypedExpr::NegateInt { value, .. } => self.negate_with("-", value),
 
             TypedExpr::RecordAccess { label, record, .. } => self.record_access(record, label),
-            TypedExpr::RecordUpdate { record, args, .. } => self.record_update(record, args),
+            TypedExpr::RecordUpdate {
+                record,
+                constructor,
+                args,
+                ..
+            } => self.record_update(record, constructor, args),
 
             TypedExpr::ModuleSelect {
                 module_alias,
@@ -975,17 +982,49 @@ impl Generator<'_> {
         Ok(docvec![record, ".", escaped_label])
     }
 
+    /// Generate a record update from:
+    ///
+    /// ```gleam
+    /// RecordUpdate(..rec, a: 5, b: 6)
+    /// ```
+    ///
+    /// into:
+    ///
+    /// ```nix
+    /// rec // { a: 5, b: 6 }
+    /// ```
+    ///
+    /// Note that this isn't technically correct, considering the JS target and the
+    /// current implementation, as the typer expects us to do:
+    ///
+    /// ```nix
+    /// let
+    ///   rec$ = rec;
+    /// in Constructor 5 6 rec$.old_field rec$.other_old_field
+    /// ```
+    ///
+    /// At the moment, however, it doesn't make a difference, so we introspect
+    /// into the generated assignments and ignore generated arguments.
+    /// We may need to revise this in the future if features are added which
+    /// may change the constructor variant.
     fn record_update<'a>(
         &mut self,
-        record: &'a TypedExpr,
-        updates: &'a [TypedRecordUpdateArg],
+        record: &'a TypedAssignment,
+        _constructor: &'a TypedExpr,
+        args: &'a [TypedCallArg],
     ) -> Output<'a> {
+        let record = &record.value;
         let record = self.wrap_child_expression(record)?;
-        let fields = updates
+        let fields = args
             .iter()
-            .map(|TypedRecordUpdateArg { label, value, .. }| {
+            .filter(|TypedCallArg { implicit, .. }| implicit.is_none())
+            .map(|TypedCallArg { label, value, .. }| {
                 (
-                    syntax::maybe_quoted_attr_set_label_from_identifier(label),
+                    syntax::maybe_quoted_attr_set_label_from_identifier(
+                        label
+                            .as_ref()
+                            .expect("record update arg should have a label"),
+                    ),
                     self.wrap_child_expression(value),
                 )
             });

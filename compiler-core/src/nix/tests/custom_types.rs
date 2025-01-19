@@ -585,3 +585,21 @@ pub fn main() {
 "#
     );
 }
+
+// https://github.com/gleam-lang/gleam/pull/3773
+#[test]
+fn record_generic_parameter_update_compat() {
+    assert_nix!(
+        r#"
+type Box(value) {
+    Box(password: String, value: value, value2: value)
+}
+fn insert(box: Box(a), value: b) -> Box(b) {
+    Box(..box, value:, value2: value)
+}
+fn replace_string_with_int() {
+  let box: Box(String) = Box(password: "A", value: "B", value2: "E")
+  #(box, insert(box, 10))
+}"#
+    );
+}
