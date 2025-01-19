@@ -180,6 +180,31 @@ pub fn main(x) {
     );
 }
 
+// Inspired by https://github.com/gleam-lang/gleam/issues/2931
+#[test]
+fn keyword_assignment() {
+    assert_nix!(
+        r#"
+pub fn main() {
+  let with = 10
+  let in = 50
+  in
+}
+"#
+    );
+}
+
+// Inspired by https://github.com/gleam-lang/gleam/issues/3004
+#[test]
+fn escaped_variables_in_constants() {
+    assert_nix!(
+        r#"
+pub const with = 5
+pub const in = with
+"#
+    );
+}
+
 #[test]
 fn message() {
     assert_nix!(
