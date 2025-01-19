@@ -3304,6 +3304,7 @@ functions are declared separately from types.";
             Token::Name { name } => match name.as_str() {
                 "javascript" => Ok(Target::JavaScript),
                 "erlang" => Ok(Target::Erlang),
+                "nix" => Ok(Target::Nix),
                 "js" => {
                     self.warnings
                         .push(DeprecatedSyntaxWarning::DeprecatedTargetShorthand {
