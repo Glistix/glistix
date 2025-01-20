@@ -260,6 +260,7 @@ fn provide_wrong_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -284,6 +285,7 @@ fn provide_existing_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -294,6 +296,7 @@ fn provide_existing_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -309,6 +312,7 @@ fn provide_conflicting_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -321,6 +325,7 @@ fn provide_conflicting_package() {
             path: Utf8Path::new("./test/other").to_path_buf(),
         },
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -328,6 +333,90 @@ fn provide_conflicting_package() {
         assert_eq!(package, "hello_world");
     } else {
         panic!("Expected ProvidedDependencyConflict error")
+    }
+}
+
+#[test]
+fn glistix_provide_conflicting_package_patched_by_root() {
+    let mut provided = HashMap::new();
+
+    let patched_package = EcoString::from("hello_world");
+    let mut root_config = PackageConfig::default();
+    let _ = root_config.dependencies.insert(
+        patched_package.clone(),
+        Requirement::Path {
+            path: Utf8PathBuf::from("./test/hello_world"),
+        },
+    );
+    root_config
+        .glistix
+        .preview
+        .local_overrides
+        .push(patched_package.clone());
+
+    let project_paths = crate::project_paths_at_current_directory_without_toml();
+    let result = provide_local_package(
+        patched_package.clone(),
+        Utf8Path::new("./test/hello_world"),
+        Utf8Path::new("./"),
+        &project_paths,
+        &root_config,
+        &mut provided,
+        &mut vec!["root".into(), "subpackage".into()],
+    );
+    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
+
+    let result = provide_local_package(
+        patched_package,
+        Utf8Path::new("./test/"),
+        Utf8Path::new("./"),
+        &project_paths,
+        &root_config,
+        &mut provided,
+        &mut vec!["root".into(), "subpackage".into()],
+    );
+    // OK: There was a conflict, but root had a dependency with an override.
+    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
+}
+
+#[test]
+fn glistix_provide_conflicting_package_patched_by_root_but_not_root_dependency() {
+    let mut provided = HashMap::new();
+
+    let patched_package = EcoString::from("hello_world");
+    let mut root_config = PackageConfig::default();
+    root_config
+        .glistix
+        .preview
+        .local_overrides
+        .push(patched_package.clone());
+
+    let project_paths = crate::project_paths_at_current_directory_without_toml();
+    let result = provide_local_package(
+        patched_package.clone(),
+        Utf8Path::new("./test/hello_world"),
+        Utf8Path::new("./"),
+        &project_paths,
+        &root_config,
+        &mut provided,
+        &mut vec!["root".into(), "subpackage".into()],
+    );
+    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
+
+    let result = provide_local_package(
+        patched_package,
+        Utf8Path::new("./test/"),
+        Utf8Path::new("./"),
+        &project_paths,
+        &root_config,
+        &mut provided,
+        &mut vec!["root".into(), "subpackage".into()],
+    );
+    // There was an override, but no matching root dependency, so it doesn't count.
+    if let Err(Error::ProvidedDependencyConflict { package, .. }) = result {
+        assert_eq!(package, "hello_world");
+    } else {
+        panic!("Expected ProvidedDependencyConflict error, got {result:?}")
     }
 }
 
@@ -340,6 +429,7 @@ fn provided_is_absolute() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -361,6 +451,7 @@ fn provided_recursive() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
+        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "hello_world".into(), "subpackage".into()],
     );
