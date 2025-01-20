@@ -1,0 +1,10 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: pub type Thing
+snapshot_kind: text
+---
+----- SOURCE CODE
+pub type Thing
+
+----- COMPILED NIX
+{ }

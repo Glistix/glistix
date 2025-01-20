@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"./one\", \"one\")\npub fn one(x: Int) -> Int\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+@external(nix, "./one", "one")
+pub fn one(x: Int) -> Int
+
+
+----- COMPILED NIX
+let inherit (builtins.import ./one) one; in { inherit one; }

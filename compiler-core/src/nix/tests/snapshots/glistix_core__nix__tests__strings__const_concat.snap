@@ -1,0 +1,23 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\nconst cute = \"cute\"\nconst cute_bee = cute <> \"bee\"\npub fn main() {\n  cute_bee\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+const cute = "cute"
+const cute_bee = cute <> "bee"
+pub fn main() {
+  cute_bee
+}
+
+
+----- COMPILED NIX
+let
+  cute = "cute";
+  
+  cute_bee = cute + "bee";
+  
+  main = { }: cute_bee;
+in
+{ inherit main; }

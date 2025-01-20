@@ -1,0 +1,17 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "pub fn main() {\n  fn() { main() }\n  1\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+pub fn main() {
+  fn() { main() }
+  1
+}
+
+
+----- COMPILED NIX
+let
+  main = { }: let _' = { }: main { }; in builtins.seq _' 1;
+in
+{ inherit main; }
