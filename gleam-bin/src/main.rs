@@ -1,3 +1,3 @@
 pub fn main() {
-    gleam_cli::main();
+    glistix_cli::main();
 }

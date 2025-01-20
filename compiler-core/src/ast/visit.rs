@@ -11,7 +11,7 @@
 //! we can do the following:
 //!
 //! ```no_run
-//! use gleam_core::ast::{TypedFunction, visit::{self, Visit}};
+//! use glistix_core::ast::{TypedFunction, visit::{self, Visit}};
 //!
 //! struct FnCollector<'ast> {
 //!     functions: Vec<&'ast TypedFunction>

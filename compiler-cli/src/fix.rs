@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use gleam_core::{
+use glistix_core::{
     Error, Result, Warning,
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, Options},

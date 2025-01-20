@@ -1,12 +1,12 @@
 [package]
-name = "gleam"
-version = "1.9.0"
-authors = ["Louis Pilfold <louis@lpil.uk>"]
+name = "glistix"
+version = "0.8.0"
+authors = ["PgBiel"]
 edition = "2024"
 license-file = "LICENCE"
 
 [dependencies]
-gleam-cli = { path = "../compiler-cli" }
+glistix-cli = { path = "../compiler-cli" }
 
 [build-dependencies]
 # For statically linking the VCRuntime on Windows when

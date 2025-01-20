@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use async_trait::async_trait;
 use camino::Utf8PathBuf;
-use gleam_core::{
+use glistix_core::{
     Error, Result,
     error::{FileIoAction, FileKind},
 };
@@ -28,7 +28,7 @@ impl HttpClient {
 }
 
 #[async_trait]
-impl gleam_core::io::HttpClient for HttpClient {
+impl glistix_core::io::HttpClient for HttpClient {
     async fn send(&self, request: Request<Vec<u8>>) -> Result<Response<Vec<u8>>> {
         let request = request
             .try_into()

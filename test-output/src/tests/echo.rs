@@ -1,13 +1,13 @@
 use std::{env, io::Read, process::Stdio};
 
 use camino::{Utf8Path, Utf8PathBuf};
-use gleam_core::{
+use glistix_core::{
     build::{Runtime, Target},
     io::Command,
     paths::ProjectPaths,
 };
 
-use gleam_cli::{
+use glistix_cli::{
     fs,
     run::{self, Which},
 };

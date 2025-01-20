@@ -1,7 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
 use flate2::{Compression, write::GzEncoder};
-use gleam_core::{
+use glistix_core::{
     Error, Result,
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, Options, Package, Target},

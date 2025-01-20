@@ -4,7 +4,7 @@ use crate::{
 };
 use camino::Utf8Path;
 use ecow::EcoString;
-use gleam_core::{
+use glistix_core::{
     Error, Result,
     build::{
         Mode, NullTelemetry, PackageCompiler, StaleTracker, Target, TargetCodegenConfiguration,
