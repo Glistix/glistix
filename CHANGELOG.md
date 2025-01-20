@@ -1,4 +1,4 @@
-# Changelog
+# Gleam's Changelog
 
 ## v1.8.1 - 2025-02-11
 
