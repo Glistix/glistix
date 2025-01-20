@@ -33,6 +33,9 @@ pub fn prepare(path: &str) -> String {
             emit_typescript_definitions: config.javascript.typescript_declarations,
             prelude_location: Utf8PathBuf::from("../prelude.mjs"),
         },
+        Target::Nix => TargetCodegenConfiguration::Nix {
+            prelude_location: Utf8PathBuf::from("../prelude.nix"),
+        },
     };
 
     let ids = glistix_core::uid::UniqueIdGenerator::new();
