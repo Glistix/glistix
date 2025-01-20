@@ -1,0 +1,15 @@
+---
+source: compiler-core/src/nix/tests/tuples.rs
+expression: "\nconst a = \"Hello\"\nconst b = 1\nconst c = 2.0\nconst e = #(\"bob\", \"dug\")\n        "
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+const a = "Hello"
+const b = 1
+const c = 2.0
+const e = #("bob", "dug")
+        
+
+----- COMPILED NIX
+let a = "Hello"; b = 1; c = 2.0; e = [ "bob" "dug" ]; in { }

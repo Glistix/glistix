@@ -1,0 +1,27 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "fn func(x) {\n    case [] {\n        _ if [] == [ Ok ] -> True\n        _ -> False\n    }\n}\n    "
+snapshot_kind: text
+---
+----- SOURCE CODE
+fn func(x) {
+    case [] {
+        _ if [] == [ Ok ] -> True
+        _ -> False
+    }
+}
+    
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) Ok toList;
+  
+  func =
+    x:
+    let
+      _pat' = toList [ ];
+    in
+    if (toList [ ]) == (toList [ Ok ]) then true
+    else false;
+in
+{ }

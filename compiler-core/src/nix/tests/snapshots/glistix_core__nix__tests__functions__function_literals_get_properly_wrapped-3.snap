@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "pub fn main() {\n  { let a = fn(n) { n + 1 } }(10)\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+pub fn main() {
+  { let a = fn(n) { n + 1 } }(10)
+}
+
+
+----- COMPILED NIX
+let main = { }: (n: n + 1) 10; in { inherit main; }

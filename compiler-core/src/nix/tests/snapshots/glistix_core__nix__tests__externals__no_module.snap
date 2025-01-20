@@ -1,0 +1,25 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"\", \"one\")\npub fn one(x: Int) -> Int {\n  1\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+@external(nix, "", "one")
+pub fn one(x: Int) -> Int {
+  1
+}
+
+
+----- ERROR
+error: Invalid Nix module
+  ┌─ /src/one/two.gleam:3:1
+  │
+3 │ pub fn one(x: Int) -> Int {
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The function `one` has an external Nix implementation but the module path
+`` is not valid. Currently, it must be a relative path (`./here.nix` or
+`../top.nix`) with a restricted set of ASCII characters. To import from
+unsupported paths, re-export them in an auxiliary Nix file in your project
+instead.

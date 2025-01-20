@@ -1,0 +1,21 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "import inherit.{with}\n\npub fn in() {\n  with()\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+import inherit.{with}
+
+pub fn in() {
+  with()
+}
+
+
+----- COMPILED NIX
+let
+  inherit'' = builtins.import ./../inherit.nix;
+  inherit (builtins.import ./../inherit.nix) with';
+  
+  in' = { }: with' { };
+in
+{ inherit in'; }

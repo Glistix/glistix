@@ -1,0 +1,32 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\ntype Bad {\n  Bad(inherit: Int)\n}\n\npub fn main() {\n  case Bad(inherit: 5) {\n    Bad(inherit: 10) -> True\n    Bad(inherit: inherit) -> False\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+type Bad {
+  Bad(inherit: Int)
+}
+
+pub fn main() {
+  case Bad(inherit: 5) {
+    Bad(inherit: 10) -> True
+    Bad(inherit: inherit) -> False
+  }
+}
+
+
+----- COMPILED NIX
+let
+  Bad = inherit': { __gleamTag = "Bad"; "inherit" = inherit'; };
+  
+  main =
+    { }:
+    let
+      _pat' = Bad 5;
+    in
+    if _pat'.__gleamTag == "Bad" && _pat'."inherit" == 10 then true
+    else let inherit' = _pat'."inherit"; in false;
+in
+{ inherit main; }

@@ -1,0 +1,16 @@
+---
+source: compiler-core/src/nix/tests/results.rs
+expression: "import gleam\npub fn main() { gleam.Ok }"
+snapshot_kind: text
+---
+----- SOURCE CODE
+import gleam
+pub fn main() { gleam.Ok }
+
+----- COMPILED NIX
+let
+  gleam' = builtins.import ./../gleam.nix;
+  
+  main = { }: gleam'.Ok;
+in
+{ inherit main; }

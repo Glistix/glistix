@@ -1,0 +1,60 @@
+---
+source: compiler-core/src/nix/tests/tuples.rs
+expression: "\nconst tup = #(1, -1435, 0b00110, -14.342, [1, 2, 3], <<1, 2>>, \"x\\u{202f}\")\n\nfn f(x) {\n  x\n}\n\nfn go(x) {\n  let tup = #(1, f(5), -1435, 0b00110, -14.342, [1, 2, 3], <<1, 2>>, \"x\\u{202f}\")\n  tup\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+const tup = #(1, -1435, 0b00110, -14.342, [1, 2, 3], <<1, 2>>, "x\u{202f}")
+
+fn f(x) {
+  x
+}
+
+fn go(x) {
+  let tup = #(1, f(5), -1435, 0b00110, -14.342, [1, 2, 3], <<1, 2>>, "x\u{202f}")
+  tup
+}
+
+
+----- COMPILED NIX
+let
+  inherit
+    (builtins.import ./../gleam.nix)
+    parseEscape
+    parseNumber
+    toList
+    toBitArray
+    ;
+  
+  f = x: x;
+  
+  go =
+    x:
+    let
+      tup'1 =
+        [
+          1
+          (f 5)
+          (-1435)
+          (parseNumber "0b00110")
+          (-14.342)
+          (toList [ 1 2 3 ])
+          (toBitArray [ 1 2 ])
+          "x${parseEscape "\\U0000202f"}"
+        ];
+    in
+    tup'1;
+  
+  tup =
+    [
+      1
+      (-1435)
+      (parseNumber "0b00110")
+      (-14.342)
+      (toList [ 1 2 3 ])
+      (toBitArray [ 1 2 ])
+      "x${parseEscape "\\U0000202f"}"
+    ];
+in
+{ }
