@@ -5,6 +5,8 @@ use crate::line_numbers::LineNumbers;
 use camino::Utf8Path;
 use ecow::EcoString;
 
+pub const PRELUDE: &str = include_str!("../templates/prelude.nix");
+
 pub fn module(
     _module: &TypedModule,
     _line_numbers: &LineNumbers,
