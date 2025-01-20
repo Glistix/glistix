@@ -4,7 +4,7 @@ mod tests;
 mod wasm_filesystem;
 
 use camino::Utf8PathBuf;
-use gleam_core::{
+use glistix_core::{
     analyse::TargetSupport,
     build::{
         Mode, NullTelemetry, PackageCompiler, StaleTracker, Target, TargetCodegenConfiguration,

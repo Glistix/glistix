@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use gleam_core::{
+use glistix_core::{
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, Options},
     error::{FileIoAction, FileKind},
