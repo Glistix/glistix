@@ -342,6 +342,7 @@ expression: "compile(config, modules)"
     <script src="./js/highlightjs-elixir.min.js?v=GLEAM_VERSION_HERE"></script>
     <script src="./js/highlightjs-javascript.min.js?v=GLEAM_VERSION_HERE"></script>
     <script src="./js/highlightjs-typescript.min.js?v=GLEAM_VERSION_HERE"></script>
+    <script src="./js/highlightjs-nix.min.js?v=GLEAM_VERSION_HERE"></script>
     <script>
       document.querySelectorAll("pre code").forEach((elem) => {
         if (elem.className === "") {
