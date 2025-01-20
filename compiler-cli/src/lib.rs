@@ -308,6 +308,8 @@ pub enum ExportTarget {
     JavascriptPrelude,
     /// The TypeScript prelude module
     TypescriptPrelude,
+    /// The Nix prelude module
+    NixPrelude,
     /// Information on the modules, functions, and types in the project in JSON format
     PackageInterface {
         #[arg(long = "out", required = true)]
@@ -667,6 +669,7 @@ fn parse_and_run_command() -> Result<(), Error> {
         }
         Command::Export(ExportTarget::JavascriptPrelude) => export::javascript_prelude(),
         Command::Export(ExportTarget::TypescriptPrelude) => export::typescript_prelude(),
+        Command::Export(ExportTarget::NixPrelude) => export::nix_prelude(),
         Command::Export(ExportTarget::PackageInterface { output }) => {
             let paths = find_project_paths()?;
             export::package_interface(&paths, output)
