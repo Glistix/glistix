@@ -180,6 +180,48 @@ pub fn main(x) {
     );
 }
 
+// https://github.com/gleam-lang/gleam/issues/3894
+#[test]
+fn let_assert_nested_string_prefix() {
+    assert_nix!(
+        r#"
+type Wibble {
+  Wibble(wibble: String)
+}
+
+pub fn main() {
+  let assert Wibble(wibble: "w" as prefix <> rest) = Wibble("wibble")
+  prefix <> rest
+}
+"#
+    );
+}
+
+// Inspired by https://github.com/gleam-lang/gleam/issues/2931
+#[test]
+fn keyword_assignment() {
+    assert_nix!(
+        r#"
+pub fn main() {
+  let with = 10
+  let in = 50
+  in
+}
+"#
+    );
+}
+
+// Inspired by https://github.com/gleam-lang/gleam/issues/3004
+#[test]
+fn escaped_variables_in_constants() {
+    assert_nix!(
+        r#"
+pub const with = 5
+pub const in = with
+"#
+    );
+}
+
 #[test]
 fn message() {
     assert_nix!(
