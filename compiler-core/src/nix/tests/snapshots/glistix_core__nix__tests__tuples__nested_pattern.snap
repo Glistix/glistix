@@ -1,0 +1,28 @@
+---
+source: compiler-core/src/nix/tests/tuples.rs
+expression: "\nfn go(x) {\n  case x {\n    #(2, #(a, b)) -> a + b\n    _ -> 1\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go(x) {
+  case x {
+    #(2, #(a, b)) -> a + b
+    _ -> 1
+  }
+}
+
+
+----- COMPILED NIX
+let
+  go =
+    x:
+    if (builtins.elemAt x 0) == 2 then
+      let
+        a = (builtins.elemAt (builtins.elemAt x 1) 0);
+        b = (builtins.elemAt (builtins.elemAt x 1) 1);
+      in
+      a + b
+    else 1;
+in
+{ }

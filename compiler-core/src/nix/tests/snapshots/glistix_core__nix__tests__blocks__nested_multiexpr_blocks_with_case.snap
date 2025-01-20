@@ -1,0 +1,40 @@
+---
+source: compiler-core/src/nix/tests/blocks.rs
+expression: "\nfn go() {\n  let x = {\n    1\n    {\n      2\n      case True {\n        _ -> 3\n      }\n    }\n  }\n  x\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go() {
+  let x = {
+    1
+    {
+      2
+      case True {
+        _ -> 3
+      }
+    }
+  }
+  x
+}
+
+
+----- COMPILED NIX
+let
+  go =
+    { }:
+    let
+      x =
+        let
+          _' = 1;
+        in
+        builtins.seq
+          _'
+          (let
+            _'1 = 2;
+          in
+          builtins.seq _'1 (let _pat' = true; in 3));
+    in
+    x;
+in
+{ }

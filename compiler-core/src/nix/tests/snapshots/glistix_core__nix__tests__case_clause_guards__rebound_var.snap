@@ -1,0 +1,21 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "pub fn main() {\n  let x = False\n  let x = True\n  case x {\n    _ if x -> 1\n    _ -> 0\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+pub fn main() {
+  let x = False
+  let x = True
+  case x {
+    _ if x -> 1
+    _ -> 0
+  }
+}
+
+
+----- COMPILED NIX
+let
+  main = { }: let x = false; x'1 = true; in if x'1 then 1 else 0;
+in
+{ inherit main; }

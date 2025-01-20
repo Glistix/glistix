@@ -1,0 +1,17 @@
+---
+source: compiler-core/src/nix/tests/recursion.rs
+expression: "\npub fn main(x) {\n  case x {\n    0 -> Nil\n    _ -> main(x - 1)\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+pub fn main(x) {
+  case x {
+    0 -> Nil
+    _ -> main(x - 1)
+  }
+}
+
+
+----- COMPILED NIX
+let main = x: if x == 0 then null else main (x - 1); in { inherit main; }
