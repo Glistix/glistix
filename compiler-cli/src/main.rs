@@ -282,6 +282,8 @@ pub enum ExportTarget {
     JavascriptPrelude,
     /// The TypeScript prelude module
     TypescriptPrelude,
+    /// The Nix prelude module
+    NixPrelude,
     /// Information on the modules, functions, and types in the project in JSON format
     PackageInterface {
         #[arg(long = "out", required = true)]
@@ -551,6 +553,7 @@ fn main() {
         Command::Export(ExportTarget::HexTarball) => export::hex_tarball(),
         Command::Export(ExportTarget::JavascriptPrelude) => export::javascript_prelude(),
         Command::Export(ExportTarget::TypescriptPrelude) => export::typescript_prelude(),
+        Command::Export(ExportTarget::NixPrelude) => export::nix_prelude(),
         Command::Export(ExportTarget::PackageInterface { output }) => {
             export::package_interface(output)
         }
