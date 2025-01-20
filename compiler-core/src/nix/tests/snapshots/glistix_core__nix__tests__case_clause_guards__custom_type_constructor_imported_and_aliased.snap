@@ -1,0 +1,24 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "import other_module.{A as B}\nfn func() {\n  case B {\n    x if x == B -> True\n    _ -> False\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+import other_module.{A as B}
+fn func() {
+  case B {
+    x if x == B -> True
+    _ -> False
+  }
+}
+
+
+----- COMPILED NIX
+let
+  other_module' = builtins.import ./../../package/other_module.nix;
+  B = (builtins.import ./../../package/other_module.nix).A;
+  
+  func =
+    { }: let _pat' = B; in if _pat' == B then let x = _pat'; in true else false;
+in
+{ }

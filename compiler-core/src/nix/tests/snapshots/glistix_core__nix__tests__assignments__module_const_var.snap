@@ -1,0 +1,29 @@
+---
+source: compiler-core/src/nix/tests/assignments.rs
+expression: "\npub const int = 42\npub const int_alias = int\npub fn use_int_alias() { int_alias }\n\npub const compound: #(Int, Int) = #(int, int_alias)\npub fn use_compound() { compound.0 + compound.1 }\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+pub const int = 42
+pub const int_alias = int
+pub fn use_int_alias() { int_alias }
+
+pub const compound: #(Int, Int) = #(int, int_alias)
+pub fn use_compound() { compound.0 + compound.1 }
+
+
+----- COMPILED NIX
+let
+  int = 42;
+  
+  int_alias = int;
+  
+  use_int_alias = { }: int_alias;
+  
+  compound = [ int int_alias ];
+  
+  use_compound =
+    { }: (builtins.elemAt compound 0) + (builtins.elemAt compound 1);
+in
+{ inherit int int_alias use_int_alias compound use_compound; }

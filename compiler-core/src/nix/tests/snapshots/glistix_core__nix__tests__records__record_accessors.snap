@@ -1,0 +1,21 @@
+---
+source: compiler-core/src/nix/tests/records.rs
+expression: "\npub type Person { Person(name: String, age: Int) }\npub fn get_age(person: Person) { person.age }\npub fn get_name(person: Person) { person.name }\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+pub type Person { Person(name: String, age: Int) }
+pub fn get_age(person: Person) { person.age }
+pub fn get_name(person: Person) { person.name }
+
+
+----- COMPILED NIX
+let
+  Person = name: age: { __gleamTag = "Person"; inherit name age; };
+  
+  get_age = person: person.age;
+  
+  get_name = person: person.name;
+in
+{ inherit Person get_age get_name; }
