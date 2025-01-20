@@ -1,5 +1,5 @@
 .PHONY: build
-build: clean erlang nodejs deno bun
+build: clean erlang nodejs deno bun nix
 
 .PHONY: clean
 clean:
@@ -24,3 +24,8 @@ deno:
 bun:
 	@echo test/subdir_ffi on JavaScript with Bun
 	cargo run --quiet -- test --target javascript --runtime bun
+
+.PHONY: nix
+nix:
+	@echo test/subdir_ffi on Nix
+	cargo run --quiet -- test --target nix
