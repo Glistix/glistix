@@ -184,6 +184,9 @@ fn do_compile_package(project: Project, target: Target) -> Result<(), Error> {
             emit_typescript_definitions: false,
             prelude_location: Utf8PathBuf::from("./gleam_prelude.mjs"),
         },
+        Target::Nix => TargetCodegenConfiguration::Nix {
+            prelude_location: Utf8PathBuf::from("./gleam_prelude.nix"),
+        },
     };
 
     tracing::info!("Compiling package");
