@@ -1,0 +1,40 @@
+---
+source: compiler-core/src/nix/tests/use_.rs
+expression: "\npub fn main() {\n  [{\n    use x <- func()\n  }]\n}\n\npub fn func(m) -> Int {\n  m(10)\n}\n"
+---
+----- SOURCE CODE
+
+pub fn main() {
+  [{
+    use x <- func()
+  }]
+}
+
+pub fn func(m) -> Int {
+  m(10)
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) toList makeError;
+  
+  func = m: m 10;
+  
+  main =
+    { }:
+    toList
+      [
+        (func
+          (x:
+          builtins.throw
+            (makeError
+              "todo"
+              "my/mod"
+              4
+              "main"
+              "`todo` expression evaluated. This code has not yet been implemented."
+              { })))
+      ];
+in
+{ inherit func main; }
