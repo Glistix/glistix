@@ -1,6 +1,7 @@
 ---
 source: compiler-core/src/parse/tests.rs
 expression: "\n@external(erl, \"one\", \"two\")\npub fn one(x: Int) -> Int {\n  todo\n}"
+snapshot_kind: text
 ---
 ----- SOURCE CODE
 
@@ -16,4 +17,4 @@ error: Syntax error
 2 │ @external(erl, "one", "two")
   │ ^^^^^^^^^ I don't recognise this target
 
-Try `erlang`, `javascript`.
+Try `erlang`, `javascript`, `nix`.

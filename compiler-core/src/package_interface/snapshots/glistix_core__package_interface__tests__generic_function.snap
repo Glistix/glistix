@@ -35,8 +35,10 @@ expression: "\npub type Wob(a) { Wob }\n@deprecated(\"deprecation message\")\npu
             "gleam": true,
             "uses-erlang-externals": false,
             "uses-javascript-externals": false,
+            "uses-nix-externals": false,
             "can-run-on-erlang": true,
-            "can-run-on-javascript": true
+            "can-run-on-javascript": true,
+            "can-run-on-nix": true
           },
           "parameters": [],
           "return": {
