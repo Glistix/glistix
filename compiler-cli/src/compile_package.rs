@@ -34,6 +34,11 @@ pub fn command(options: CompilePackage) -> Result<()> {
                 .javascript_prelude
                 .ok_or_else(|| Error::JavaScriptPreludeRequired)?,
         },
+        Target::Nix => TargetCodegenConfiguration::Nix {
+            prelude_location: options
+                .nix_prelude
+                .ok_or_else(|| Error::NixPreludeRequired)?,
+        },
     };
 
     tracing::info!("Compiling package");
