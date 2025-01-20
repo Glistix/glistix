@@ -1204,6 +1204,7 @@ fn package_config(
         },
         target: Target::Erlang,
         internal_modules: None,
+        glistix: Default::default(),
     }
 }
 
