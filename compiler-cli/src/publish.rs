@@ -397,9 +397,17 @@ fn metadata_config<'a>(
     generated_files: &[(Utf8PathBuf, String)],
 ) -> Result<String> {
     let repo_url = http::Uri::try_from(config.repository.url().unwrap_or_default()).ok();
+    prevent_patching_hex_with_hex(config)?;
     let requirements: Result<Vec<ReleaseRequirement<'a>>> = config
         .dependencies
         .iter()
+        .map(
+            |(name, requirement)| match config.glistix.preview.hex_patch.get(name) {
+                // Workaround while we don't have full dependency patching
+                Some(patched_hex_dependency) => (name, patched_hex_dependency),
+                None => (name, requirement),
+            },
+        )
         .map(|(name, requirement)| match requirement {
             Requirement::Hex { version } => Ok(ReleaseRequirement {
                 name,
@@ -429,6 +437,18 @@ fn metadata_config<'a>(
     .as_erlang();
     tracing::info!(contents = ?metadata, "Generated Hex metadata.config");
     Ok(metadata)
+}
+
+fn prevent_patching_hex_with_hex(config: &PackageConfig) -> Result<()> {
+    for (name, patch) in &config.glistix.preview.hex_patch {
+        if let (Requirement::Hex { .. }, Some(Requirement::Hex { .. })) =
+            (patch, config.dependencies.get(name))
+        {
+            return Err(Error::CannotPatchHexWithHex { name: name.clone() });
+        }
+    }
+
+    Ok(())
 }
 
 fn contents_tarball(
@@ -731,6 +751,38 @@ fn prevent_publish_local_dependency() {
             package: "provided".into()
         })
     );
+}
+
+#[test]
+fn glistix_prevent_publish_hex_patched_with_hex() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [("trophy".into(), Requirement::hex(">= 0.0.0"))].into();
+    config.glistix.preview.hex_patch =
+        [("trophy".into(), Requirement::hex("~> 0.34 or ~> 1.0"))].into();
+    assert_eq!(
+        metadata_config(&config, &[], &[]),
+        Err(Error::CannotPatchHexWithHex {
+            name: "trophy".into(),
+        })
+    );
+}
+
+#[test]
+fn glistix_patch_published_local_dependency() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [("provided".into(), Requirement::path("./path/to/package"))].into();
+    config.glistix.preview.hex_patch =
+        [("provided".into(), Requirement::hex("~> 0.34 or ~> 1.0"))].into();
+    let meta = metadata_config(&config, &[], &[]).unwrap();
+    assert!(meta.contains(
+        r#"{<<"requirements">>, [
+  {<<"provided">>, [
+    {<<"app">>, <<"provided">>},
+    {<<"optional">>, false},
+    {<<"requirement">>, <<"~> 0.34 or ~> 1.0">>}
+  ]}
+]}."#
+    ))
 }
 
 #[test]
