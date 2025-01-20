@@ -1,0 +1,21 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\nfn go(a) {\n  a == \"ok\"\n  a != \"ok\"\n  a == a\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go(a) {
+  a == "ok"
+  a != "ok"
+  a == a
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) seqAll;
+  
+  go = a: let _' = a == "ok"; _'1 = a != "ok"; in seqAll [ _' _'1 ] (a == a);
+in
+{ }

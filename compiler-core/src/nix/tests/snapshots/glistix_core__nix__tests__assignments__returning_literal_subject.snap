@@ -1,0 +1,29 @@
+---
+source: compiler-core/src/nix/tests/assignments.rs
+expression: "fn go(x) { let assert 1 = x + 1 }"
+snapshot_kind: text
+---
+----- SOURCE CODE
+fn go(x) { let assert 1 = x + 1 }
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  go =
+    x:
+    let
+      _pat' = (x + 1);
+    in
+    if _pat' != 1 then
+      builtins.throw
+        (makeError
+          "let_assert"
+          "my/mod"
+          1
+          "go"
+          "Pattern match failed, no pattern matched the value."
+          { value = _pat'; })
+    else _pat';
+in
+{ }

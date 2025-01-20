@@ -1,0 +1,15 @@
+---
+source: compiler-core/src/nix/tests/assignments.rs
+expression: "\npub fn main() {\n  let with = 10\n  let in = 50\n  in\n}\n"
+---
+----- SOURCE CODE
+
+pub fn main() {
+  let with = 10
+  let in = 50
+  in
+}
+
+
+----- COMPILED NIX
+let main = { }: let with' = 10; in' = 50; in in'; in { inherit main; }

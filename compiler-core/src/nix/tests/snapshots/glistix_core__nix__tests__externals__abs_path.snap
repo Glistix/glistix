@@ -1,0 +1,22 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"/abs/path\", \"inspect\")\nfn abs_path(x: anything) -> Nil\n"
+---
+----- SOURCE CODE
+
+@external(nix, "/abs/path", "inspect")
+fn abs_path(x: anything) -> Nil
+
+
+----- ERROR
+error: Invalid Nix module
+  ┌─ /src/one/two.gleam:3:1
+  │
+3 │ fn abs_path(x: anything) -> Nil
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^
+
+The function `abs_path` has an external Nix implementation but the module
+path `/abs/path` is not valid. Currently, it must be a relative path
+(`./here.nix` or `../top.nix`) with a restricted set of ASCII characters.
+To import from unsupported paths, re-export them in an auxiliary Nix file
+in your project instead.

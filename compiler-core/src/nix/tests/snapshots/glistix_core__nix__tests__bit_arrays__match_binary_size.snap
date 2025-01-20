@@ -1,0 +1,56 @@
+---
+source: compiler-core/src/nix/tests/bit_arrays.rs
+expression: "\nfn go(x) {\n  let assert <<_, a:2-bytes>> = x\n  let assert <<_, b:bytes-size(2)>> = x\n  #(a, b)\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go(x) {
+  let assert <<_, a:2-bytes>> = x
+  let assert <<_, b:bytes-size(2)>> = x
+  #(a, b)
+}
+
+
+----- COMPILED NIX
+let
+  inherit
+    (builtins.import ./../gleam.nix)
+    makeError
+    byteSize
+    byteAt
+    binaryFromBitSlice
+    seqAll
+    ;
+  
+  go =
+    x:
+    let
+      _assert' =
+        if byteSize x != 3 then
+          builtins.throw
+            (makeError
+              "let_assert"
+              "my/mod"
+              3
+              "go"
+              "Pattern match failed, no pattern matched the value."
+              { value = x; })
+        else null;
+      a = builtins.seq _assert' (binaryFromBitSlice x 1 3);
+      _assert''1 =
+        if byteSize x != 3 then
+          builtins.throw
+            (makeError
+              "let_assert"
+              "my/mod"
+              4
+              "go"
+              "Pattern match failed, no pattern matched the value."
+              { value = x; })
+        else null;
+      b = builtins.seq _assert''1 (binaryFromBitSlice x 1 3);
+    in
+    seqAll [ _assert' _assert''1 ] [ a b ];
+in
+{ }

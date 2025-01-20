@@ -1,0 +1,18 @@
+---
+source: compiler-core/src/nix/tests/custom_types.rs
+expression: "import other\npub fn main() {\n  other.Two\n}"
+snapshot_kind: text
+---
+----- SOURCE CODE
+import other
+pub fn main() {
+  other.Two
+}
+
+----- COMPILED NIX
+let
+  other' = builtins.import ./../other.nix;
+  
+  main = { }: other'.Two;
+in
+{ inherit main; }
