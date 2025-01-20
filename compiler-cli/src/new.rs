@@ -1,6 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::ValueEnum;
-use gleam_core::{
+use glistix_core::{
     Result, erlang, error,
     error::{Error, FileIoAction, FileKind, InvalidProjectNameReason},
     parse,

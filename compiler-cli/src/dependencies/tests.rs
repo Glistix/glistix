@@ -5,7 +5,7 @@ use ecow::EcoString;
 use hexpm::version::Version;
 use pretty_assertions::assert_eq;
 
-use gleam_core::{
+use glistix_core::{
     Error,
     build::Runtime,
     config::{DenoConfig, DenoFlag, Docs, ErlangConfig, JavaScriptConfig, Repository},

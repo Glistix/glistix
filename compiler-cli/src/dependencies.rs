@@ -8,7 +8,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use ecow::{EcoString, eco_format};
 use flate2::read::GzDecoder;
 use futures::future;
-use gleam_core::{
+use glistix_core::{
     Error, Result,
     build::{Mode, Target, Telemetry},
     config::PackageConfig,

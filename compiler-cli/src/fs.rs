@@ -1,4 +1,4 @@
-use gleam_core::{
+use glistix_core::{
     Result, Warning,
     build::{NullTelemetry, Target},
     error::{Error, FileIoAction, FileKind, OS, ShellCommandFailureReason, parse_os},

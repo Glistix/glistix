@@ -1,4 +1,4 @@
-use gleam_core::{
+use glistix_core::{
     Result,
     error::{Error, ShellCommandFailureReason},
     io::{FileSystemWriter, Stdio},
