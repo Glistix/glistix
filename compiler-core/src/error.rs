@@ -299,6 +299,10 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
 
     #[error("The --nix-prelude flag must be given when compiling to Nix")]
     NixPreludeRequired,
+
+    #[error("Cannot patch Hex dependency {name} through [glistix.preview.hex-patch]")]
+    CannotPatchHexWithHex { name: EcoString },
+
     #[error("The modules {unfinished:?} contain todo expressions and so cannot be published")]
     CannotPublishTodo { unfinished: Vec<EcoString> },
 
@@ -3858,7 +3862,10 @@ The error from the version resolver library was:
                 source_2,
             } => {
                 let text = format!(
-                    "The package `{package}` is provided as both `{source_1}` and `{source_2}`.",
+                    "The package `{package}` is provided as both `{source_1}` and `{source_2}`. \
+If your root project has a dependency on `{package}`, you can temporarily work around this by \
+adding `local-overrides = [\"{package}\"]` under `[glistix.preview]` to its `gleam.toml` \
+to ensure the root project's dependency overrides that of transitive dependencies.",
                 );
 
                 vec![Diagnostic {
@@ -4025,6 +4032,18 @@ satisfying {required_version} but you are using v{gleam_version}.",
             Error::NixPreludeRequired => vec![Diagnostic {
                 title: "Nix prelude required".into(),
                 text: "The --nix-prelude flag must be given when compiling to Nix.".into(),
+                level: Level::Error,
+                location: None,
+                hint: None,
+            }],
+
+            Error::CannotPatchHexWithHex { name } => vec![Diagnostic {
+                title: "Cannot patch a Hex dependency through [glistix.preview.hex-patch]".into(),
+                text: format!(
+                    "Your project cannot depend on a Hex version of `{name}` and at the same time \
+patch it with another Hex version through [glistix.preview.hex-patch]. You can only use \
+[glistix.preview.hex-patch] to replace local dependencies with Hex packages when publishing."
+                ),
                 level: Level::Error,
                 location: None,
                 hint: None,
