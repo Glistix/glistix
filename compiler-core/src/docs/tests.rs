@@ -12,6 +12,7 @@ use crate::{
 };
 use camino::Utf8PathBuf;
 use ecow::EcoString;
+use hexpm::version::Version;
 use itertools::Itertools;
 
 #[derive(Default)]
@@ -124,6 +125,10 @@ pub fn compile(config: PackageConfig, modules: Vec<(&str, &str)>) -> EcoString {
 #[test]
 fn hello_docs() {
     let mut config = PackageConfig::default();
+    // We replace the compiler version in the output,
+    // so let's distinguish the package version from the
+    // compiler version by setting it to v0.1.49
+    config.version = Version::new(0, 1, 49);
     config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
@@ -141,6 +146,7 @@ pub fn one() {
 #[test]
 fn tables() {
     let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
@@ -162,6 +168,7 @@ pub fn one() {
 #[test]
 fn long_function_wrapping() {
     let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
@@ -189,6 +196,7 @@ pub fn lazy_or(first: Option(a), second: fn() -> Option(a)) -> Option(a) {
 #[test]
 fn internal_definitions_are_not_included() {
     let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
@@ -213,6 +221,7 @@ pub fn one() { 1 }
 #[test]
 fn discarded_arguments_are_not_shown() {
     let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     config.name = EcoString::from("test_project_name");
     let modules = vec![("app.gleam", "pub fn discard(_discarded: a) -> Int { 1 }")];
     insta::assert_snapshot!(compile(config, modules));
@@ -222,6 +231,7 @@ fn discarded_arguments_are_not_shown() {
 #[test]
 fn docs_of_a_type_constructor_are_not_used_by_the_following_function() {
     let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
@@ -242,6 +252,7 @@ pub fn main() { todo }
 #[test]
 fn markdown_code_from_standalone_pages_is_not_trimmed() {
     let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     config.name = EcoString::from("test_project_name");
     let pages = vec![(
         "one",
@@ -264,6 +275,7 @@ pub fn indentation_test() {
 #[test]
 fn markdown_code_from_function_comment_is_trimmed() {
     let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
@@ -285,6 +297,7 @@ pub fn indentation_test() {
 #[test]
 fn markdown_code_from_module_comment_is_trimmed() {
     let mut config = PackageConfig::default();
+    config.version = Version::new(0, 1, 49);
     config.name = EcoString::from("test_project_name");
     let modules = vec![(
         "app.gleam",
