@@ -1,0 +1,28 @@
+---
+source: compiler-core/src/nix/tests/documentation.rs
+expression: "\n/// My record\ntype Data {\n  /// Creates a single datum.\n  Datum(field: Int)\n\n  /// Creates empty data.\n  Empty\n}"
+---
+----- SOURCE CODE
+
+/// My record
+type Data {
+  /// Creates a single datum.
+  Datum(field: Int)
+
+  /// Creates empty data.
+  Empty
+}
+
+----- COMPILED NIX
+let
+  /**
+    Creates a single datum.
+  */
+  Datum = field: { __gleamTag = "Datum"; inherit field; };
+  
+  /**
+    Creates empty data.
+  */
+  Empty = { __gleamTag = "Empty"; };
+in
+{ }
