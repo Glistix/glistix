@@ -1,6 +1,6 @@
 FROM elixir:slim
 
 ARG TARGETARCH
-COPY gleam-${TARGETARCH} /bin/gleam
+COPY glistix-${TARGETARCH} /bin/glistix
 
-CMD ["gleam"]
+CMD ["glistix"]
