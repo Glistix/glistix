@@ -1,7 +1,7 @@
 [package]
-name = "gleam-core"
-version = "1.8.1"
-authors = ["Louis Pilfold <louis@lpil.uk>"]
+name = "glistix-core"
+version = "0.7.0"
+authors = ["PgBiel"]
 edition = "2021"
 license-file = "LICENCE"
 

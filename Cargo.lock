@@ -1022,8 +1022,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ecd4077b5ae9fd2e9e169b102c6c330d0605168eb0e8bf79952b256dbefffd"
 
 [[package]]
-name = "gleam"
-version = "1.8.1"
+name = "glistix"
+version = "0.7.0"
 dependencies = [
  "async-trait",
  "base16",
@@ -1037,7 +1037,7 @@ dependencies = [
  "fs_extra",
  "fslock",
  "futures",
- "gleam-core",
+ "glistix-core",
  "hexpm",
  "hostname",
  "http",
@@ -1071,8 +1071,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "gleam-core"
-version = "1.8.1"
+name = "glistix-core"
+version = "0.7.0"
 dependencies = [
  "age",
  "askama",
@@ -1126,13 +1126,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "gleam-wasm"
-version = "1.8.1"
+name = "glistix-wasm"
+version = "0.7.0"
 dependencies = [
  "camino",
  "console_error_panic_hook",
  "getrandom",
- "gleam-core",
+ "glistix-core",
  "hexpm",
  "im",
  "itertools",
@@ -2957,7 +2957,7 @@ name = "test-helpers-rs"
 version = "0.1.0"
 dependencies = [
  "camino",
- "gleam-core",
+ "glistix-core",
  "im",
  "insta",
  "itertools",
@@ -2968,10 +2968,10 @@ dependencies = [
 
 [[package]]
 name = "test-package-compiler"
-version = "1.8.1"
+version = "0.7.0"
 dependencies = [
  "camino",
- "gleam-core",
+ "glistix-core",
  "im",
  "insta",
  "itertools",
@@ -2983,10 +2983,10 @@ dependencies = [
 
 [[package]]
 name = "test-project-compiler"
-version = "1.8.1"
+version = "0.7.0"
 dependencies = [
  "camino",
- "gleam-core",
+ "glistix-core",
  "im",
  "insta",
  "itertools",
