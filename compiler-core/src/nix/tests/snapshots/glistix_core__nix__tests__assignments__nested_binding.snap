@@ -1,0 +1,33 @@
+---
+source: compiler-core/src/nix/tests/assignments.rs
+expression: "\nfn go(x) {\n  let assert #(a, #(b, c, 2) as t, _, 1) = x\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go(x) {
+  let assert #(a, #(b, c, 2) as t, _, 1) = x
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) makeError;
+  
+  go =
+    x:
+    if
+      (builtins.elemAt (builtins.elemAt x 1) 2) != 2 ||
+      (builtins.elemAt x 3) != 1
+    then
+      builtins.throw
+        (makeError
+          "let_assert"
+          "my/mod"
+          3
+          "go"
+          "Pattern match failed, no pattern matched the value."
+          { value = x; })
+    else x;
+in
+{ }

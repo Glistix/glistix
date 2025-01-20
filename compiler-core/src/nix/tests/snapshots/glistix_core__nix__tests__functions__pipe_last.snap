@@ -1,0 +1,15 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "fn id(x) { x }\npub fn main() {\n  1\n  |> id\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+fn id(x) { x }
+pub fn main() {
+  1
+  |> id
+}
+
+
+----- COMPILED NIX
+let id = x: x; main = { }: let _pipe = 1; in id _pipe; in { inherit main; }

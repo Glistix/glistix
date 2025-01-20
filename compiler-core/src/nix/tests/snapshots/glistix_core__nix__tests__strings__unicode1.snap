@@ -1,0 +1,19 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\npub fn emoji() -> String {\n  \"\\u{1f600}\"\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+pub fn emoji() -> String {
+  "\u{1f600}"
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) parseEscape;
+  
+  emoji = { }: "${parseEscape "\\U0001f600"}";
+in
+{ inherit emoji; }

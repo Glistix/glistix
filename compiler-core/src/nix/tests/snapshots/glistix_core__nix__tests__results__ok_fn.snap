@@ -1,0 +1,15 @@
+---
+source: compiler-core/src/nix/tests/results.rs
+expression: "pub fn main() { Ok }"
+snapshot_kind: text
+---
+----- SOURCE CODE
+pub fn main() { Ok }
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) Ok;
+  
+  main = { }: Ok;
+in
+{ inherit main; }

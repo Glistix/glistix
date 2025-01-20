@@ -1,0 +1,19 @@
+---
+source: compiler-core/src/nix/tests/bit_arrays.rs
+expression: "\nfn go() {\n  <<256:64>>\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go() {
+  <<256:64>>
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) toBitArray sizedInt;
+  
+  go = { }: toBitArray [ (sizedInt 256 64) ];
+in
+{ }

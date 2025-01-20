@@ -1,0 +1,21 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "pub fn main(x) {\n  case 1 {\n    _ if 1 % x == 2 -> 0\n    _ -> 1\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+pub fn main(x) {
+  case 1 {
+    _ if 1 % x == 2 -> 0
+    _ -> 1
+  }
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) remainderInt;
+  
+  main = x: let _pat' = 1; in if (remainderInt 1 x) == 2 then 0 else 1;
+in
+{ inherit main; }
