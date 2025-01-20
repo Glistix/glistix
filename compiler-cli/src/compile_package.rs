@@ -24,8 +24,7 @@ pub fn command(options: CompilePackage) -> Result<()> {
     let mut defined_modules = im::HashMap::new();
     let warnings = WarningEmitter::new(Rc::new(ConsoleWarningEmitter));
     let paths = ProjectPaths::new(options.package_directory.clone());
-    let config = config::read(paths.root_config())
-        .map(glistix_core::config::PackageConfig::with_glistix_replacements_applied)?;
+    let config = config::read(paths.root_config())?;
 
     let target = match options.target {
         Target::Erlang => TargetCodegenConfiguration::Erlang { app_file: None },

@@ -239,8 +239,6 @@ pub fn download<Telem: Telemetry>(
     let mut config = crate::config::read(paths.root_config())?;
     let project_name = config.name.clone();
 
-    config.apply_glistix_replacements();
-
     // Insert the new packages to add, if it exists
     if let Some((packages, dev)) = new_package {
         for (package, requirement) in packages {
@@ -838,8 +836,9 @@ fn provide_package(
         None => (),
     }
     // Load the package
-    let config = crate::config::read(package_path.join("gleam.toml")).map(|mut c| {
+    let config = crate::config::read_unpatched(package_path.join("gleam.toml")).map(|mut c| {
         // Patch transitive dependencies with root's replacements
+        // (ignore their own)
         root_config
             .glistix
             .preview
