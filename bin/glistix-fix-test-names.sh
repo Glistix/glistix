@@ -11,12 +11,12 @@ ANSI_END=$'\e[0m'
 echo "${ANSI_BOLD}=== Replacing 'gleam_core__' with 'glistix_core__' in test snapshot names ===${ANSI_END}" >&2
 
 curr_dir=""
-files=$(find . -name 'gleam_core__*.snap')
+files=$(find . -name 'gleam_core__*.snap' -o -name 'gleam__*.snap')
 IFS=$'\n'
 for i in ${files}
 do
   # Replace the prefix
-  newname="$(echo "$i" | sed -Ee 's;(^|/)gleam_core__;\1glistix_core__;')"
+  newname="$(echo "$i" | sed -Ee 's;(^|/)gleam_core__;\1glistix_core__;' | sed -Ee 's;(^|/)gleam__;\1glistix__;')"
 
   # --- Display info ---
   dir="$(dirname "$i")"
