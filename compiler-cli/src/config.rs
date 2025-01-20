@@ -1,6 +1,6 @@
 use camino::Utf8PathBuf;
 
-use gleam_core::{
+use glistix_core::{
     config::PackageConfig,
     error::{Error, FileIoAction, FileKind},
     manifest::{Manifest, ManifestPackage, ManifestPackageSource},
@@ -88,7 +88,7 @@ pub fn ensure_config_exists(paths: &ProjectPaths) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gleam_core::manifest::Base16Checksum;
+    use glistix_core::manifest::Base16Checksum;
 
     #[test]
     fn package_root_hex() {

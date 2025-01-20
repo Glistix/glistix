@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use camino::Utf8PathBuf;
 use ecow::EcoString;
-use gleam_core::{
+use glistix_core::{
     analyse::TargetSupport,
     build::{Built, Codegen, Compile, Mode, NullTelemetry, Options, Runtime, Target, Telemetry},
     config::{DenoFlag, PackageConfig},
