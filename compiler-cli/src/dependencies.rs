@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::{
     collections::{HashMap, HashSet},
     time::Instant,
@@ -815,6 +816,7 @@ fn resolve_versions<Telem: Telemetry>(
                 &path,
                 project_paths.root(),
                 project_paths,
+                config,
                 &mut provided_packages,
                 &mut vec![],
             )?,
@@ -860,9 +862,36 @@ fn provide_local_package(
     package_path: &Utf8Path,
     parent_path: &Utf8Path,
     project_paths: &ProjectPaths,
+    root_config: &PackageConfig,
     provided: &mut HashMap<EcoString, ProvidedPackage>,
     parents: &mut Vec<EcoString>,
 ) -> Result<hexpm::version::Range> {
+    // Apply root [glistix] patch, but only if the root also has this as a dependency
+    // We have to redefine the variables instead of mutating them to avoid lifetime problems.
+    let (package_path, parent_path) = if root_config
+        .glistix
+        .preview
+        .local_overrides
+        .contains(&package_name)
+    {
+        if let Some(root_override) = root_config.dependencies.get(&package_name) {
+            match root_override {
+                Requirement::Hex { version } => return Ok(version.clone()),
+                Requirement::Git { git } => {
+                    return provide_git_package(package_name, git, project_paths, provided)
+                }
+                Requirement::Path { path } => {
+                    // Pretend we're on the root to apply patch
+                    // Ensure package will be fetched from correct source
+                    (path.deref(), project_paths.root())
+                }
+            }
+        } else {
+            (package_path, parent_path)
+        }
+    } else {
+        (package_path, parent_path)
+    };
     let package_path = if package_path.is_absolute() {
         package_path.to_path_buf()
     } else {
@@ -876,6 +905,7 @@ fn provide_local_package(
         package_path,
         package_source,
         project_paths,
+        root_config,
         provided,
         parents,
     )
@@ -901,6 +931,7 @@ fn provide_package(
     package_path: Utf8PathBuf,
     package_source: ProvidedPackageSource,
     project_paths: &ProjectPaths,
+    root_config: &PackageConfig,
     provided: &mut HashMap<EcoString, ProvidedPackage>,
     parents: &mut Vec<EcoString>,
 ) -> Result<hexpm::version::Range> {
@@ -956,6 +987,7 @@ fn provide_package(
                     &path,
                     &package_path,
                     project_paths,
+                    root_config,
                     provided,
                     parents,
                 )?
