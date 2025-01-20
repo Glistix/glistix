@@ -191,6 +191,7 @@ impl<'comments> Formatter<'comments> {
             None => document,
             Some(Target::Erlang) => docvec!["@target(erlang)", line(), document],
             Some(Target::JavaScript) => docvec!["@target(javascript)", line(), document],
+            Some(Target::Nix) => docvec!["@target(nix)", line(), document],
         };
 
         comments.to_doc().append(document.group())
@@ -787,6 +788,7 @@ impl<'comments> Formatter<'comments> {
             .set_internal(function.publicity)
             .set_external_erlang(&function.external_erlang)
             .set_external_javascript(&function.external_javascript)
+            .set_external_nix(&function.external_nix)
             .to_doc();
 
         // Fn name and args
@@ -3026,6 +3028,7 @@ fn constant_call_arg_formatting<A, B>(
 struct AttributesPrinter<'a> {
     external_erlang: &'a Option<(EcoString, EcoString, SrcSpan)>,
     external_javascript: &'a Option<(EcoString, EcoString, SrcSpan)>,
+    external_nix: &'a Option<(EcoString, EcoString, SrcSpan)>,
     deprecation: &'a Deprecation,
     internal: bool,
 }
@@ -3035,6 +3038,7 @@ impl<'a> AttributesPrinter<'a> {
         Self {
             external_erlang: &None,
             external_javascript: &None,
+            external_nix: &None,
             deprecation: &Deprecation::NotDeprecated,
             internal: false,
         }
@@ -3053,6 +3057,14 @@ impl<'a> AttributesPrinter<'a> {
         external: &'a Option<(EcoString, EcoString, SrcSpan)>,
     ) -> Self {
         self.external_javascript = external;
+        self
+    }
+
+    pub fn set_external_nix(
+        mut self,
+        external: &'a Option<(EcoString, EcoString, SrcSpan)>,
+    ) -> Self {
+        self.external_nix = external;
         self
     }
 
@@ -3083,6 +3095,10 @@ impl<'a> Documentable<'a> for AttributesPrinter<'a> {
 
         if let Some((m, f, _)) = self.external_javascript {
             attributes.push(docvec!["@external(javascript, \"", m, "\", \"", f, "\")"])
+        };
+
+        if let Some((m, f, _)) = self.external_nix {
+            attributes.push(docvec!["@external(nix, \"", m, "\", \"", f, "\")"])
         };
 
         // @internal attribute

@@ -333,6 +333,7 @@ To match on all possible lists, use the `_` catch-all pattern instead.",
                 let full_name = match target {
                     Target::Erlang => "erlang",
                     Target::JavaScript => "javascript",
+                    Target::Nix => "nix",
                 };
 
                 Diagnostic {
