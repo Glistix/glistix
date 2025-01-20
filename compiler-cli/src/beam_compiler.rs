@@ -1,4 +1,4 @@
-use gleam_core::{
+use glistix_core::{
     error::Error,
     io::{FileSystemWriter, Stdio},
     paths, Result,
