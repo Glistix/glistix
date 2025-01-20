@@ -1,0 +1,34 @@
+---
+source: compiler-core/src/nix/tests/case.rs
+expression: "\nfn main() {\n  case Ok([\"a\", \"b c\", \"d\"]) {\n    Ok([\"a\", \"b \" <> _, \"d\"]) -> 1\n    _ -> 1\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn main() {
+  case Ok(["a", "b c", "d"]) {
+    Ok(["a", "b " <> _, "d"]) -> 1
+    _ -> 1
+  }
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) Ok strHasPrefix toList listHasLength;
+  
+  main =
+    { }:
+    let
+      _pat' = Ok (toList [ "a" "b c" "d" ]);
+    in
+    if
+      _pat'.__gleamTag == "Ok" &&
+      listHasLength _pat'._0 3 &&
+      _pat'._0.head == "a" &&
+      strHasPrefix "b " _pat'._0.tail.head &&
+      _pat'._0.tail.tail.head == "d"
+    then 1
+    else 1;
+in
+{ }

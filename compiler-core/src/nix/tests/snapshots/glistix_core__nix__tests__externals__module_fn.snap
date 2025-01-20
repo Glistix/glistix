@@ -1,0 +1,12 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"./utils\", \"inspect\")\nfn show(x: anything) -> Nil"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+@external(nix, "./utils", "inspect")
+fn show(x: anything) -> Nil
+
+----- COMPILED NIX
+let show = (builtins.import ./utils).inspect; in { }

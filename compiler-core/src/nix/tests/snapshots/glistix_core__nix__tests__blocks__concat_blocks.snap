@@ -1,0 +1,23 @@
+---
+source: compiler-core/src/nix/tests/blocks.rs
+expression: "\nfn main(f, a, b) {\n  {\n    a\n    |> f\n  } <> {\n    b\n    |> f\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn main(f, a, b) {
+  {
+    a
+    |> f
+  } <> {
+    b
+    |> f
+  }
+}
+
+
+----- COMPILED NIX
+let
+  main = f: a: b: (let _pipe = a; in f _pipe) + (let _pipe = b; in f _pipe);
+in
+{ }

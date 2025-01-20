@@ -1,0 +1,16 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "pub fn bad() {\n  fn(state) {\n    let state = state\n    state\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+pub fn bad() {
+  fn(state) {
+    let state = state
+    state
+  }
+}
+
+
+----- COMPILED NIX
+let bad = { }: state: let state'1 = state; in state'1; in { inherit bad; }

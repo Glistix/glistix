@@ -1,0 +1,12 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"./thingy\", \"fetch\")\npub fn fetch(request: Nil) -> Nil"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+@external(nix, "./thingy", "fetch")
+pub fn fetch(request: Nil) -> Nil
+
+----- COMPILED NIX
+let inherit (builtins.import ./thingy) fetch; in { inherit fetch; }
