@@ -363,6 +363,13 @@ pub fn generate_html<IO: FileSystemReader>(
         ),
     });
 
+    files.push(OutputFile {
+        path: Utf8PathBuf::from("js/highlightjs-nix.min.js"),
+        content: Content::Text(
+            std::include_str!("../templates/docs-js/highlightjs-nix.min.js").to_string(),
+        ),
+    });
+
     // lunr.min.js, search_data.json and index.js
 
     files.push(OutputFile {
