@@ -2221,6 +2221,7 @@ where
                         // Expecting all but the deprecated atterbutes to be default
                         if attributes.external_erlang.is_some()
                             || attributes.external_javascript.is_some()
+                            || attributes.external_nix.is_some()
                             || attributes.target.is_some()
                             || attributes.internal != InternalAttribute::Missing
                         {
