@@ -376,6 +376,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             has_body: true,
             has_erlang_external: false,
             has_javascript_external: false,
+            has_nix_external: false,
         };
         let mut expr_typer = ExprTyper::new(environment, definition, &mut self.problems);
         let typed_expr = expr_typer.infer_const(&annotation, *value);
@@ -464,6 +465,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             deprecation,
             external_erlang,
             external_javascript,
+            external_nix,
             return_type: (),
             implementations: _,
         } = f;
@@ -483,15 +485,24 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         // the implementation for JS externals.
         self.assert_valid_javascript_external(&name, external_javascript.as_ref(), location);
 
+        // Ensure that folks are not writing inline Nix expressions as
+        // the implementation for Nix externals.
+        self.assert_valid_nix_external(&name, external_nix.as_ref(), location);
+
         // Find the external implementation for the current target, if one has been given.
-        let external =
-            target_function_implementation(target, &external_erlang, &external_javascript);
+        let external = target_function_implementation(
+            target,
+            &external_erlang,
+            &external_javascript,
+            &external_nix,
+        );
 
         // The function must have at least one implementation somewhere.
         let has_implementation = self.ensure_function_has_an_implementation(
             &body,
             &external_erlang,
             &external_javascript,
+            &external_nix,
             location,
         );
 
@@ -508,6 +519,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             has_body,
             has_erlang_external: external_erlang.is_some(),
             has_javascript_external: external_javascript.is_some(),
+            has_nix_external: external_nix.is_some(),
         };
 
         let typed_args = arguments
@@ -619,6 +631,9 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             external_javascript: external_javascript
                 .as_ref()
                 .map(|(m, f, _)| (m.clone(), f.clone())),
+            external_nix: external_nix
+                .as_ref()
+                .map(|(m, f, _)| (m.clone(), f.clone())),
             field_map,
             module: environment.current_module.clone(),
             arity: typed_args.len(),
@@ -649,6 +664,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             body,
             external_erlang,
             external_javascript,
+            external_nix,
             implementations,
         })
     }
@@ -691,6 +707,48 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         }
     }
 
+    fn assert_valid_nix_external(
+        &mut self,
+        function_name: &EcoString,
+        external_nix: Option<&(EcoString, EcoString, SrcSpan)>,
+        location: SrcSpan,
+    ) {
+        use regex::Regex;
+
+        static MODULE: OnceLock<Regex> = OnceLock::new();
+        static FUNCTION: OnceLock<Regex> = OnceLock::new();
+
+        let (module, function) = match external_nix {
+            None => return,
+            Some((module, function, _location)) => (module, function),
+        };
+        // TODO(NIX): Consider allowing arbitrary paths, incl. <...> notation
+        // Currently, we force paths to be relative to something, that is,
+        // you can't import an external function from "word", but you can from
+        // "./word" or "../word". You can also import from "." or "..".
+        // We should expand this in the future.
+        if !MODULE
+            .get_or_init(|| Regex::new("^(?:\\.\\.?|\\.\\.?/[a-zA-Z0-9\\./:_-]*)$").expect("regex"))
+            .is_match(module)
+        {
+            self.problems.error(Error::InvalidExternalNixModule {
+                location,
+                module: module.clone(),
+                name: function_name.clone(),
+            });
+        }
+        if !FUNCTION
+            .get_or_init(|| Regex::new("^[a-zA-Z_][a-zA-Z0-9_'-]*$").expect("regex"))
+            .is_match(function)
+        {
+            self.problems.error(Error::InvalidExternalNixFunction {
+                location,
+                function: function.clone(),
+                name: function_name.clone(),
+            });
+        }
+    }
+
     fn ensure_annotations_present(
         &mut self,
         arguments: &[UntypedArg],
@@ -718,10 +776,11 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         body: &Vec1<UntypedStatement>,
         external_erlang: &Option<(EcoString, EcoString, SrcSpan)>,
         external_javascript: &Option<(EcoString, EcoString, SrcSpan)>,
+        external_nix: &Option<(EcoString, EcoString, SrcSpan)>,
         location: SrcSpan,
     ) -> bool {
-        match (external_erlang, external_javascript) {
-            (None, None) if body.first().is_placeholder() => {
+        match (external_erlang, external_javascript, external_nix) {
+            (None, None, None) if body.first().is_placeholder() => {
                 self.problems.error(Error::NoImplementation { location });
                 false
             }
@@ -1349,6 +1408,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             documentation,
             external_erlang,
             external_javascript,
+            external_nix,
             deprecation,
             end_position: _,
             body: _,
@@ -1373,7 +1433,9 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
 
         // When external implementations are present then the type annotations
         // must be given in full, so we disallow holes in the annotations.
-        hydrator.permit_holes(external_erlang.is_none() && external_javascript.is_none());
+        hydrator.permit_holes(
+            external_erlang.is_none() && external_javascript.is_none() && external_nix.is_none(),
+        );
 
         let arg_types = args
             .iter()
@@ -1394,6 +1456,9 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                 .as_ref()
                 .map(|(m, f, _)| (m.clone(), f.clone())),
             external_javascript: external_javascript
+                .as_ref()
+                .map(|(m, f, _)| (m.clone(), f.clone())),
+            external_nix: external_nix
                 .as_ref()
                 .map(|(m, f, _)| (m.clone(), f.clone())),
             module: environment.current_module.clone(),
@@ -1494,10 +1559,12 @@ fn target_function_implementation<'a>(
     target: Target,
     external_erlang: &'a Option<(EcoString, EcoString, SrcSpan)>,
     external_javascript: &'a Option<(EcoString, EcoString, SrcSpan)>,
+    external_nix: &'a Option<(EcoString, EcoString, SrcSpan)>,
 ) -> &'a Option<(EcoString, EcoString, SrcSpan)> {
     match target {
         Target::Erlang => external_erlang,
         Target::JavaScript => external_javascript,
+        Target::Nix => external_nix,
     }
 }
 
@@ -1675,6 +1742,7 @@ fn generalise_function(
         return_type,
         external_erlang,
         external_javascript,
+        external_nix,
         implementations,
     } = function;
 
@@ -1698,6 +1766,9 @@ fn generalise_function(
             .as_ref()
             .map(|(m, f, _)| (m.clone(), f.clone())),
         external_javascript: external_javascript
+            .as_ref()
+            .map(|(m, f, _)| (m.clone(), f.clone())),
+        external_nix: external_nix
             .as_ref()
             .map(|(m, f, _)| (m.clone(), f.clone())),
         module: module_name.clone(),
@@ -1735,6 +1806,7 @@ fn generalise_function(
         body,
         external_erlang,
         external_javascript,
+        external_nix,
         implementations,
     })
 }

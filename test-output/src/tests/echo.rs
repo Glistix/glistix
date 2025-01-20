@@ -99,7 +99,7 @@ macro_rules! assert_echo {
                 assert_echo!(&snapshot_name, Some($target), Some(Runtime::Deno), $project_name);
                 assert_echo!(&snapshot_name, Some($target), Some(Runtime::NodeJs), $project_name);
             },
-            Target::Erlang => {
+            Target::Erlang | Target::Nix => {
                 assert_echo!(&snapshot_name, Some($target), None, $project_name);
             }
         }
@@ -127,6 +127,7 @@ fn snapshot_name(target: Option<Target>, runtime: Option<Runtime>, suffix: &str)
 fn echo_bitarray() {
     assert_echo!(Target::JavaScript, "echo_bitarray");
     assert_echo!(Target::Erlang, "echo_bitarray");
+    // TODO: nix
 }
 
 #[test]
@@ -138,6 +139,7 @@ fn echo_bool() {
 fn echo_custom_type() {
     assert_echo!(Target::Erlang, "echo_custom_type");
     assert_echo!(Target::JavaScript, "echo_custom_type");
+    // TODO: nix
 }
 
 #[test]

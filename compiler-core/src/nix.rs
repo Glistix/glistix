@@ -2,8 +2,8 @@ pub mod syntax;
 use crate::analyse::TargetSupport;
 use crate::ast::{SrcSpan, TypedModule};
 use crate::line_numbers::LineNumbers;
-use ecow::EcoString;
 use camino::Utf8Path;
+use ecow::EcoString;
 
 pub fn module(
     _module: &TypedModule,

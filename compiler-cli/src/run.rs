@@ -151,6 +151,7 @@ pub fn setup(
                 run_javascript_bun_command(paths, &main_function.package, &module, arguments)
             }
         },
+        Target::Nix => instantiate_nix(&paths, &main_function.package, &module, arguments),
     }
 }
 
@@ -351,6 +352,45 @@ fn add_deno_flag(args: &mut Vec<String>, flag: &str, flags: &DenoFlag) {
             }
         }
     }
+}
+
+/// `gleam run` currently just instantiates the resulting Nix expression.
+/// It is desired to allow using `nix eval` instead in the feature.
+fn instantiate_nix(
+    paths: &ProjectPaths,
+    package: &str,
+    module: &str,
+    arguments: Vec<String>,
+) -> Result<Command, Error> {
+    let mut args = vec![
+        "--eval".to_string(),
+        "--attr".to_string(),
+        "main".to_string(),
+        // Pass one arbitrary argument to force the main function to be run
+        // It does not appear to error despite main having no arguments
+        "--arg".to_string(),
+        "null".to_string(),
+        "null".to_string(),
+    ];
+
+    let entry = paths
+        .build_directory_for_package(Mode::Dev, Target::Nix, package)
+        .to_path_buf()
+        .join(format!("{module}.nix"));
+
+    args.push(entry.to_string());
+
+    for arg in arguments.into_iter() {
+        args.push(arg);
+    }
+
+    Ok(Command {
+        program: "nix-instantiate".to_string(),
+        args,
+        env: vec![],
+        cwd: None,
+        stdio: Stdio::Inherit,
+    })
 }
 
 /// Check if a module name is a valid gleam module name.
