@@ -501,6 +501,7 @@ pub enum ValueConstructorVariant {
         implementations: Implementations,
         external_erlang: Option<(EcoString, EcoString)>,
         external_javascript: Option<(EcoString, EcoString)>,
+        external_nix: Option<(EcoString, EcoString)>,
     },
 
     /// A constructor for a custom type
@@ -563,6 +564,7 @@ impl ValueConstructorVariant {
                 module: module_name.clone(),
                 external_erlang: None,
                 external_javascript: None,
+                external_nix: None,
                 documentation: None,
                 location: *location,
                 field_map: None,
@@ -576,6 +578,7 @@ impl ValueConstructorVariant {
                 field_map,
                 external_erlang,
                 external_javascript,
+                external_nix,
                 ..
             } => ModuleValueConstructor::Fn {
                 name: name.clone(),
@@ -583,6 +586,7 @@ impl ValueConstructorVariant {
                 documentation: documentation.clone(),
                 external_erlang: external_erlang.clone(),
                 external_javascript: external_javascript.clone(),
+                external_nix: external_nix.clone(),
                 location: *location,
                 field_map: field_map.clone(),
             },
@@ -627,8 +631,10 @@ impl ValueConstructorVariant {
                 gleam: true,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
+                can_run_on_nix: true,
                 uses_javascript_externals: false,
                 uses_erlang_externals: false,
+                uses_nix_externals: false,
             },
 
             ValueConstructorVariant::ModuleFn {
@@ -682,6 +688,7 @@ pub enum ModuleValueConstructor {
         ///
         external_erlang: Option<(EcoString, EcoString)>,
         external_javascript: Option<(EcoString, EcoString)>,
+        external_nix: Option<(EcoString, EcoString)>,
         field_map: Option<FieldMap>,
         documentation: Option<EcoString>,
     },
