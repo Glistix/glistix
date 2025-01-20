@@ -1678,3 +1678,15 @@ type Wibble {
 fn nested_tuple_access_after_function() {
     assert_parse!("tuple().0.1");
 }
+
+#[test]
+fn glistix_external_nix_attribute_on_type_variant() {
+    assert_module_error!(
+        r#"
+type Wibble {
+    @external(nix, "one.nix", "two")
+    Wibble1
+}
+"#
+    );
+}
