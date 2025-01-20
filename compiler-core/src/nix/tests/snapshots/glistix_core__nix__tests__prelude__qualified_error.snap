@@ -1,0 +1,17 @@
+---
+source: compiler-core/src/nix/tests/prelude.rs
+expression: "import gleam\npub fn go() { gleam.Error(1) }\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+import gleam
+pub fn go() { gleam.Error(1) }
+
+
+----- COMPILED NIX
+let
+  gleam' = builtins.import ./../gleam.nix;
+  
+  go = { }: gleam'.Error 1;
+in
+{ inherit go; }

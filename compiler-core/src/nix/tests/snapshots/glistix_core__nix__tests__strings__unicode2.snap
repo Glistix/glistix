@@ -1,0 +1,19 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\npub fn y_with_dieresis() -> String {\n  \"\\u{0308}y\"\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+pub fn y_with_dieresis() -> String {
+  "\u{0308}y"
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) parseEscape;
+  
+  y_with_dieresis = { }: "${parseEscape "\\U00000308"}y";
+in
+{ inherit y_with_dieresis; }
