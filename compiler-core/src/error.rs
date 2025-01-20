@@ -287,6 +287,15 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     #[error("The --javascript-prelude flag must be given when compiling to JavaScript")]
     JavaScriptPreludeRequired,
 
+    #[error("nix codegen failed")]
+    Nix {
+        path: Utf8PathBuf,
+        src: EcoString,
+        error: crate::nix::Error,
+    },
+
+    #[error("The --nix-prelude flag must be given when compiling to Nix")]
+    NixPreludeRequired,
     #[error("The modules {unfinished:?} contain todo expressions and so cannot be published")]
     CannotPublishTodo { unfinished: Vec<EcoString> },
 
@@ -3085,6 +3094,62 @@ implementation but the function name `{function}` is not valid."
                     }
                 }
 
+                TypeError::InvalidExternalNixModule {
+                    location,
+                    name,
+                    module,
+                } => {
+                    let text = wrap_format!(
+                        "The function `{name}` has an external Nix \
+implementation but the module path `{module}` is not valid. Currently, it \
+must be a relative path (`./here.nix` or `../top.nix`) with a restricted set \
+of ASCII characters. To import from unsupported paths, re-export them in an \
+auxiliary Nix file in your project instead."
+                    );
+                    Diagnostic {
+                        title: "Invalid Nix module".into(),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: None,
+                                span: *location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![],
+                        }),
+                    }
+                }
+
+                TypeError::InvalidExternalNixFunction {
+                    location,
+                    name,
+                    function,
+                } => {
+                    let text = wrap_format!(
+                        "The function `{name}` has an external Nix \
+implementation but the function name `{function}` is not valid, as it must be \
+a valid Nix identifier."
+                    );
+                    Diagnostic {
+                        title: "Invalid Nix function".into(),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            label: Label {
+                                text: None,
+                                span: *location,
+                            },
+                            path: path.clone(),
+                            src: src.clone(),
+                            extra_labels: vec![],
+                        }),
+                    }
+                }
+
                 TypeError::InexhaustiveLetAssignment { location, missing } => {
                     let mut text =wrap(
                         "This assignment uses a pattern that does not \
@@ -3175,6 +3240,7 @@ and there is no implementation for the {} target.\n",
                         match current_target {
                             Target::Erlang => "Erlang",
                             Target::JavaScript => "JavaScript",
+                            Target::Nix => "Nix",
                         }
                     );
                     let hint = wrap("Did you mean to build for a different target?");
@@ -3203,6 +3269,7 @@ and there is no implementation for the {} target.\n",
                     let target = match target {
                         Target::Erlang => "Erlang",
                         Target::JavaScript => "JavaScript",
+                        Target::Nix => "Nix",
                     };
                     let text = wrap_format!(
                         "The `{name}` function is public but doesn't have an \
@@ -3732,6 +3799,24 @@ Fix the warnings and try again."
                 }],
             },
 
+            Error::Nix { src, path, error } => match error {
+                crate::nix::Error::Unsupported { feature, location } => vec![Diagnostic {
+                    title: "Unsupported feature for compilation target".into(),
+                    text: format!("{feature} is not supported for Nix compilation."),
+                    hint: None,
+                    level: Level::Error,
+                    location: Some(Location {
+                        label: Label {
+                            text: None,
+                            span: *location,
+                        },
+                        path: path.clone(),
+                        src: src.clone(),
+                        extra_labels: vec![],
+                    }),
+                }],
+            },
+
             Error::DownloadPackageError {
                 package_name,
                 package_version,
@@ -3978,6 +4063,10 @@ satisfying {required_version} but you are using v{gleam_version}.",
                         "You can not set a runtime for Erlang. Did you mean to target JavaScript?"
                             .into(),
                     ),
+                    Target::Nix => Some(
+                        "You can not set a runtime for Nix. Did you mean to target JavaScript?"
+                            .into(),
+                    ),
                 };
 
                 vec![Diagnostic {
@@ -3993,6 +4082,14 @@ satisfying {required_version} but you are using v{gleam_version}.",
                 title: "JavaScript prelude required".into(),
                 text: "The --javascript-prelude flag must be given when compiling to JavaScript."
                     .into(),
+                level: Level::Error,
+                location: None,
+                hint: None,
+            }],
+
+            Error::NixPreludeRequired => vec![Diagnostic {
+                title: "Nix prelude required".into(),
+                text: "The --nix-prelude flag must be given when compiling to Nix.".into(),
                 level: Level::Error,
                 location: None,
                 hint: None,
