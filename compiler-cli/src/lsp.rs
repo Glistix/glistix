@@ -1,5 +1,5 @@
 use crate::{build_lock::BuildLock, fs::ProjectIO};
-use gleam_core::{
+use glistix_core::{
     build::{Mode, NullTelemetry, Target},
     language_server::{LanguageServer, LockGuard, Locker},
     paths::ProjectPaths,

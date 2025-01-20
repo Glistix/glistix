@@ -3,7 +3,7 @@ use std::time::{Instant, SystemTime};
 use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::{cli, fs::ProjectIO, http::HttpClient};
-use gleam_core::{
+use glistix_core::{
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, Options, Package, Target},
     config::{DocsPage, PackageConfig},
@@ -98,7 +98,7 @@ pub(crate) fn build_documentation(
     config: &PackageConfig,
     compiled: &mut Package,
     is_hex_publish: DocContext,
-) -> Result<Vec<gleam_core::io::OutputFile>, Error> {
+) -> Result<Vec<glistix_core::io::OutputFile>, Error> {
     compiled.attach_doc_and_module_comments();
     cli::print_generating_documentation();
     let paths = crate::find_project_paths()?;
@@ -108,7 +108,7 @@ pub(crate) fn build_documentation(
         source: paths.readme(), // TODO: support non markdown READMEs. Or a default if there is none.
     }];
     pages.extend(config.documentation.pages.iter().cloned());
-    let mut outputs = gleam_core::docs::generate_html(
+    let mut outputs = glistix_core::docs::generate_html(
         &paths,
         config,
         compiled.modules.as_slice(),
@@ -118,7 +118,7 @@ pub(crate) fn build_documentation(
         is_hex_publish,
     );
 
-    outputs.push(gleam_core::docs::generate_json_package_interface(
+    outputs.push(glistix_core::docs::generate_json_package_interface(
         Utf8PathBuf::from("package-interface.json"),
         compiled,
     ));

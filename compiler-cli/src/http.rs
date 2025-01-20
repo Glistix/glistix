@@ -2,7 +2,7 @@ use std::convert::TryInto;
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
-use gleam_core::{Error, Result};
+use glistix_core::{Error, Result};
 use http::{Request, Response};
 
 static REQWEST_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -21,7 +21,7 @@ impl HttpClient {
 }
 
 #[async_trait]
-impl gleam_core::io::HttpClient for HttpClient {
+impl glistix_core::io::HttpClient for HttpClient {
     async fn send(&self, request: Request<Vec<u8>>) -> Result<Response<Vec<u8>>> {
         let request = request
             .try_into()
