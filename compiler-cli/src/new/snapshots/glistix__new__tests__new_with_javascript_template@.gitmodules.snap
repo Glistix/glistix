@@ -3,8 +3,6 @@ source: compiler-cli/src/new/tests.rs
 expression: "crate::fs::read(Utf8PathBuf::from_path_buf(file_path.to_path_buf()).expect(\"Non Utf8 Path\"),).unwrap()"
 snapshot_kind: text
 ---
-*.beam
-*.ez
-/build
-erl_crash.dump
-_gleam_artefacts
+[submodule "stdlib"]
+	path = external/stdlib
+	url = https://github.com/glistix/stdlib
