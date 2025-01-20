@@ -612,7 +612,7 @@ where
                 }
                 if tail.is_some()
                     && elements.is_empty()
-                    && elements_after_tail.as_ref().map_or(true, |e| e.is_empty())
+                    && elements_after_tail.as_ref().is_none_or(|e| e.is_empty())
                 {
                     return parse_error(
                         ParseErrorType::ListSpreadWithoutElements,
@@ -3284,8 +3284,7 @@ where
                         Token::Name { name } => name,
                         token => {
                             let hint = match (&token, self.tok0.take()) {
-                                (&Token::Fn { .. }, _)
-                                | (&Token::Pub, Some((_, Token::Fn { .. }, _))) => {
+                                (&Token::Fn, _) | (&Token::Pub, Some((_, Token::Fn, _))) => {
                                     let text =
                                         "Gleam is not an object oriented programming language so
 functions are declared separately from types.";
