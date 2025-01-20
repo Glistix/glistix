@@ -102,6 +102,8 @@ pub struct PackageConfig {
     pub target: Target,
     #[serde(default)]
     pub internal_modules: Option<Vec<Glob>>,
+    #[serde(default)]
+    pub glistix: GlistixConfig,
 }
 
 pub fn serialise_range<S>(
@@ -645,6 +647,7 @@ impl Default for PackageConfig {
             licences: Default::default(),
             links: Default::default(),
             internal_modules: Default::default(),
+            glistix: Default::default(),
             target: Target::Erlang,
         }
     }
@@ -743,6 +746,23 @@ pub struct DenoConfig {
     pub unstable: bool,
     #[serde(default, deserialize_with = "uri_serde::deserialize_option")]
     pub location: Option<Uri>,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Eq, Default, Clone)]
+pub struct GlistixConfig {
+    /// Config for the initial beta.
+    /// Can change in the future.
+    #[serde(default)]
+    pub preview: GlistixPreviewConfig,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Eq, Default, Clone)]
+pub struct GlistixPreviewConfig {
+    /// Replaces a package with another hex package,
+    /// but only while publishing. Workaround while
+    /// proper patches aren't implemented upstream.
+    #[serde(default, rename = "hex-patch")]
+    pub hex_patch: Dependencies,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
