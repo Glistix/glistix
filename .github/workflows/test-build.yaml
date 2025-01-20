@@ -1,20 +1,15 @@
-name: release
+name: test-build
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  build-release:
-    name: build-release
+  build-test:
+    name: build-test
     runs-on: ${{ matrix.os }}
-
-    permissions:
-      contents: write
 
     strategy:
       matrix:
@@ -28,28 +23,25 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            binary: x86-64
-            cargo-tool: cross
+            use-cross: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            binary: aarch64
-            cargo-tool: cross
+            use-cross: true
           # macos>=14 runs exclusively on aarch64 and will thus fail to execute properly for x64
           - os: macos-13
             target: x86_64-apple-darwin
-            binary: x86_64
-            cargo-tool: cargo
+            use-cross: false
           - os: macos-latest
             target: aarch64-apple-darwin
-            binary: arm64
-            cargo-tool: cargo
+            use-cross: false
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            binary: x86-64
-            cargo-tool: cargo
+            use-cross: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -63,32 +55,18 @@ jobs:
           key: v1-${{ matrix.target }}
 
       - name: Build release binary
-        uses: clechasseur/rs-cargo@v3
+        uses: clechasseur/rs-cargo@v2
         with:
           command: build
           args: --release --target ${{ matrix.target }}
-          tool: ${{ matrix.cargo-tool }}
-
-      - name: Verify binary architecture
-        shell: bash
-        run: |
-          BINARY_PATH="target/${{ matrix.target }}/release/glistix"
-          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
-            BINARY_PATH="${BINARY_PATH}.exe"
-          fi
-
-          if ! file -b "$BINARY_PATH" | grep -q "${{ matrix.binary }}"; then
-            echo "error: Architecture mismatch"
-            echo "Expected architecture: '${{ matrix.binary }}'"
-            echo "Found binary type: '$(file -b "$BINARY_PATH")'"
-            exit 1
-          fi
-          echo "ok: Architecture match"
+          use-cross: ${{ matrix.use-cross }}
 
       - name: Build archive
         shell: bash
         run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
+          # Get latest version
+          # https://stackoverflow.com/a/69708418
+          VERSION="$(git describe --tags "$(git rev-list --tags --max-count=1)")"
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             ARCHIVE="glistix-$VERSION-${{ matrix.target }}.zip"
@@ -120,29 +98,25 @@ jobs:
               ./glistix --version ;;
           esac
 
-      - name: Upload release archive
-        # https://github.com/softprops/action-gh-release/issues/445
-        # uses: softprops/action-gh-release@v2
-        uses: softprops/action-gh-release@0bd7e8b279c9b5b36661d552472fbbfe671fe26e
+      - name: Upload built binaries
+        uses: actions/upload-artifact@v4
         with:
-          draft: true
-          prerelease: false
-          fail_on_unmatched_files: true
-          files: |
+          name: glistix-test-${{ matrix.target }}
+          path: |
             ${{ env.ASSET }}
             ${{ env.ASSET }}.sha256
             ${{ env.ASSET }}.sha512
+          retention-days: 3
 
-  build-release-wasm:
-    name: build-release-wasm
+  build-test-wasm:
+    name: build-test-wasm
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -160,7 +134,9 @@ jobs:
 
       - name: Build wasm archive
         run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
+          # Get latest version
+          # https://stackoverflow.com/a/69708418
+          VERSION="$(git describe --tags "$(git rev-list --tags --max-count=1)")"
           ARCHIVE="glistix-$VERSION-browser.tar.gz"
 
           tar -C compiler-wasm/pkg/ -czvf $ARCHIVE .
@@ -169,13 +145,12 @@ jobs:
           openssl dgst -r -sha512 -out "$ARCHIVE".sha512 "$ARCHIVE"
           echo "ASSET=$ARCHIVE" >> $GITHUB_ENV
 
-      - name: Upload release archive
-        uses: softprops/action-gh-release@v2
+      - name: Upload built archive
+        uses: actions/upload-artifact@v4
         with:
-          draft: true
-          prerelease: false
-          fail_on_unmatched_files: true
-          files: |
+          name: glistix-test-browser
+          path: |
             ${{ env.ASSET }}
             ${{ env.ASSET }}.sha256
             ${{ env.ASSET }}.sha512
+          retention-days: 3
