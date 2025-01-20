@@ -1,0 +1,19 @@
+---
+source: compiler-core/src/nix/tests/bit_arrays.rs
+expression: "\nfn go() {\n  <<1:size(-1)>>\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go() {
+  <<1:size(-1)>>
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) toBitArray sizedInt;
+  
+  go = { }: toBitArray [ (sizedInt 1 (-1)) ];
+in
+{ }

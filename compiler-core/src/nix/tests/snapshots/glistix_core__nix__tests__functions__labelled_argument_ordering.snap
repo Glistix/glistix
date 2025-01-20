@@ -1,0 +1,56 @@
+---
+source: compiler-core/src/nix/tests/functions.rs
+expression: "\ntype A { A }\ntype B { B }\ntype C { C }\ntype D { D }\n\nfn wibble(a a: A, b b: B, c c: C, d d: D) {\n  Nil\n}\n\npub fn main() {\n  wibble(A, C, D, b: B)\n  wibble(A, C, D, b: B)\n  wibble(B, C, D, a: A)\n  wibble(B, C, a: A, d: D)\n  wibble(B, C, d: D, a: A)\n  wibble(B, D, a: A, c: C)\n  wibble(B, D, c: C, a: A)\n  wibble(C, D, b: B, a: A)\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+type A { A }
+type B { B }
+type C { C }
+type D { D }
+
+fn wibble(a a: A, b b: B, c c: C, d d: D) {
+  Nil
+}
+
+pub fn main() {
+  wibble(A, C, D, b: B)
+  wibble(A, C, D, b: B)
+  wibble(B, C, D, a: A)
+  wibble(B, C, a: A, d: D)
+  wibble(B, C, d: D, a: A)
+  wibble(B, D, a: A, c: C)
+  wibble(B, D, c: C, a: A)
+  wibble(C, D, b: B, a: A)
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) seqAll;
+  
+  A = { __gleamTag = "A"; };
+  
+  B = { __gleamTag = "B"; };
+  
+  C = { __gleamTag = "C"; };
+  
+  D = { __gleamTag = "D"; };
+  
+  wibble = a: b: c: d: null;
+  
+  main =
+    { }:
+    let
+      _' = wibble A B C D;
+      _'1 = wibble A B C D;
+      _'2 = wibble A B C D;
+      _'3 = wibble A B C D;
+      _'4 = wibble A B C D;
+      _'5 = wibble A B C D;
+      _'6 = wibble A B C D;
+    in
+    seqAll [ _' _'1 _'2 _'3 _'4 _'5 _'6 ] (wibble A B C D);
+in
+{ inherit main; }
