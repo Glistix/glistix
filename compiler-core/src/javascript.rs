@@ -91,7 +91,7 @@ impl<'a> Generator<'a> {
             .name
             .as_str()
             .split('/')
-            .last()
+            .next_back()
             .expect("JavaScript generator could not identify imported module name.");
 
         docvec!["/// <reference types=\"./", module, ".d.mts\" />", line()]
@@ -454,7 +454,7 @@ impl<'a> Generator<'a> {
         let get_name = |module: &'a str| {
             module
                 .split('/')
-                .last()
+                .next_back()
                 .expect("JavaScript generator could not identify imported module name.")
         };
 
