@@ -1,0 +1,16 @@
+---
+source: compiler-core/src/nix/tests/case_clause_guards.rs
+expression: "pub fn main(x, y) {\n  case x {\n    _ if !y -> 0\n    _ -> 1\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+pub fn main(x, y) {
+  case x {
+    _ if !y -> 0
+    _ -> 1
+  }
+}
+
+
+----- COMPILED NIX
+let main = x: y: if !y then 0 else 1; in { inherit main; }

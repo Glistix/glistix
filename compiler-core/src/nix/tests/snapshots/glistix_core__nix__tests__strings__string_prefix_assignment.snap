@@ -1,0 +1,30 @@
+---
+source: compiler-core/src/nix/tests/strings.rs
+expression: "\npub fn go(x) {\n  case x {\n    \"Hello, \" as greeting <> name -> greeting\n    _ -> \"Unknown\"\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+pub fn go(x) {
+  case x {
+    "Hello, " as greeting <> name -> greeting
+    _ -> "Unknown"
+  }
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) strHasPrefix;
+  
+  go =
+    x:
+    if strHasPrefix "Hello, " x then
+      let
+        name = (builtins.substring 7 (-1) x);
+        greeting = "Hello, ";
+      in
+      greeting
+    else "Unknown";
+in
+{ inherit go; }

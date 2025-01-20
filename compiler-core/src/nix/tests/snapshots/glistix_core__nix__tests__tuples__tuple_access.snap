@@ -1,0 +1,14 @@
+---
+source: compiler-core/src/nix/tests/tuples.rs
+expression: "\nfn go() {\n  #(1, 2).0\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go() {
+  #(1, 2).0
+}
+
+
+----- COMPILED NIX
+let go = { }: builtins.elemAt [ 1 2 ] 0; in { }

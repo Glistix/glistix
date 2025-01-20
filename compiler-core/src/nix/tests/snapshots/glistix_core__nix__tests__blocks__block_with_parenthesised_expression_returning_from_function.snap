@@ -1,0 +1,16 @@
+---
+source: compiler-core/src/nix/tests/blocks.rs
+expression: "\nfn b() {\n  {\n    1 + 2\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn b() {
+  {
+    1 + 2
+  }
+}
+
+
+----- COMPILED NIX
+let b = { }: 1 + 2; in { }

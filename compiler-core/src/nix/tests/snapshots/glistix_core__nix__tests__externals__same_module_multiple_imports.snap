@@ -1,0 +1,16 @@
+---
+source: compiler-core/src/nix/tests/externals.rs
+expression: "\n@external(nix, \"./the/module.nix\", \"one\")\npub fn one() -> Nil\n\n@external(nix, \"./the/module.nix\", \"two\")\npub fn two() -> Nil\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+@external(nix, "./the/module.nix", "one")
+pub fn one() -> Nil
+
+@external(nix, "./the/module.nix", "two")
+pub fn two() -> Nil
+
+
+----- COMPILED NIX
+let inherit (builtins.import ./the/module.nix) one two; in { inherit one two; }

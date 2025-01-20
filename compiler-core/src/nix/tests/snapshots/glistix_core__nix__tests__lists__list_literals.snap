@@ -1,0 +1,30 @@
+---
+source: compiler-core/src/nix/tests/lists.rs
+expression: "\nfn go(x) {\n    []\n    [1]\n    [1, 2]\n    [1, 2, ..x]\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go(x) {
+    []
+    [1]
+    [1, 2]
+    [1, 2, ..x]
+}
+
+
+----- COMPILED NIX
+let
+  inherit (builtins.import ./../gleam.nix) toList seqAll;
+  listPrepend = (builtins.import ./../gleam.nix).prepend;
+  
+  go =
+    x:
+    let
+      _' = toList [ ];
+      _'1 = toList [ 1 ];
+      _'2 = toList [ 1 2 ];
+    in
+    seqAll [ _' _'1 _'2 ] (listPrepend 1 (listPrepend 2 x));
+in
+{ }
