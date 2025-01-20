@@ -615,7 +615,6 @@ fn provided_recursive() {
         })
     )
 }
-
 #[test]
 fn provided_local_to_hex() {
     let provided_package = ProvidedPackage {
