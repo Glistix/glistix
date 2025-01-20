@@ -270,7 +270,7 @@ impl<'a> RedundantTupleInCaseSubject<'a> {
         // tuple items.
         self.edits.replace(
             discard_location,
-            itertools::intersperse(iter::repeat("_").take(tuple_items), ", ").collect(),
+            itertools::intersperse(iter::repeat_n("_", tuple_items), ", ").collect(),
         )
     }
 }
@@ -719,7 +719,7 @@ impl<'a> FillInMissingLabelledArgs<'a> {
             //
             let label_insertion_start = call_location.end - 1;
             let has_comma_after_last_argument =
-                if let Some(last_arg) = args.iter().filter(|arg| !arg.is_implicit()).last() {
+                if let Some(last_arg) = args.iter().filter(|arg| !arg.is_implicit()).next_back() {
                     self.module
                         .code
                         .get(last_arg.location.end as usize..=label_insertion_start as usize)
@@ -2293,7 +2293,7 @@ impl<'a> DesugarUse<'a> {
             .get(use_line_end as usize - 1..use_line_end as usize)
             == Some(")");
 
-        let last_explicit_arg = args.iter().filter(|arg| !arg.is_implicit()).last();
+        let last_explicit_arg = args.iter().filter(|arg| !arg.is_implicit()).next_back();
         let last_arg_end = last_explicit_arg.map_or(use_line_end - 1, |arg| arg.location.end);
 
         // This is the piece of code between the end of the last argument and

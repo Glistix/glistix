@@ -345,7 +345,7 @@ impl<'a> Printer<'a> {
                     // TODO: indicate that the module is not import and as such
                     // needs to be, as well as how.
                     NameContextInformation::Unimported(n) => {
-                        (Some(module.split('/').last().unwrap_or(module)), n)
+                        (Some(module.split('/').next_back().unwrap_or(module)), n)
                     }
                 };
 

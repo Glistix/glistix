@@ -2,6 +2,7 @@ name = "project_a"
 version = "0.1.0"
 
 [dependencies]
+gleam_stdlib = ">= 0.34.0 and < 0.57.0" # TODO: Remove once we update to Gleam 1.9.0
 project_b = { path = "../project_b" }
 project_c = { path = "../project_c" }
 
