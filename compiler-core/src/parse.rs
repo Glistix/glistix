@@ -121,18 +121,22 @@ struct Attributes {
     deprecated: Deprecation,
     external_erlang: Option<(EcoString, EcoString, SrcSpan)>,
     external_javascript: Option<(EcoString, EcoString, SrcSpan)>,
+    external_nix: Option<(EcoString, EcoString, SrcSpan)>,
     internal: InternalAttribute,
 }
 
 impl Attributes {
     fn has_function_only(&self) -> bool {
-        self.external_erlang.is_some() || self.external_javascript.is_some()
+        self.external_erlang.is_some()
+            || self.external_javascript.is_some()
+            || self.external_nix.is_some()
     }
 
     fn has_external_for(&self, target: Target) -> bool {
         match target {
             Target::Erlang => self.external_erlang.is_some(),
             Target::JavaScript => self.external_javascript.is_some(),
+            Target::Nix => self.external_nix.is_some(),
         }
     }
 
@@ -140,6 +144,7 @@ impl Attributes {
         match target {
             Target::Erlang => self.external_erlang = ext,
             Target::JavaScript => self.external_javascript = ext,
+            Target::Nix => self.external_nix = ext,
         }
     }
 }
@@ -1929,12 +1934,15 @@ where
             deprecation: std::mem::take(&mut attributes.deprecated),
             external_erlang: attributes.external_erlang.take(),
             external_javascript: attributes.external_javascript.take(),
+            external_nix: attributes.external_nix.take(),
             implementations: Implementations {
                 gleam: true,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
+                can_run_on_nix: true,
                 uses_erlang_externals: false,
                 uses_javascript_externals: false,
+                uses_nix_externals: false,
             },
         })))
     }
@@ -2213,6 +2221,7 @@ where
                         // Expecting all but the deprecated atterbutes to be default
                         if attributes.external_erlang.is_some()
                             || attributes.external_javascript.is_some()
+                            || attributes.external_nix.is_some()
                             || attributes.target.is_some()
                             || attributes.internal != InternalAttribute::Missing
                         {
@@ -2725,8 +2734,10 @@ where
                     gleam: true,
                     can_run_on_erlang: true,
                     can_run_on_javascript: true,
+                    can_run_on_nix: true,
                     uses_erlang_externals: false,
                     uses_javascript_externals: false,
+                    uses_nix_externals: false,
                 },
             })))
         } else {
@@ -3368,6 +3379,7 @@ functions are declared separately from types.";
             Token::Name { name } => match name.as_str() {
                 "javascript" => Ok(Target::JavaScript),
                 "erlang" => Ok(Target::Erlang),
+                "nix" => Ok(Target::Nix),
                 "js" => {
                     self.warnings
                         .push(DeprecatedSyntaxWarning::DeprecatedTargetShorthand {
@@ -3679,6 +3691,7 @@ functions are declared separately from types.";
         let target = match name.as_str() {
             "erlang" => Target::Erlang,
             "javascript" => Target::JavaScript,
+            "nix" => Target::Nix,
             _ => return parse_error(ParseErrorType::UnknownTarget, SrcSpan::new(start, end)),
         };
 

@@ -233,6 +233,10 @@ pub struct ImplementationsInterface {
     /// - `uses_javascript_externals: true` the function is using JavaScript
     ///   external code.
     uses_javascript_externals: bool,
+    /// Set to `true` if the const/function is defined using Nix external
+    /// code. That means that the function will use Nix code through FFI when
+    /// compiled for the Nix target.
+    uses_nix_externals: bool,
     /// Whether the function can be called on the Erlang target, either due to a
     /// pure Gleam implementation or an implementation that uses some Erlang
     /// externals.
@@ -241,6 +245,10 @@ pub struct ImplementationsInterface {
     /// to a pure Gleam implementation or an implementation that uses some
     /// JavaScript externals.
     can_run_on_javascript: bool,
+    /// Whether the function can be called on the Nix target, either due
+    /// to a pure Gleam implementation or an implementation that uses some
+    /// Nix externals.
+    can_run_on_nix: bool,
 }
 
 impl ImplementationsInterface {
@@ -258,17 +266,20 @@ impl ImplementationsInterface {
             gleam,
             uses_erlang_externals,
             uses_javascript_externals,
-
+            uses_nix_externals,
             can_run_on_erlang,
             can_run_on_javascript,
+            can_run_on_nix,
         } = implementations;
 
         ImplementationsInterface {
             gleam: *gleam,
             uses_erlang_externals: *uses_erlang_externals,
             uses_javascript_externals: *uses_javascript_externals,
+            uses_nix_externals: *uses_nix_externals,
             can_run_on_erlang: *can_run_on_erlang,
             can_run_on_javascript: *can_run_on_javascript,
+            can_run_on_nix: *can_run_on_nix,
         }
     }
 }
@@ -509,6 +520,7 @@ impl ModuleInterface {
                     return_annotation: _,
                     external_erlang: _,
                     external_javascript: _,
+                    external_nix: _,
                 }) => {
                     let mut id_map = IdMap::new();
                     let (_, name) = name

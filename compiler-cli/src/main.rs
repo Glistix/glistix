@@ -340,6 +340,14 @@ pub struct CompilePackage {
     #[arg(verbatim_doc_comment, long = "javascript-prelude")]
     javascript_prelude: Option<Utf8PathBuf>,
 
+    /// The location of the Nix prelude module, relative to the `out`
+    /// directory.
+    ///
+    /// Required when compiling to Nix.
+    ///
+    #[arg(long = "nix-prelude")]
+    nix_prelude: Option<Utf8PathBuf>,
+
     /// Skip Erlang to BEAM bytecode compilation if given
     #[arg(long = "no-beam")]
     skip_beam_compilation: bool,
