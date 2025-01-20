@@ -1017,7 +1017,7 @@ impl Generator<'_> {
     /// into:
     ///
     /// ```nix
-    /// rec // { a: 5, b: 6 }
+    /// rec // { a = 5; b = 6; }
     /// ```
     ///
     /// Note that this isn't technically correct, considering the JS target and the
