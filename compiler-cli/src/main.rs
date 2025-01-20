@@ -301,7 +301,7 @@ pub struct NewOptions {
     #[arg(long)]
     pub name: Option<String>,
 
-    #[arg(long, ignore_case = true, default_value = "erlang", help = template_doc())]
+    #[arg(long, ignore_case = true, default_value = "nix", help = template_doc())]
     pub template: new::Template,
 
     /// Skip git initialization and creation of .gitignore, .git/* and .github/* files
