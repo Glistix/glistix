@@ -12,9 +12,10 @@ use crate::{
         UntypedCustomType, UntypedDefinition, UntypedExpr, UntypedExprBitArraySegment,
         UntypedFunction, UntypedImport, UntypedModule, UntypedModuleConstant, UntypedPattern,
         UntypedPatternBitArraySegment, UntypedRecordUpdateArg, UntypedStatement, UntypedTypeAlias,
-        Use, UseAssignment,
+        UntypedUse, UntypedUseAssignment, Use, UseAssignment,
     },
     build::Target,
+    type_::error::VariableOrigin,
 };
 
 #[allow(dead_code)]
@@ -606,6 +607,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
 
             Statement::Use(Use {
                 location,
+                right_hand_side_location,
                 assignments_location,
                 call,
                 assignments,
@@ -621,6 +623,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
                 let call = Box::new(self.fold_expr(*call));
                 Statement::Use(Use {
                     location,
+                    right_hand_side_location,
                     assignments_location,
                     call,
                     assignments,
@@ -630,7 +633,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
     }
 
     /// You probably don't want to override this method.
-    fn fold_use_assignment(&mut self, use_: UseAssignment) -> UseAssignment {
+    fn fold_use_assignment(&mut self, use_: UntypedUseAssignment) -> UntypedUseAssignment {
         let UseAssignment {
             location,
             pattern,
@@ -836,7 +839,7 @@ pub trait UntypedExprFolder: TypeAstFolder + UntypedConstantFolder + PatternFold
         assignment
     }
 
-    fn fold_use(&mut self, use_: Use) -> Use {
+    fn fold_use(&mut self, use_: UntypedUse) -> UntypedUse {
         use_
     }
 }
@@ -1113,7 +1116,8 @@ pub trait PatternFolder {
                 location,
                 name,
                 type_: (),
-            } => self.fold_pattern_var(location, name),
+                origin,
+            } => self.fold_pattern_var(location, name, origin),
 
             Pattern::VarUsage {
                 location,
@@ -1198,11 +1202,17 @@ pub trait PatternFolder {
         Pattern::String { location, value }
     }
 
-    fn fold_pattern_var(&mut self, location: SrcSpan, name: EcoString) -> UntypedPattern {
+    fn fold_pattern_var(
+        &mut self,
+        location: SrcSpan,
+        name: EcoString,
+        origin: VariableOrigin,
+    ) -> UntypedPattern {
         Pattern::Variable {
             location,
             name,
             type_: (),
+            origin,
         }
     }
 

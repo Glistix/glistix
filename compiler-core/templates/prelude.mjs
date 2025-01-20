@@ -121,12 +121,22 @@ export class BitArray {
 
   // @internal
   binaryFromSlice(start, end) {
-    return new BitArray(this.buffer.slice(start, end));
+    const buffer = new Uint8Array(
+      this.buffer.buffer,
+      this.buffer.byteOffset + start,
+      end - start
+    );
+    return new BitArray(buffer);
   }
 
   // @internal
   sliceAfter(index) {
-    return new BitArray(this.buffer.slice(index));
+    const buffer = new Uint8Array(
+      this.buffer.buffer,
+      this.buffer.byteOffset + index,
+      this.buffer.byteLength - index
+    );
+    return new BitArray(buffer);
   }
 }
 

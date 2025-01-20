@@ -5,7 +5,7 @@ use glistix_core::{
     Error, Result,
 };
 
-use crate::{cli, fs, UseManifest};
+use crate::{cli, fs};
 
 pub fn command(packages: Vec<String>) -> Result<()> {
     // Read gleam.toml so we can remove deps from it
@@ -45,13 +45,9 @@ pub fn command(packages: Vec<String>) -> Result<()> {
     // Write the updated config
     fs::write(Utf8Path::new("gleam.toml"), &toml.to_string())?;
     let paths = crate::find_project_paths()?;
-    _ = crate::dependencies::download(
-        &paths,
-        cli::Reporter::new(),
-        None,
-        Vec::new(),
-        UseManifest::Yes,
-    )?;
+
+    _ = crate::dependencies::cleanup(&paths, cli::Reporter::new())?;
+
     for package_to_remove in packages {
         cli::print_removed(&package_to_remove);
     }

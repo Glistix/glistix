@@ -1,3 +1,4 @@
+use num_bigint::BigInt;
 use vec1::Vec1;
 
 use super::{
@@ -9,7 +10,9 @@ use crate::{
     javascript::endianness::Endianness,
     line_numbers::LineNumbers,
     pretty::*,
-    type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant},
+    type_::{
+        ModuleValueConstructor, Type, TypedCallArg, ValueConstructor, ValueConstructorVariant,
+    },
 };
 use std::sync::Arc;
 
@@ -129,9 +132,7 @@ impl<'module> Generator<'module> {
         match statement {
             Statement::Expression(expression) => self.expression(expression),
             Statement::Assignment(assignment) => self.assignment(assignment),
-            Statement::Use(_use) => {
-                unreachable!("Use must not be present for JavaScript generation")
-            }
+            Statement::Use(_use) => self.expression(&_use.call),
         }
     }
 
@@ -165,7 +166,12 @@ impl<'module> Generator<'module> {
             TypedExpr::Fn { args, body, .. } => self.fn_(args, body),
 
             TypedExpr::RecordAccess { record, label, .. } => self.record_access(record, label),
-            TypedExpr::RecordUpdate { record, args, .. } => self.record_update(record, args),
+            TypedExpr::RecordUpdate {
+                record,
+                constructor,
+                args,
+                ..
+            } => self.record_update(record, constructor, args),
 
             TypedExpr::Var {
                 name, constructor, ..
@@ -232,19 +238,35 @@ impl<'module> Generator<'module> {
                 let details = self.sized_bit_array_segment_details(segment)?;
 
                 if segment.type_ == crate::type_::int() {
-                    if details.has_explicit_size {
-                        self.tracker.sized_integer_segment_used = true;
-                        Ok(docvec![
-                            "sizedInt(",
-                            value,
-                            ", ",
-                            details.size,
-                            ", ",
-                            bool(details.endianness.is_big()),
-                            ")"
-                        ])
-                    } else {
-                        Ok(value)
+                    match (details.size_value, segment.value.as_ref()) {
+                        (Some(size_value), TypedExpr::Int { int_value, .. })
+                            if size_value <= SAFE_INT_SEGMENT_MAX_SIZE.into() =>
+                        {
+                            let bytes = bit_array_segment_int_value_to_bytes(
+                                int_value.clone(),
+                                size_value,
+                                details.endianness,
+                            )?;
+
+                            Ok(u8_slice(&bytes))
+                        }
+
+                        (Some(size_value), _) if size_value == 8.into() => Ok(value),
+
+                        (Some(size_value), _) if size_value <= 0.into() => Ok(docvec![]),
+
+                        _ => {
+                            self.tracker.sized_integer_segment_used = true;
+                            Ok(docvec![
+                                "sizedInt(",
+                                value,
+                                ", ",
+                                details.size,
+                                ", ",
+                                bool(details.endianness.is_big()),
+                                ")"
+                            ])
+                        }
                     }
                 } else {
                     self.tracker.float_bit_array_segment_used = true;
@@ -319,43 +341,41 @@ impl<'module> Generator<'module> {
             .iter()
             .find(|x| matches!(x, Opt::Size { .. }));
 
-        let has_explicit_size = size.is_some();
-
-        let size = match size {
+        let (size_value, size) = match size {
             Some(Opt::Size { value: size, .. }) => {
-                let size_int = match *size.clone() {
-                    TypedExpr::Int {
-                        location: _,
-                        type_: _,
-                        value,
-                        int_value: _,
-                    } => value.parse().unwrap_or(0),
-                    _ => 0,
+                let size_value = match *size.clone() {
+                    TypedExpr::Int { int_value, .. } => Some(int_value),
+                    _ => None,
                 };
 
-                if size_int > 0 && size_int % 8 != 0 {
-                    return Err(Error::Unsupported {
-                        feature: "Non byte aligned array".into(),
-                        location: segment.location,
-                    });
+                if let Some(size_value) = size_value.as_ref() {
+                    if *size_value > BigInt::ZERO && size_value % 8 != BigInt::ZERO {
+                        return Err(Error::Unsupported {
+                            feature: "Non byte aligned array".into(),
+                            location: segment.location,
+                        });
+                    }
                 }
 
-                self.not_in_tail_position(|gen| gen.wrap_expression(size))?
+                (
+                    size_value,
+                    self.not_in_tail_position(|gen| gen.wrap_expression(size))?,
+                )
             }
             _ => {
-                let default_size = if segment.type_ == crate::type_::int() {
+                let size_value = if segment.type_ == crate::type_::int() {
                     8usize
                 } else {
                     64usize
                 };
 
-                docvec![default_size]
+                (Some(BigInt::from(size_value)), docvec![size_value])
             }
         };
 
         Ok(SizedBitArraySegmentDetails {
-            has_explicit_size,
             size,
+            size_value,
             endianness,
         })
     }
@@ -391,8 +411,9 @@ impl<'module> Generator<'module> {
             TypedExpr::Panic { .. }
             | TypedExpr::Todo { .. }
             | TypedExpr::Case { .. }
-            | TypedExpr::Pipeline { .. } => self
-                .immediately_involked_function_expression(expression, |gen, expr| {
+            | TypedExpr::Pipeline { .. }
+            | TypedExpr::RecordUpdate { .. } => self
+                .immediately_invoked_function_expression(expression, |gen, expr| {
                     gen.expression(expr)
                 }),
             _ => self.expression(expression),
@@ -420,7 +441,7 @@ impl<'module> Generator<'module> {
     }
 
     /// Wrap an expression in an immediately involked function expression
-    fn immediately_involked_function_expression<'a, T, ToDoc>(
+    fn immediately_invoked_function_expression<'a, T, ToDoc>(
         &mut self,
         statements: &'a T,
         to_doc: ToDoc,
@@ -443,7 +464,7 @@ impl<'module> Generator<'module> {
         self.scope_position = scope_position;
 
         // Wrap in iife document
-        let doc = immediately_involked_function_expression_document(result?);
+        let doc = immediately_invoked_function_expression_document(result?);
         Ok(self.wrap_return(doc))
     }
 
@@ -498,12 +519,10 @@ impl<'module> Generator<'module> {
                     self.child_expression(assignment.value.as_ref())
                 }
 
-                Statement::Use(_) => {
-                    unreachable!("use statements must not be present for JavaScript generation")
-                }
+                Statement::Use(use_) => self.child_expression(&use_.call),
             }
         } else {
-            self.immediately_involked_function_expression(statements, |gen, statements| {
+            self.immediately_invoked_function_expression(statements, |gen, statements| {
                 gen.statements(statements)
             })
         }
@@ -584,7 +603,7 @@ impl<'module> Generator<'module> {
         };
 
         let compiled =
-            self.pattern_into_assignment_doc(compiled, subject, pattern.location(), *kind)?;
+            self.pattern_into_assignment_doc(compiled, subject, pattern.location(), kind)?;
         // If there is a subject name given create a variable to hold it for
         // use in patterns
         let doc = match subject_assignment {
@@ -700,13 +719,18 @@ impl<'module> Generator<'module> {
         Ok(docvec![subject_assignments, doc].force_break())
     }
 
-    fn assignment_no_match<'a>(&mut self, location: SrcSpan, subject: Document<'a>) -> Output<'a> {
-        Ok(self.throw_error(
-            "let_assert",
-            &string("Pattern match failed, no pattern matched the value."),
-            location,
-            [("value", subject)],
-        ))
+    fn assignment_no_match<'a>(
+        &mut self,
+        location: SrcSpan,
+        subject: Document<'a>,
+        message: Option<&'a TypedExpr>,
+    ) -> Output<'a> {
+        let message = match message {
+            Some(m) => self.not_in_tail_position(|gen| gen.expression(m))?,
+            None => string("Pattern match failed, no pattern matched the value."),
+        };
+
+        Ok(self.throw_error("let_assert", &message, location, [("value", subject)]))
     }
 
     fn tuple<'a>(&mut self, elements: &'a [TypedExpr]) -> Output<'a> {
@@ -715,7 +739,7 @@ impl<'module> Generator<'module> {
         })
     }
 
-    fn call<'a>(&mut self, fun: &'a TypedExpr, arguments: &'a [CallArg<TypedExpr>]) -> Output<'a> {
+    fn call<'a>(&mut self, fun: &'a TypedExpr, arguments: &'a [TypedCallArg]) -> Output<'a> {
         let arguments = arguments
             .iter()
             .map(|element| self.not_in_tail_position(|gen| gen.wrap_expression(&element.value)))
@@ -860,19 +884,15 @@ impl<'module> Generator<'module> {
 
     fn record_update<'a>(
         &mut self,
-        record: &'a TypedExpr,
-        updates: &'a [TypedRecordUpdateArg],
+        record: &'a TypedAssignment,
+        constructor: &'a TypedExpr,
+        args: &'a [TypedCallArg],
     ) -> Output<'a> {
-        self.not_in_tail_position(|gen| {
-            let record = gen.wrap_expression(record)?;
-            let fields = updates
-                .iter()
-                .map(|TypedRecordUpdateArg { label, value, .. }| {
-                    (maybe_escape_property_doc(label), gen.wrap_expression(value))
-                });
-            let object = try_wrap_object(fields)?;
-            Ok(docvec![record, ".withFields(", object, ")"])
-        })
+        Ok(docvec![
+            self.not_in_tail_position(|gen| gen.assignment(record))?,
+            line(),
+            self.call(constructor, args)?,
+        ])
     }
 
     fn tuple_index<'a>(&mut self, tuple: &'a TypedExpr, index: u64) -> Output<'a> {
@@ -1054,7 +1074,7 @@ impl<'module> Generator<'module> {
         compiled_pattern: CompiledPattern<'a>,
         subject: Document<'a>,
         location: SrcSpan,
-        kind: AssignmentKind,
+        kind: &'a AssignmentKind<TypedExpr>,
     ) -> Output<'a> {
         let any_assignments = !compiled_pattern.assignments.is_empty();
         let assignments = Self::pattern_assignments_doc(compiled_pattern.assignments);
@@ -1062,17 +1082,22 @@ impl<'module> Generator<'module> {
         // If it's an assert then it is likely that the pattern is inexhaustive. When a value is
         // provided that does not get matched the code needs to throw an exception, which is done
         // by the pattern_checks_or_throw_doc method.
-        if kind.is_assert() && !compiled_pattern.checks.is_empty() {
-            let checks =
-                self.pattern_checks_or_throw_doc(compiled_pattern.checks, subject, location)?;
+        match kind {
+            AssignmentKind::Assert { message, .. } if !compiled_pattern.checks.is_empty() => {
+                let checks = self.pattern_checks_or_throw_doc(
+                    compiled_pattern.checks,
+                    subject,
+                    location,
+                    message.as_deref(),
+                )?;
 
-            if !any_assignments {
-                Ok(checks)
-            } else {
-                Ok(docvec![checks, line(), assignments])
+                if !any_assignments {
+                    Ok(checks)
+                } else {
+                    Ok(docvec![checks, line(), assignments])
+                }
             }
-        } else {
-            Ok(assignments)
+            _ => Ok(assignments),
         }
     }
 
@@ -1081,6 +1106,7 @@ impl<'module> Generator<'module> {
         checks: Vec<pattern::Check<'a>>,
         subject: Document<'a>,
         location: SrcSpan,
+        message: Option<&'a TypedExpr>,
     ) -> Output<'a> {
         let checks = self.pattern_checks_doc(checks, false);
         Ok(docvec![
@@ -1088,7 +1114,11 @@ impl<'module> Generator<'module> {
             docvec![break_("", ""), checks].nest(INDENT),
             break_("", ""),
             ") {",
-            docvec![line(), self.assignment_no_match(location, subject)?].nest(INDENT),
+            docvec![
+                line(),
+                self.assignment_no_match(location, subject, message)?
+            ]
+            .nest(INDENT),
             line(),
             "}",
         ]
@@ -1428,19 +1458,35 @@ fn bit_array<'a>(
                 sized_bit_array_segment_details(segment, tracker, &mut constant_expr_fun)?;
 
             if segment.type_ == crate::type_::int() {
-                if details.has_explicit_size {
-                    tracker.sized_integer_segment_used = true;
-                    Ok(docvec![
-                        "sizedInt(",
-                        value,
-                        ", ",
-                        details.size,
-                        ", ",
-                        bool(details.endianness.is_big()),
-                        ")"
-                    ])
-                } else {
-                    Ok(value)
+                match (details.size_value, segment.value.as_ref()) {
+                    (Some(size_value), Constant::Int { int_value, .. })
+                        if size_value <= SAFE_INT_SEGMENT_MAX_SIZE.into() =>
+                    {
+                        let bytes = bit_array_segment_int_value_to_bytes(
+                            int_value.clone(),
+                            size_value,
+                            details.endianness,
+                        )?;
+
+                        Ok(u8_slice(&bytes))
+                    }
+
+                    (Some(size_value), _) if size_value == 8.into() => Ok(value),
+
+                    (Some(size_value), _) if size_value <= 0.into() => Ok(docvec![]),
+
+                    _ => {
+                        tracker.sized_integer_segment_used = true;
+                        Ok(docvec![
+                            "sizedInt(",
+                            value,
+                            ", ",
+                            details.size,
+                            ", ",
+                            bool(details.endianness.is_big()),
+                            ")"
+                        ])
+                    }
                 }
             } else {
                 tracker.float_bit_array_segment_used = true;
@@ -1485,8 +1531,10 @@ fn bit_array<'a>(
 
 #[derive(Debug)]
 struct SizedBitArraySegmentDetails<'a> {
-    has_explicit_size: bool,
     size: Document<'a>,
+    /// The size of the bit array segment stored as a BigInt. This has a value when the segment's
+    /// size is known at compile time.
+    size_value: Option<BigInt>,
     endianness: Endianness,
 }
 
@@ -1523,41 +1571,38 @@ fn sized_bit_array_segment_details<'a>(
         .iter()
         .find(|x| matches!(x, Opt::Size { .. }));
 
-    let has_explicit_size = size.is_some();
-
-    let size = match size {
+    let (size_value, size) = match size {
         Some(Opt::Size { value: size, .. }) => {
-            let size_int = match *size.clone() {
-                Constant::Int {
-                    location: _,
-                    value,
-                    int_value: _,
-                } => value.parse().unwrap_or(0),
-                _ => 0,
+            let size_value = match *size.clone() {
+                Constant::Int { int_value, .. } => Some(int_value),
+                _ => None,
             };
-            if size_int > 0 && size_int % 8 != 0 {
-                return Err(Error::Unsupported {
-                    feature: "Non byte aligned array".into(),
-                    location: segment.location,
-                });
+
+            if let Some(size_value) = size_value.as_ref() {
+                if *size_value > BigInt::ZERO && size_value % 8 != BigInt::ZERO {
+                    return Err(Error::Unsupported {
+                        feature: "Non byte aligned array".into(),
+                        location: segment.location,
+                    });
+                }
             }
 
-            constant_expr_fun(tracker, size)?
+            (size_value, constant_expr_fun(tracker, size)?)
         }
         _ => {
-            let default_size = if segment.type_ == crate::type_::int() {
+            let size_value = if segment.type_ == crate::type_::int() {
                 8usize
             } else {
                 64usize
             };
 
-            docvec![default_size]
+            (Some(BigInt::from(size_value)), docvec![size_value])
         }
     };
 
     Ok(SizedBitArraySegmentDetails {
-        has_explicit_size,
         size,
+        size_value,
         endianness,
     })
 }
@@ -1656,7 +1701,8 @@ impl TypedExpr {
             | TypedExpr::Case { .. }
             | TypedExpr::Panic { .. }
             | TypedExpr::Block { .. }
-            | TypedExpr::Pipeline { .. } => true,
+            | TypedExpr::Pipeline { .. }
+            | TypedExpr::RecordUpdate { .. } => true,
 
             TypedExpr::Int { .. }
             | TypedExpr::Float { .. }
@@ -1670,7 +1716,6 @@ impl TypedExpr {
             | TypedExpr::Tuple { .. }
             | TypedExpr::TupleIndex { .. }
             | TypedExpr::BitArray { .. }
-            | TypedExpr::RecordUpdate { .. }
             | TypedExpr::NegateBool { .. }
             | TypedExpr::NegateInt { .. }
             | TypedExpr::Invalid { .. } => false,
@@ -1727,7 +1772,6 @@ fn requires_semicolon(statement: &TypedStatement) -> bool {
             | TypedExpr::BitArray { .. }
             | TypedExpr::TupleIndex { .. }
             | TypedExpr::NegateBool { .. }
-            | TypedExpr::RecordUpdate { .. }
             | TypedExpr::RecordAccess { .. }
             | TypedExpr::ModuleSelect { .. }
             | TypedExpr::Block { .. },
@@ -1738,6 +1782,7 @@ fn requires_semicolon(statement: &TypedStatement) -> bool {
             | TypedExpr::Case { .. }
             | TypedExpr::Panic { .. }
             | TypedExpr::Pipeline { .. }
+            | TypedExpr::RecordUpdate { .. }
             | TypedExpr::Invalid { .. },
         ) => false,
 
@@ -1747,7 +1792,7 @@ fn requires_semicolon(statement: &TypedStatement) -> bool {
 }
 
 /// Wrap a document in an immediately involked function expression
-fn immediately_involked_function_expression_document(document: Document<'_>) -> Document<'_> {
+fn immediately_invoked_function_expression_document(document: Document<'_>) -> Document<'_> {
     docvec!(
         docvec!("(() => {", break_("", " "), document).nest(INDENT),
         break_("", " "),
@@ -1796,4 +1841,15 @@ fn record_constructor<'a>(
             "}",
         )
     }
+}
+
+fn u8_slice<'a>(bytes: &[u8]) -> Document<'a> {
+    let s: EcoString = bytes
+        .iter()
+        .map(u8::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+        .into();
+
+    docvec![s]
 }

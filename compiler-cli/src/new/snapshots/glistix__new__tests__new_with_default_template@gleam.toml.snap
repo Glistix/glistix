@@ -1,7 +1,6 @@
 ---
 source: compiler-cli/src/new/tests.rs
 expression: "crate::fs::read(Utf8PathBuf::from_path_buf(file_path.to_path_buf()).expect(\"Non Utf8 Path\"),).unwrap()"
-snapshot_kind: text
 ---
 name = "my_project"
 version = "1.0.0"
@@ -45,4 +44,4 @@ local-overrides = ["gleam_stdlib"]
 # this feature, as it is mostly a temporary workaround while Gleam doesn't have
 # a proper dependency patching system.
 [glistix.preview.hex-patch]
-gleam_stdlib = ">= 0.34.0 and < 2.0.0"
+gleam_stdlib = ">= 0.44.0 and < 2.0.0"

@@ -3004,3 +3004,53 @@ pub fn rebox(box) {
         ]
     );
 }
+
+#[test]
+// https://github.com/gleam-lang/gleam/issues/3861
+fn variant_inference_on_literal_record() {
+    assert_module_error!(
+        "
+pub type Wibble {
+  Wibble
+  Wobble
+}
+
+pub fn main() {
+  case Wibble, Wobble {
+    Wibble, Wibble -> todo
+  }
+}
+"
+    );
+}
+
+#[test]
+fn variant_inference_on_prelude_types() {
+    assert_module_infer!(
+        "
+pub fn main() {
+  let always_ok = Ok(10)
+  case always_ok {
+    Ok(1) -> 1
+    Ok(2) -> 3
+    _ -> panic
+  }
+}
+",
+        vec![("main", "fn() -> Int")]
+    );
+}
+
+#[test]
+fn private_types_not_available_in_other_modules() {
+    assert_with_module_error!(
+        ("wibble", "type Wibble"),
+        "
+import wibble
+
+type Wibble {
+  Wibble(wibble.Wibble)
+}
+"
+    );
+}

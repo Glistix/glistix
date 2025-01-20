@@ -1,9 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use crate::build::{Outcome, Runtime, Target};
 use crate::diagnostic::{Diagnostic, ExtraLabel, Label, Location};
-use crate::type_::collapse_links;
 use crate::type_::error::{
-    MissingAnnotation, Named, UnknownField, UnknownTypeHint, UnsafeRecordUpdateReason,
+    MissingAnnotation, ModuleValueUsageContext, Named, UnknownField, UnknownTypeHint,
+    UnsafeRecordUpdateReason,
 };
 use crate::type_::printer::{Names, Printer};
 use crate::type_::{error::PatternMatchKind, FieldAccessUsage};
@@ -16,12 +16,11 @@ use itertools::Itertools;
 use pubgrub::package::Package;
 use pubgrub::report::DerivationTree;
 use pubgrub::version::Version;
+use std::borrow::Cow;
 use std::collections::HashSet;
-use std::env;
 use std::fmt::{Debug, Display};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
 use termcolor::Buffer;
 use thiserror::Error;
 use vec1::Vec1;
@@ -31,6 +30,9 @@ use camino::{Utf8Path, Utf8PathBuf};
 pub type Name = EcoString;
 
 pub type Result<Ok, Err = Error> = std::result::Result<Ok, Err>;
+
+#[cfg(test)]
+pub mod tests;
 
 macro_rules! wrap_format {
     ($($tts:tt)*) => {
@@ -88,6 +90,20 @@ pub enum Error {
     #[error("duplicate source file {file}")]
     DuplicateSourceFile { file: String },
 
+    #[error("duplicate native Erlang module {module}")]
+    DuplicateNativeErlangModule {
+        module: Name,
+        first: Utf8PathBuf,
+        second: Utf8PathBuf,
+    },
+
+    #[error("gleam module {module} clashes with native file of same name")]
+    ClashingGleamModuleAndNativeFileName {
+        module: Name,
+        gleam_file: Utf8PathBuf,
+        native_file: Utf8PathBuf,
+    },
+
     #[error("cyclical module imports")]
     ImportCycle {
         modules: Vec1<(EcoString, ImportCycleLocationDetails)>,
@@ -135,7 +151,7 @@ pub enum Error {
     Gzip(String),
 
     #[error("shell program `{program}` not found")]
-    ShellProgramNotFound { program: String },
+    ShellProgramNotFound { program: String, os: OS },
 
     #[error("shell program `{program}` failed")]
     ShellCommand {
@@ -308,6 +324,12 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
         minimum_required_version: SmallVersion,
         wrongfully_allowed_version: SmallVersion,
     },
+
+    #[error("Failed to encrypt data")]
+    FailedToEncrypt { detail: String },
+
+    #[error("Failed to decrypt data")]
+    FailedToDecrypt { detail: String },
 }
 
 /// This is to make clippy happy and not make the error variant too big by
@@ -335,6 +357,37 @@ impl SmallVersion {
             minor: version.minor as u8,
             patch: version.patch as u8,
         }
+    }
+}
+#[derive(Debug, Clone, Eq, PartialEq, Copy)]
+pub enum OS {
+    Linux(Distro),
+    MacOS,
+    Windows,
+    Other,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Copy)]
+pub enum Distro {
+    Ubuntu,
+    Debian,
+    Other,
+}
+
+pub fn parse_os(os: &str, distro: &str) -> OS {
+    match os {
+        "macos" => OS::MacOS,
+        "windows" => OS::Windows,
+        "linux" => OS::Linux(parse_linux_distribution(distro)),
+        _ => OS::Other,
+    }
+}
+
+pub fn parse_linux_distribution(distro: &str) -> Distro {
+    match distro {
+        "ubuntu" => Distro::Ubuntu,
+        "debian" => Distro::Debian,
+        _ => Distro::Other,
     }
 }
 
@@ -1011,8 +1064,44 @@ your app.src file \"{app_ver}\"."
                 }]
             }
 
-            Error::ShellProgramNotFound { program } => {
+            Error::ShellProgramNotFound { program , os } => {
                 let mut text = format!("The program `{program}` was not found. Is it installed?");
+
+                match os {
+                    OS::MacOS => {
+                        fn brew_install(name: &str, pkg: &str) -> String {
+                            format!("\n\nYou can install {} via homebrew: brew install {}", name, pkg)
+                        }
+                        match program.as_str() {
+                            "erl" | "erlc" | "escript" => text.push_str(&brew_install("Erlang", "erlang")),
+                            "rebar3" => text.push_str(&brew_install("Rebar3", "rebar3")),
+                            "deno" => text.push_str(&brew_install("Deno", "deno")),
+                            "elixir" => text.push_str(&brew_install("Elixir", "elixir")),
+                            "node" => text.push_str(&brew_install("Node.js", "node")),
+                            "bun" => text.push_str(&brew_install("Bun", "oven-sh/bun/bun")),
+                            "git" => text.push_str(&brew_install("Git", "git")),
+                            _ => (),
+                        }
+                    }
+                    OS::Linux(distro) => {
+                        fn apt_install(name: &str, pkg: &str) -> String {
+                            format!("\n\nYou can install {} via apt: sudo apt install {}", name, pkg)
+                        }
+                        match distro {
+                            Distro::Ubuntu | Distro::Debian => {
+                                match program.as_str() {
+                                    "elixir" => text.push_str(&apt_install("Elixir", "elixir")),
+                                    "git" => text.push_str(&apt_install("Git", "git")),
+                                    _ => (),
+                                }
+                            }
+                            Distro::Other => (),
+                        }
+                    }
+                    _ => (),
+                }
+
+                text.push('\n');
 
                 match program.as_str() {
                     "erl" | "erlc" | "escript" => text.push_str(
@@ -1022,23 +1111,36 @@ https://gleam.run/getting-started/installing/",
                     ),
                     "rebar3" => text.push_str(
                         "
-Documentation for installing rebar3 can be viewed here:
-https://gleam.run/getting-started/installing/",
+Documentation for installing Rebar3 can be viewed here:
+https://rebar3.org/docs/getting-started/",
+                    ),
+                    "deno" => text.push_str(
+                        "
+Documentation for installing Deno can be viewed here:
+https://docs.deno.com/runtime/getting_started/installation/",
+                    ),
+                    "elixir" => text.push_str(
+                        "
+Documentation for installing Elixir can be viewed here:
+https://elixir-lang.org/install.html",
+                    ),
+                    "node" => text.push_str(
+                        "
+Documentation for installing Node.js via package manager can be viewed here:
+https://nodejs.org/en/download/package-manager/all/",
+                    ),
+                    "bun" => text.push_str(
+                        "
+Documentation for installing Bun can be viewed here:
+https://bun.sh/docs/installation/",
+                    ),
+                    "git" => text.push_str(
+                        "
+Documentation for installing Git can be viewed here:
+https://git-scm.com/book/en/v2/Getting-Started-Installing-Git",
                     ),
                     _ => (),
                 }
-                match (program.as_str(), env::consts::OS) {
-                    // TODO: Further suggestions for other OSes?
-                    ("erl" | "erlc" | "escript", "macos") => text.push_str(
-                        "
-You can also install Erlang via homebrew using \"brew install erlang\"",
-                    ),
-                    ("rebar3", "macos") => text.push_str(
-                        "
-You can also install rebar3 via homebrew using \"brew install rebar3\"",
-                    ),
-                    _ => (),
-                };
 
                 vec![Diagnostic {
                     title: "Program not found".into(),
@@ -1193,6 +1295,26 @@ Second: {second}"
                 }]
             }
 
+            Error::ClashingGleamModuleAndNativeFileName { module, gleam_file, native_file } => {
+                let text = format!(
+                        "The Gleam module `{module}` is clashing with a native file
+with the same name:
+
+    Gleam module: {gleam_file}
+    Native file:  {native_file}
+
+This is a problem because the Gleam module would be compiled to a file with the
+same name and extension, unintentionally overwriting the native file.");
+
+                vec![Diagnostic {
+                    title: "Gleam module clashes with native file".into(),
+                    text,
+                    hint: Some("Consider renaming one of the files, such as by adding an `_ffi` suffix to the native file's name, and trying again.".into()),
+                    level: Level::Error,
+                    location: None,
+                }]
+            },
+
             Error::DuplicateSourceFile { file } => vec![Diagnostic {
                 title: "Duplicate Source file".into(),
                 text: format!("The file `{file}` is defined multiple times."),
@@ -1200,6 +1322,30 @@ Second: {second}"
                 level: Level::Error,
                 location: None,
             }],
+
+            Error::DuplicateNativeErlangModule {
+                module,
+                first,
+                second,
+            } => {
+                let text = format!(
+                    "The native Erlang module `{module}` is defined multiple times.
+
+First:  {first}
+Second: {second}
+
+Erlang modules must have unique names regardless of the subfolders where their
+`.erl` files are located."
+                );
+
+                vec![Diagnostic {
+                    title: "Duplicate native Erlang module".into(),
+                    text,
+                    hint: Some("Rename one of the native Erlang modules and try again.".into()),
+                    level: Level::Error,
+                    location: None,
+                }]
+            },
 
             Error::FileIo {
                 kind,
@@ -1233,6 +1379,37 @@ https://learn.microsoft.com/en-us/windows/apps/get-started/enable-your-device-fo
                 }
                 vec![Diagnostic {
                     title: "File IO failure".into(),
+                    text,
+                    hint: None,
+                    level: Level::Error,
+                    location: None,
+                }]
+            }
+
+
+            Error::FailedToEncrypt { detail } => {
+                let text = wrap_format!("A problem was encountered encrypting data.
+The error from the encryption library was:
+
+    {detail}"
+);
+                vec![Diagnostic {
+                    title: "Failed to encrypt data".into(),
+                    text,
+                    hint: None,
+                    level: Level::Error,
+                    location: None,
+                }]
+            }
+
+            Error::FailedToDecrypt { detail } => {
+                let text = wrap_format!("A problem was encountered decrypting data.
+The error from the encryption library was:
+
+    {detail}"
+);
+                vec![Diagnostic {
+                    title: "Failed to decrypt data".into(),
                     text,
                     hint: None,
                     level: Level::Error,
@@ -1617,7 +1794,8 @@ Hint: Add some type annotations and try again.")
                         if variants == &UnknownField::NoFields {
                             text.push_str("\nIt does not have any fields.");
                         } else {
-                            text.push_str("\nIt does not have any fields shared by all variants.");
+                            text.push_str("\nIt does not have fields that are common \
+across all variants.");
                         }
                     } else {
                         text.push_str("\nIt has these accessible fields:\n");
@@ -1630,21 +1808,19 @@ Hint: Add some type annotations and try again.")
                     match variants {
                         UnknownField::AppearsInAVariant => {
                             let msg = wrap(
-                                "Note: The field you are trying to \
-access might not be consistently present or positioned across the custom \
-type's variants, preventing reliable access. Ensure the field exists in the \
-same position and has the same type in all variants, or pattern matching on it \
-to enable direct accessor syntax.",
+                                "Note: The field you are trying to access is \
+not defined consistently across all variants of this custom type. To fix this, \
+ensure that all variants include the field with the same name, position, and \
+type.",
                             );
                             text.push_str("\n\n");
                             text.push_str(&msg);
                         }
                         UnknownField::AppearsInAnImpossibleVariant => {
                             let msg = wrap(
-                                "Note: The field you are trying to \
-access exists but not on the variant which is this value always is. \
-A field that is not present in all variants can only be accessed when \
-the value is inferred to be one variant.",
+                                "Note: The field exists in this custom type \
+but is not defined for the current variant. Ensure that you are accessing the \
+field on a variant where it is valid.",
                             );
                             text.push_str("\n\n");
                             text.push_str(&msg);
@@ -1786,7 +1962,6 @@ But function expects:
                     situation,
                 } => {
                     let mut printer = Printer::new(names);
-                    let hint = hint_unwrap_result(expected, given, &mut printer);
                     let mut text = if let Some(description) = situation.as_ref().and_then(|s| s.description()) {
                         let mut text = description.to_string();
                         text.push('\n');
@@ -1799,13 +1974,10 @@ But function expects:
                     text.push_str(&printer.print_type(expected));
                     text.push_str("\n\nFound type:\n\n    ");
                     text.push_str(&printer.print_type(given));
-                    if hint.is_some() {
-                        text.push('\n');
-                    }
                     Diagnostic {
                         title: "Type mismatch".into(),
                         text,
-                        hint,
+                        hint: None,
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -1959,6 +2131,31 @@ specify all fields explicitly instead of using the record update syntax.");
                                 }),
                             }
                         },
+                        UnsafeRecordUpdateReason::IncompatibleFieldTypes {expected_field_type, record_field_type, record_variant, field_name, ..} => {
+                            let mut printer = Printer::new(names);
+                            let expected_field_type = printer.print_type(expected_field_type);
+                            let record_field_type = printer.print_type(record_field_type);
+                            let record_variant = printer.print_type(record_variant);
+                            let text = wrap_format!("The `{field_name}` field of this value is a `{record_field_type}`, but the arguments given to the record update indicate that it should be a `{expected_field_type}`.
+
+Note: If the same type variable is used for multiple fields, all those fields need to be updated at the same time if their type changes.");
+
+                            Diagnostic {
+                                title: "Incomplete record update".into(),
+                                text,
+                                hint: None,
+                                level: Level::Error,
+                                location: Some(Location {
+                                    label: Label {
+                                        text: Some(format!("This is a `{record_variant}`")),
+                                        span: *location,
+                                    },
+                                    path: path.clone(),
+                                    src: src.clone(),
+                                    extra_labels: vec![],
+                                }),
+                            }
+                        }
                     }
 
 
@@ -2125,11 +2322,17 @@ Private types can only be used within the module that defines them.",
                     module_name,
                     value_constructors,
                     type_with_same_name: imported_value_as_type,
+                    context,
                 } => {
                     let text = if *imported_value_as_type {
-                        format!("`{name}` is only a type, it cannot be imported as a value.")
+                        match context {
+                            ModuleValueUsageContext::UnqualifiedImport =>
+                                wrap_format!("`{name}` is only a type, it cannot be imported as a value."),
+                            ModuleValueUsageContext::ModuleAccess =>
+                                wrap_format!("{module_name}.{name} is a type constructor, it cannot be used as a value"),
+                        }
                     } else {
-                        format!("The module `{module_name}` does not have a `{name}` value.")
+                        wrap_format!("The module `{module_name}` does not have a `{name}` value.")
                     };
                     Diagnostic {
                         title: "Unknown module value".into(),
@@ -2138,7 +2341,7 @@ Private types can only be used within the module that defines them.",
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
-                                text: if *imported_value_as_type {
+                                text: if *imported_value_as_type && matches!(context, ModuleValueUsageContext::UnqualifiedImport) {
                                     Some(format!("Did you mean `type {name}`?"))
                                 } else {
                                     did_you_mean(name, value_constructors)
@@ -2371,7 +2574,7 @@ tuple has {} elements so the highest valid index is {}.",
 
                 TypeError::NotATupleUnbound { location } => {
                     let text = wrap("To index into a tuple we need to \
-know it size, but we don't know anything about this type yet. \
+know its size, but we don't know anything about this type yet. \
 Please add some type annotations so we can continue."
                         );
                     Diagnostic {
@@ -3071,7 +3274,7 @@ and the final one is the `use` callback function.\n"));
                         }
                     } else {
                         text.push_str("All the arguments have already been supplied, \
-so it cannot take the the `use` callback function as a final argument.\n")
+so it cannot take the `use` callback function as a final argument.\n")
                     };
 
                     text.push_str("\nSee: https://tour.gleam.run/advanced-features/use/");
@@ -3200,6 +3403,52 @@ Try: _{}", kind_str.to_title_case(), name.to_snake_case()),
                         }),
                     }
                 },
+                        TypeError::AllVariantsDeprecated { location } => {
+                            let text = String::from("Consider deprecating the type as a whole.
+
+  @deprecated(\"message\")
+  type Wibble {
+    Wobble1
+    Wobble2
+  }
+");
+                            Diagnostic {
+                                title: "All variants of custom type deprecated.".into(),
+                                text,
+                                hint: None,
+                                level: Level::Error,
+                                location: Some(Location {
+                                    label: Label {
+                                        text: None,
+                                        span: *location,
+                                    },
+                                    path: path.clone(),
+                                    src: src.clone(),
+                                    extra_labels: vec![],
+                                })
+                            }
+                        },
+                        TypeError::DeprecatedVariantOnDeprecatedType{ location } => {
+                            let text = wrap("This custom type has already been deprecated, so deprecating \
+one of its variants does nothing.
+Consider removing the deprecation attribute on the variant.");
+
+                            Diagnostic {
+                                title: "Custom type already deprecated".into(),
+                                text,
+                                hint: None,
+                                level: Level::Error,
+                                location: Some(Location {
+                                    label: Label {
+                                        text: None,
+                                        span: *location,
+                                    },
+                                    path: path.clone(),
+                                    src: src.clone(),
+                                    extra_labels: vec![],
+                                })
+                            }
+                        }
             }
         }).collect_vec(),
 
@@ -3815,31 +4064,6 @@ fn hint_alternative_operator(op: &BinOp, given: &Type) -> Option<String> {
     }
 }
 
-fn hint_unwrap_result(
-    expected: &Arc<Type>,
-    given: &Arc<Type>,
-    printer: &mut Printer<'_>,
-) -> Option<String> {
-    // If the got type is `Result(a, _)` and the expected one is
-    // `a` then we can display the hint.
-    let wrapped_type = given.result_ok_type()?;
-    let expected = collapse_links(expected.clone());
-    if collapse_links(wrapped_type) != expected {
-        None
-    } else {
-        Some(wrap_format!(
-            "If you want to get a `{}` out of a `{}` you can pattern match on it:
-
-    case result {{
-      Ok(value) -> todo
-      Error(error) -> todo
-    }}",
-            printer.print_type(&expected),
-            printer.print_type(given),
-        ))
-    }
-}
-
 fn hint_numeric_message(alt: &str, type_: &str) -> String {
     format!("the {alt} operator can be used with {type_}s\n")
 }
@@ -3860,5 +4084,93 @@ pub struct Unformatted {
 }
 
 pub fn wrap(text: &str) -> String {
-    textwrap::fill(text, std::cmp::min(75, textwrap::termwidth()))
+    let mut result = String::with_capacity(text.len());
+
+    for (i, line) in wrap_text(text, 75).iter().enumerate() {
+        if i > 0 {
+            result.push('\n');
+        }
+        result.push_str(line);
+    }
+
+    result
+}
+
+fn wrap_text(text: &str, width: usize) -> Vec<Cow<'_, str>> {
+    let mut lines: Vec<Cow<'_, str>> = Vec::new();
+    for line in text.split('\n') {
+        // check if line needs to be broken
+        match line.len() > width {
+            false => lines.push(Cow::from(line)),
+            true => {
+                let mut new_lines = break_line(line, width);
+                lines.append(&mut new_lines);
+            }
+        };
+    }
+
+    lines
+}
+
+fn break_line(line: &str, width: usize) -> Vec<Cow<'_, str>> {
+    let mut lines: Vec<Cow<'_, str>> = Vec::new();
+    let mut newline = String::from("");
+
+    // split line by spaces
+    for (i, word) in line.split(' ').enumerate() {
+        let is_new_line = i < 1 || newline.is_empty();
+
+        let can_add_word = match is_new_line {
+            true => newline.len() + word.len() <= width,
+            // +1 accounts for space added before word
+            false => newline.len() + (word.len() + 1) <= width,
+        };
+
+        if can_add_word {
+            if !is_new_line {
+                newline.push(' ');
+            }
+            newline.push_str(word);
+        } else {
+            // word too big, save existing line if present
+            if !newline.is_empty() {
+                // save current line and reset it
+                lines.push(Cow::from(newline.to_owned()));
+                newline.clear();
+            }
+
+            // then save word to a new line or break it
+            match word.len() > width {
+                false => newline.push_str(word),
+                true => {
+                    let (mut newlines, remainder) = break_word(word, width);
+                    lines.append(&mut newlines);
+                    newline.push_str(remainder);
+                }
+            }
+        }
+    }
+
+    // save last line after loop finishes
+    if !newline.is_empty() {
+        lines.push(Cow::from(newline));
+    }
+
+    lines
+}
+
+// breaks word into n lines based on width. Returns list of new lines and remainder
+fn break_word(word: &str, width: usize) -> (Vec<Cow<'_, str>>, &str) {
+    let mut new_lines: Vec<Cow<'_, str>> = Vec::new();
+    let (first, mut remainder) = word.split_at(width);
+    new_lines.push(Cow::from(first));
+
+    // split remainder until it's small enough
+    while remainder.len() > width {
+        let (first, second) = remainder.split_at(width);
+        new_lines.push(Cow::from(first));
+        remainder = second;
+    }
+
+    (new_lines, remainder)
 }

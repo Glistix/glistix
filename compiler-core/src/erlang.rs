@@ -15,7 +15,7 @@ use crate::{
     line_numbers::LineNumbers,
     pretty::*,
     type_::{
-        ModuleValueConstructor, PatternConstructor, Type, TypeVar, ValueConstructor,
+        ModuleValueConstructor, PatternConstructor, Type, TypeVar, TypedCallArg, ValueConstructor,
         ValueConstructorVariant,
     },
     Result,
@@ -731,9 +731,7 @@ fn statement<'a>(statement: &'a TypedStatement, env: &mut Env<'a>) -> Document<'
     match statement {
         Statement::Expression(e) => expr(e, env),
         Statement::Assignment(a) => assignment(a, env),
-        Statement::Use(_) => {
-            unreachable!("Use statements must not be present for Erlang generation")
-        }
+        Statement::Use(use_) => expr(&use_.call, env),
     }
 }
 
@@ -997,7 +995,12 @@ fn binop_documents<'a>(left: Document<'a>, op: &'static str, right: Document<'a>
         .append(right)
 }
 
-fn let_assert<'a>(value: &'a TypedExpr, pat: &'a TypedPattern, env: &mut Env<'a>) -> Document<'a> {
+fn let_assert<'a>(
+    value: &'a TypedExpr,
+    pat: &'a TypedPattern,
+    env: &mut Env<'a>,
+    message: Option<&'a TypedExpr>,
+) -> Document<'a> {
     let mut vars: Vec<&str> = vec![];
     let body = maybe_block_expr(value, env);
     let (subject_var, subject_definition) = if value.is_var() {
@@ -1015,6 +1018,11 @@ fn let_assert<'a>(value: &'a TypedExpr, pat: &'a TypedPattern, env: &mut Env<'a>
     // We don't take the guards from the assign pattern or we would end up with
     // all the same guards repeated twice!
     let assign_pattern = pattern::to_doc(pat, &mut vars, env, &mut vec![]);
+    let message = match message {
+        Some(message) => expr(message, env),
+        None => string("Pattern match failed, no pattern matched the value."),
+    };
+
     let clauses = docvec![
         check_pattern.clone(),
         clause_guard,
@@ -1028,7 +1036,7 @@ fn let_assert<'a>(value: &'a TypedExpr, pat: &'a TypedPattern, env: &mut Env<'a>
             line(),
             erlang_error(
                 "let_assert",
-                &string("Pattern match failed, no pattern matched the value."),
+                &message,
                 pat.location(),
                 vec![("value", env.local_var_name(ASSERT_FAIL_VARIABLE))],
                 env,
@@ -1499,7 +1507,7 @@ fn case<'a>(subjects: &'a [TypedExpr], cs: &'a [TypedClause], env: &mut Env<'a>)
         .group()
 }
 
-fn call<'a>(fun: &'a TypedExpr, args: &'a [CallArg<TypedExpr>], env: &mut Env<'a>) -> Document<'a> {
+fn call<'a>(fun: &'a TypedExpr, args: &'a [TypedCallArg], env: &mut Env<'a>) -> Document<'a> {
     docs_args_call(
         fun,
         args.iter()
@@ -1656,22 +1664,23 @@ fn docs_args_call<'a>(
 }
 
 fn record_update<'a>(
-    record: &'a TypedExpr,
-    args: &'a [TypedRecordUpdateArg],
+    record: &'a TypedAssignment,
+    constructor: &'a TypedExpr,
+    args: &'a [TypedCallArg],
     env: &mut Env<'a>,
 ) -> Document<'a> {
-    let expr_doc = maybe_block_expr(record, env);
+    let vars = env.current_scope_vars.clone();
 
-    args.iter().fold(expr_doc, |tuple_doc, arg| {
-        // Increment the index by 2, because the first element
-        // is the name of the record, so our fields are 2-indexed
-        let index_doc = (arg.index + 2).to_doc();
-        let value_doc = maybe_block_expr(&arg.value, env);
+    let document = docvec![
+        assignment(record, env),
+        ",",
+        line(),
+        call(constructor, args, env)
+    ];
 
-        "erlang:setelement"
-            .to_doc()
-            .append(wrap_args([index_doc, tuple_doc, value_doc]))
-    })
+    env.current_scope_vars = vars;
+
+    document
 }
 
 /// Wrap a document in begin end
@@ -1690,7 +1699,7 @@ fn maybe_block_expr<'a>(expression: &'a TypedExpr, env: &mut Env<'a>) -> Documen
 
 fn needs_begin_end_wrapping(expression: &TypedExpr) -> bool {
     match expression {
-        TypedExpr::Pipeline { .. } => true,
+        TypedExpr::RecordUpdate { .. } | TypedExpr::Pipeline { .. } => true,
 
         TypedExpr::Int { .. }
         | TypedExpr::Float { .. }
@@ -1709,7 +1718,6 @@ fn needs_begin_end_wrapping(expression: &TypedExpr) -> bool {
         | TypedExpr::Todo { .. }
         | TypedExpr::Panic { .. }
         | TypedExpr::BitArray { .. }
-        | TypedExpr::RecordUpdate { .. }
         | TypedExpr::NegateBool { .. }
         | TypedExpr::NegateInt { .. }
         | TypedExpr::Invalid { .. } => false,
@@ -1844,7 +1852,12 @@ fn expr<'a>(expression: &'a TypedExpr, env: &mut Env<'a>) -> Document<'a> {
 
         TypedExpr::RecordAccess { record, index, .. } => tuple_index(record, index + 1, env),
 
-        TypedExpr::RecordUpdate { record, args, .. } => record_update(record, args, env),
+        TypedExpr::RecordUpdate {
+            record,
+            constructor,
+            args,
+            ..
+        } => record_update(record, constructor, args, env),
 
         TypedExpr::Case {
             subjects, clauses, ..
@@ -1884,11 +1897,16 @@ fn pipeline<'a>(
 }
 
 fn assignment<'a>(assignment: &'a TypedAssignment, env: &mut Env<'a>) -> Document<'a> {
-    match assignment.kind {
+    match &assignment.kind {
         AssignmentKind::Let | AssignmentKind::Generated => {
             let_(&assignment.value, &assignment.pattern, env)
         }
-        AssignmentKind::Assert { .. } => let_assert(&assignment.value, &assignment.pattern, env),
+        AssignmentKind::Assert { message, .. } => let_assert(
+            &assignment.value,
+            &assignment.pattern,
+            env,
+            message.as_deref(),
+        ),
     }
 }
 

@@ -7,13 +7,14 @@ mod tests;
 pub mod visit;
 
 pub use self::typed::TypedExpr;
-pub use self::untyped::{FunctionLiteralKind, UntypedExpr, Use};
+pub use self::untyped::{FunctionLiteralKind, UntypedExpr};
 
 pub use self::constant::{Constant, TypedConstant, UntypedConstant};
 
 use crate::analyse::Inferred;
 use crate::build::{Located, Target};
 use crate::parse::SpannedString;
+use crate::type_::error::VariableOrigin;
 use crate::type_::expression::Implementations;
 use crate::type_::printer::Names;
 use crate::type_::{
@@ -29,6 +30,7 @@ use vec1::Vec1;
 
 pub const PIPE_VARIABLE: &str = "_pipe";
 pub const USE_ASSIGNMENT_VARIABLE: &str = "_use";
+pub const RECORD_UPDATE_VARIABLE: &str = "_record";
 pub const ASSERT_FAIL_VARIABLE: &str = "_assert_fail";
 pub const ASSERT_SUBJECT_VARIABLE: &str = "_assert_subject";
 pub const CAPTURE_VARIABLE: &str = "_capture";
@@ -232,6 +234,7 @@ pub struct RecordConstructor<T> {
     pub name: EcoString,
     pub arguments: Vec<RecordConstructorArg<T>>,
     pub documentation: Option<(u32, EcoString)>,
+    pub deprecation: Deprecation,
 }
 
 impl<A> RecordConstructor<A> {
@@ -727,6 +730,7 @@ pub struct ModuleConstant<T, ConstantRecordTag> {
 }
 
 pub type UntypedCustomType = CustomType<()>;
+pub type TypedCustomType = CustomType<Arc<Type>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A newly defined type with one or more constructors.
@@ -1217,12 +1221,24 @@ pub enum ImplicitCallArgOrigin {
     /// right hand side of `use` is being called with the wrong arity.
     ///
     IncorrectArityUse,
+    /// An argument adde by the compiler to fill in the missing args when using
+    /// the record update synax.
+    ///
+    RecordUpdate,
 }
 
 impl<A> CallArg<A> {
     #[must_use]
     pub fn is_implicit(&self) -> bool {
         self.implicit.is_some()
+    }
+
+    #[must_use]
+    pub fn is_use_implicit_callback(&self) -> bool {
+        match self.implicit {
+            Some(ImplicitCallArgOrigin::Use | ImplicitCallArgOrigin::IncorrectArityUse) => true,
+            Some(_) | None => false,
+        }
     }
 }
 
@@ -1249,14 +1265,28 @@ impl CallArg<TypedExpr> {
                 .or_else(|| body.iter().find_map(|s| s.find_node(byte_index))),
             // In all other cases we're happy with the default behaviour.
             //
-            _ => self.value.find_node(byte_index),
+            _ => {
+                if let Some(located) = self.value.find_node(byte_index) {
+                    Some(located)
+                } else if self.location.contains(byte_index) && self.label.is_some() {
+                    Some(Located::Label(self.location, self.value.type_()))
+                } else {
+                    None
+                }
+            }
         }
     }
 }
 
 impl CallArg<TypedPattern> {
     pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
-        self.value.find_node(byte_index)
+        if let Some(located) = self.value.find_node(byte_index) {
+            Some(located)
+        } else if self.location.contains(byte_index) && self.label.is_some() {
+            Some(Located::Label(self.location, self.value.type_()))
+        } else {
+            None
+        }
     }
 }
 
@@ -1305,22 +1335,9 @@ impl UntypedRecordUpdateArg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypedRecordUpdateArg {
-    pub label: EcoString,
-    pub location: SrcSpan,
-    pub value: TypedExpr,
-    pub index: u32,
-}
-
-impl TypedRecordUpdateArg {
-    pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
-        self.value.find_node(byte_index)
-    }
-
-    #[must_use]
-    pub fn uses_label_shorthand(&self) -> bool {
-        self.value.location() == self.location
+impl HasLocation for UntypedRecordUpdateArg {
+    fn location(&self) -> SrcSpan {
+        self.location
     }
 }
 
@@ -1663,6 +1680,13 @@ impl SrcSpan {
     pub fn contains(&self, byte_index: u32) -> bool {
         byte_index >= self.start && byte_index <= self.end
     }
+
+    pub fn merge(&self, with: &SrcSpan) -> SrcSpan {
+        Self {
+            start: self.start.min(with.start),
+            end: self.end.max(with.end),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -1698,6 +1722,7 @@ pub enum Pattern<Type> {
         location: SrcSpan,
         name: EcoString,
         type_: Type,
+        origin: VariableOrigin,
     },
 
     /// A reference to a variable in a bit array. This is always a variable
@@ -1831,8 +1856,17 @@ impl<A> Pattern<A> {
     /// Returns `true` if the pattern is [`Discard`].
     ///
     /// [`Discard`]: Pattern::Discard
+    #[must_use]
     pub fn is_discard(&self) -> bool {
         matches!(self, Self::Discard { .. })
+    }
+
+    #[must_use]
+    pub fn is_variable(&self) -> bool {
+        match self {
+            Pattern::Variable { .. } => true,
+            _ => false,
+        }
     }
 }
 
@@ -1949,17 +1983,25 @@ impl<A> HasLocation for Pattern<A> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AssignmentKind {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssignmentKind<Expression> {
     // let x = ...
     Let,
     // let assert x = ...
-    Assert { location: SrcSpan },
+    Assert {
+        location: SrcSpan,
+        /// The message given to the assertion:
+        /// ```gleam
+        /// let asset Ok(a) = something() as "This will never fail"
+        /// //                                ^ Message
+        /// ```
+        message: Option<Box<Expression>>,
+    },
     // For assignments generated by the compiler
     Generated,
 }
 
-impl AssignmentKind {
+impl<Expression> AssignmentKind<Expression> {
     /// Returns `true` if the assignment kind is [`Assert`].
     ///
     /// [`Assert`]: AssignmentKind::Assert
@@ -2141,6 +2183,7 @@ pub enum TodoKind {
     Keyword,
     EmptyFunction,
     IncompleteUse,
+    EmptyBlock,
 }
 
 #[derive(Debug, Default)]
@@ -2197,7 +2240,87 @@ pub enum Statement<TypeT, ExpressionT> {
     /// Assigning an expression to variables using a pattern.
     Assignment(Assignment<TypeT, ExpressionT>),
     /// A `use` expression.
-    Use(Use),
+    Use(Use<TypeT, ExpressionT>),
+}
+
+pub type UntypedUse = Use<(), UntypedExpr>;
+pub type TypedUse = Use<Arc<Type>, TypedExpr>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Use<TypeT, ExpressionT> {
+    /// In an untyped use this is the expression with the untyped code of the
+    /// callback function.
+    ///
+    /// In a typed use this is the typed function call the use expression
+    /// desugars to.
+    ///
+    pub call: Box<ExpressionT>,
+
+    /// This is the location of the whole use line, starting from the `use`
+    /// keyword and ending with the function call on the right hand side of
+    /// `<-`.
+    ///
+    /// ```gleam
+    /// use a <- result.try(result)
+    /// ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    /// ```
+    ///
+    pub location: SrcSpan,
+
+    /// This is the location of the expression on the right hand side of the use
+    /// arrow.
+    ///
+    /// ```gleam
+    /// use a <- result.try(result)
+    ///          ^^^^^^^^^^^^^^^^^^
+    /// ```
+    ///
+    pub right_hand_side_location: SrcSpan,
+
+    /// This is the SrcSpan of the patterns you find on the left hand side of
+    /// `<-` in a use expression.
+    ///
+    /// ```gleam
+    /// use pattern1, pattern2 <- todo
+    ///     ^^^^^^^^^^^^^^^^^^
+    /// ```
+    ///
+    /// In case there's no patterns it will be corresponding to the SrcSpan of
+    /// the `use` keyword itself.
+    ///
+    pub assignments_location: SrcSpan,
+
+    /// The patterns on the left hand side of `<-` in a use expression.
+    ///
+    pub assignments: Vec<UseAssignment<TypeT>>,
+}
+
+pub type UntypedUseAssignment = UseAssignment<()>;
+pub type TypedUseAssignment = UseAssignment<Arc<Type>>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UseAssignment<TypeT> {
+    pub location: SrcSpan,
+    pub pattern: Pattern<TypeT>,
+    pub annotation: Option<TypeAst>,
+}
+
+impl TypedUse {
+    pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
+        for assignment in self.assignments.iter() {
+            if let Some(found) = assignment.pattern.find_node(byte_index) {
+                return Some(found);
+            }
+            if let Some(found) = assignment
+                .annotation
+                .as_ref()
+                .and_then(|annotation| annotation.find_node(byte_index, assignment.pattern.type_()))
+            {
+                return Some(found);
+            }
+        }
+        self.call.find_node(byte_index)
+    }
 }
 
 pub type TypedStatement = Statement<Arc<Type>, TypedExpr>;
@@ -2270,11 +2393,22 @@ impl TypedStatement {
         }
     }
 
+    /// Returns the location of the last element of a statement. This means that
+    /// if the statement is a use you'll get the location of the last item at
+    /// the end of its block.
+    pub fn last_location(&self) -> SrcSpan {
+        match self {
+            Statement::Expression(expression) => expression.last_location(),
+            Statement::Assignment(assignment) => assignment.value.last_location(),
+            Statement::Use(use_) => use_.call.last_location(),
+        }
+    }
+
     pub fn type_(&self) -> Arc<Type> {
         match self {
             Statement::Expression(expression) => expression.type_(),
             Statement::Assignment(assignment) => assignment.type_(),
-            Statement::Use(_use) => unreachable!("Use must not exist for typed code"),
+            Statement::Use(_use) => _use.call.type_(),
         }
     }
 
@@ -2282,13 +2416,13 @@ impl TypedStatement {
         match self {
             Statement::Expression(expression) => expression.definition_location(),
             Statement::Assignment(_) => None,
-            Statement::Use(_) => None,
+            Statement::Use(use_) => use_.call.definition_location(),
         }
     }
 
     pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
         match self {
-            Statement::Use(_) => None,
+            Statement::Use(use_) => use_.find_node(byte_index),
             Statement::Expression(expression) => expression.find_node(byte_index),
             Statement::Assignment(assignment) => assignment.find_node(byte_index).or_else(|| {
                 if assignment.location.contains(byte_index) {
@@ -2307,6 +2441,18 @@ impl TypedStatement {
             Statement::Use(use_) => use_.location,
         }
     }
+
+    fn is_pure_value_constructor(&self) -> bool {
+        match self {
+            Statement::Expression(expression) => expression.is_pure_value_constructor(),
+            Statement::Assignment(assignment) => {
+                // A let assert is not considered a pure value constructor
+                // as it could crash the program!
+                !assignment.kind.is_assert() && assignment.value.is_pure_value_constructor()
+            }
+            Statement::Use(Use { call, .. }) => call.is_pure_value_constructor(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2314,7 +2460,7 @@ pub struct Assignment<TypeT, ExpressionT> {
     pub location: SrcSpan,
     pub value: Box<ExpressionT>,
     pub pattern: Pattern<TypeT>,
-    pub kind: AssignmentKind,
+    pub kind: AssignmentKind<ExpressionT>,
     pub annotation: Option<TypeAst>,
 }
 
@@ -2336,11 +2482,4 @@ impl TypedAssignment {
     pub fn type_(&self) -> Arc<Type> {
         self.value.type_()
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UseAssignment {
-    pub location: SrcSpan,
-    pub pattern: UntypedPattern,
-    pub annotation: Option<TypeAst>,
 }

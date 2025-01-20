@@ -83,7 +83,6 @@ use glistix_core::{
     paths::ProjectPaths,
     version::COMPILER_VERSION,
 };
-use hex::ApiKeyCommand as _;
 use std::str::FromStr;
 
 use camino::Utf8PathBuf;
@@ -341,7 +340,7 @@ pub struct CompilePackage {
     /// This likely wants to be a `.mjs` file as NodeJS does not permit
     /// importing of other JavaScript file extensions.
     ///
-    #[arg(long = "javascript-prelude")]
+    #[arg(verbatim_doc_comment, long = "javascript-prelude")]
     javascript_prelude: Option<Utf8PathBuf>,
 
     /// The location of the Nix prelude module, relative to the `out`
@@ -407,6 +406,7 @@ enum Hex {
     /// - HEXPM_USER: (optional) The Hex username to authenticate with.
     /// - HEXPM_PASS: (optional) The Hex password to authenticate with.
     /// - HEXPM_API_KEY: (optional) A Hex API key to use instead of authenticating.
+    #[command(verbatim_doc_comment)]
     Revert {
         #[arg(long)]
         package: Option<String>,
@@ -414,6 +414,9 @@ enum Hex {
         #[arg(long)]
         version: Option<String>,
     },
+
+    /// Authenticate with Hex
+    Authenticate,
 }
 
 #[derive(Subcommand, Debug)]
@@ -493,6 +496,8 @@ fn main() {
 
         Command::Deps(Dependencies::Update(options)) => dependencies::update(options.packages),
 
+        Command::Hex(Hex::Authenticate) => hex::authenticate(),
+
         Command::New(options) => new::create(options, COMPILER_VERSION),
 
         Command::Shell => shell::command(),
@@ -529,13 +534,11 @@ fn main() {
             version,
             reason,
             message,
-        }) => hex::RetireCommand::new(package, version, reason, message).run(),
+        }) => hex::retire(package, version, reason, message),
 
-        Command::Hex(Hex::Unretire { package, version }) => {
-            hex::UnretireCommand::new(package, version).run()
-        }
+        Command::Hex(Hex::Unretire { package, version }) => hex::unretire(package, version),
 
-        Command::Hex(Hex::Revert { package, version }) => hex::revertcommand(package, version),
+        Command::Hex(Hex::Revert { package, version }) => hex::revert(package, version),
 
         Command::Add { packages, dev } => add::command(packages, dev),
 

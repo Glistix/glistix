@@ -5,9 +5,10 @@ use async_trait::async_trait;
 use debug_ignore::DebugIgnore;
 use flate2::read::GzDecoder;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
     io,
+    iter::Extend,
     time::SystemTime,
     vec::IntoIter,
 };
@@ -186,12 +187,83 @@ impl DirEntry {
     }
 }
 
+/// Structure holding state to walk across a directory's descendant files at
+/// any level. Note that each descendant directory is only visited once
+/// regardless of symlinks, avoiding infinite symlink loops.
+#[derive(Debug, Clone)]
+pub struct DirWalker {
+    walk_queue: VecDeque<Utf8PathBuf>,
+    dirs_walked: im::HashSet<Utf8PathBuf>,
+}
+
+impl DirWalker {
+    /// Create a directory walker starting at the given path.
+    pub fn new(dir: Utf8PathBuf) -> Self {
+        Self {
+            walk_queue: VecDeque::from([dir]),
+            dirs_walked: im::HashSet::new(),
+        }
+    }
+
+    /// Convert this walker to an iterator over file paths.
+    ///
+    /// This iterator calls [`Self::next_file`]. Errors are returned if certain
+    /// directories cannot be read.
+    pub fn into_file_iter(
+        mut self,
+        io: &impl FileSystemReader,
+    ) -> impl Iterator<Item = Result<Utf8PathBuf>> + '_ {
+        std::iter::from_fn(move || self.next_file(io).transpose())
+    }
+
+    /// Advance the directory walker to the next file. The returned path will
+    /// be relative to the starting directory's path, even with symlinks
+    /// (it is not canonicalised).
+    pub fn next_file(&mut self, io: &impl FileSystemReader) -> Result<Option<Utf8PathBuf>> {
+        while let Some(next_path) = self.walk_queue.pop_front() {
+            let real_path = io.canonicalise(&next_path)?;
+
+            if io.is_file(&real_path) {
+                // Return the path relative to the starting directory, not the
+                // canonicalised path (which we only use to check for already
+                // visited directories).
+                return Ok(Some(next_path));
+            }
+
+            // If it's not a directory then it contains no other files, so there's nothing to do.
+            if !io.is_directory(&real_path) {
+                continue;
+            }
+
+            // If we have already processed this directory then we don't need to do it again.
+            // This could be due to symlinks.
+            let already_seen = self.dirs_walked.insert(real_path.clone()).is_some();
+            if already_seen {
+                continue;
+            }
+
+            for entry in io.read_dir(&next_path)? {
+                let Ok(entry) = entry else {
+                    return Err(Error::FileIo {
+                        kind: FileKind::Directory,
+                        action: FileIoAction::Read,
+                        path: next_path,
+                        err: None,
+                    });
+                };
+
+                self.walk_queue.push_back(entry.into_path())
+            }
+        }
+
+        Ok(None)
+    }
+}
+
 /// A trait used to read files.
 /// Typically we use an implementation that reads from the file system,
 /// but in tests and in other places other implementations may be used.
 pub trait FileSystemReader {
-    fn gleam_source_files(&self, dir: &Utf8Path) -> Vec<Utf8PathBuf>;
-    fn gleam_cache_files(&self, dir: &Utf8Path) -> Vec<Utf8PathBuf>;
     fn read_dir(&self, path: &Utf8Path) -> Result<ReadDir>;
     fn read(&self, path: &Utf8Path) -> Result<String, Error>;
     fn read_bytes(&self, path: &Utf8Path) -> Result<Vec<u8>, Error>;
@@ -200,6 +272,37 @@ pub trait FileSystemReader {
     fn is_directory(&self, path: &Utf8Path) -> bool;
     fn modification_time(&self, path: &Utf8Path) -> Result<SystemTime, Error>;
     fn canonicalise(&self, path: &Utf8Path) -> Result<Utf8PathBuf, Error>;
+}
+
+/// Iterates over Gleam source files (`.gleam`) in a certain directory.
+/// Symlinks are followed.
+pub fn gleam_source_files<'a>(
+    io: &'a impl FileSystemReader,
+    dir: &'a Utf8Path,
+) -> impl Iterator<Item = Utf8PathBuf> + 'a {
+    tracing::trace!("gleam_source_files {:?}", dir);
+    files_with_extension(io, dir, "gleam")
+}
+
+/// Iterates over Gleam cache files (`.cache`) in a certain directory.
+/// Symlinks are followed.
+pub fn gleam_cache_files<'a>(
+    io: &'a impl FileSystemReader,
+    dir: &'a Utf8Path,
+) -> impl Iterator<Item = Utf8PathBuf> + 'a {
+    tracing::trace!("gleam_cache_files {:?}", dir);
+    files_with_extension(io, dir, "cache")
+}
+
+fn files_with_extension<'a>(
+    io: &'a impl FileSystemReader,
+    dir: &'a Utf8Path,
+    extension: &'a str,
+) -> impl Iterator<Item = Utf8PathBuf> + 'a {
+    DirWalker::new(dir.to_path_buf())
+        .into_file_iter(io)
+        .filter_map(Result::ok)
+        .filter(|path| path.extension() == Some(extension))
 }
 
 /// A trait used to run other programs.

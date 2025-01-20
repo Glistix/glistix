@@ -31,6 +31,58 @@ pub fn name() -> String {
 }
 
 #[test]
+fn deprecated_all_varients_type() {
+    assert_module_error!(
+        r#"
+pub type Numbers {
+  @deprecated("1")
+  One
+  @deprecated("2")
+  Two
+}
+"#
+    );
+}
+
+#[test]
+fn deprecated_varients_type() {
+    assert_warning!(
+        r#"
+pub type Numbers {
+  @deprecated("1")
+  One
+  Two
+}
+
+pub fn num() {
+  let _one = One
+  let _two = Two
+  Nil
+}
+"#
+    );
+}
+
+#[test]
+fn depreacted_type_deprecate_varient_err() {
+    assert_module_error!(
+        r#"
+@deprecated("2")
+pub type Numbers {
+  @deprecated("1")
+  One
+  Two
+}
+
+pub fn num() {
+  let _two = Two
+  Nil
+}
+"#
+    );
+}
+
+#[test]
 fn fault_tolerance() {
     // An error in a custom type does not stop analysis
     assert_module_error!(
@@ -66,5 +118,67 @@ fn conflict_with_import() {
     assert_with_module_error!(
         ("wibble", "pub type A { B }"),
         "import wibble.{type A} type A { C }",
+    );
+}
+
+#[test]
+fn generic_record_update1() {
+    // A record update on polymorphic types with a field of different type
+    assert_module_infer!(
+        "
+pub type Box(a) {
+  Box(value: a, i: Int)
+}
+
+pub fn update_box(box: Box(Int), value: String) {
+  Box(..box, value: value)
+}",
+        vec![
+            ("Box", "fn(a, Int) -> Box(a)"),
+            ("update_box", "fn(Box(Int), String) -> Box(String)")
+        ]
+    );
+}
+
+#[test]
+fn generic_record_update2() {
+    // A record update on polymorphic types with generic fields of a different type
+    assert_module_infer!(
+        "
+pub type Box(a) {
+  Box(value: a, i: Int)
+}
+pub fn update_box(box: Box(a), value: b) {
+  Box(..box, value: value)
+}",
+        vec![
+            ("Box", "fn(a, Int) -> Box(a)"),
+            ("update_box", "fn(Box(a), b) -> Box(b)")
+        ]
+    );
+}
+
+#[test]
+fn inferred_variant_record_update_change_type_parameter() {
+    assert_module_infer!(
+        r#"
+pub type Box(a) {
+  Locked(password: String, value: a)
+  Unlocked(password: String, value: a)
+}
+
+pub fn main() {
+  let box = Locked("ungu€$$4bLe", 11)
+  case box {
+    Locked(..) as box -> Locked(..box, value: True)
+    Unlocked(..) as box -> Unlocked(..box, value: False)
+  }
+}
+"#,
+        vec![
+            ("Locked", "fn(String, a) -> Box(a)"),
+            ("Unlocked", "fn(String, a) -> Box(a)"),
+            ("main", "fn() -> Box(Bool)")
+        ]
     );
 }

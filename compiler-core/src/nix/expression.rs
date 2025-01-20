@@ -1,7 +1,7 @@
 use crate::ast::{
-    Arg, BinOp, BitArrayOption, CallArg, Constant, SrcSpan, Statement, TypedArg, TypedAssignment,
-    TypedClause, TypedConstant, TypedConstantBitArraySegment, TypedExpr, TypedExprBitArraySegment,
-    TypedModule, TypedPattern, TypedRecordUpdateArg, TypedStatement,
+    Arg, AssignmentKind, BinOp, BitArrayOption, CallArg, Constant, SrcSpan, Statement, TypedArg,
+    TypedAssignment, TypedClause, TypedConstant, TypedConstantBitArraySegment, TypedExpr,
+    TypedExprBitArraySegment, TypedModule, TypedPattern, TypedStatement,
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
@@ -10,7 +10,9 @@ use crate::nix::{
     syntax, Error, Output, UsageTracker, INDENT,
 };
 use crate::pretty::{break_, join, nil, Document, Documentable};
-use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
+use crate::type_::{
+    ModuleValueConstructor, Type, TypedCallArg, ValueConstructor, ValueConstructorVariant,
+};
 use ecow::{eco_format, EcoString};
 use itertools::Itertools;
 use regex::Regex;
@@ -89,18 +91,22 @@ impl<'module> Generator<'module> {
 
     /// Every statement, in Nix, must be an assignment, even an expression.
     fn statement<'a>(&mut self, statement: &'a TypedStatement) -> Output<'a> {
-        match statement {
-            Statement::Expression(expression) => {
-                let subject = self.expression(expression)?;
-                let name = self.next_anonymous_var();
-                // Convert expression to assignment with irrelevant name
-                Ok(syntax::assignment_line(name, subject))
-            }
-            Statement::Assignment(assignment) => self.assignment(assignment, false),
-            Statement::Use(_use) => {
-                unreachable!("Use must not be present for Nix generation")
-            }
-        }
+        let expression = match statement {
+            Statement::Expression(expression) => expression,
+
+            // Unfortunately, we can't unify the two branches since '.call'
+            // is boxed, whereas 'expression' above is not
+            Statement::Use(use_) => &use_.call,
+
+            // This is already a prepared assignment, so we just return it
+            Statement::Assignment(assignment) => return self.assignment(assignment, false),
+        };
+
+        // Assume we have an expression to assign to (assignment not yet ready)
+        let subject = self.expression(expression)?;
+        let name = self.next_anonymous_var();
+        // Convert expression to assignment with irrelevant name
+        Ok(syntax::assignment_line(name, subject))
     }
 
     pub fn expression<'a>(&mut self, expression: &'a TypedExpr) -> Output<'a> {
@@ -151,7 +157,12 @@ impl<'module> Generator<'module> {
             TypedExpr::NegateInt { value, .. } => self.negate_with("-", value),
 
             TypedExpr::RecordAccess { label, record, .. } => self.record_access(record, label),
-            TypedExpr::RecordUpdate { record, args, .. } => self.record_update(record, args),
+            TypedExpr::RecordUpdate {
+                record,
+                constructor,
+                args,
+                ..
+            } => self.record_update(record, constructor, args),
 
             TypedExpr::ModuleSelect {
                 module_alias,
@@ -228,8 +239,18 @@ impl<'module> Generator<'module> {
         let mut pattern_generator = pattern::Generator::new(self);
         pattern_generator.traverse_pattern(&subject, pattern)?;
         let compiled = pattern_generator.take_compiled();
-        let has_assertion = kind.is_assert() && !compiled.checks.is_empty();
         let pattern_location = pattern.location();
+
+        // This will be:
+        // - None if there is no assertion to check
+        // - Some(None) if there is an assertion, but its message wasn't
+        // customized by the user
+        // - Some(Some(EcoString)) if there is an assertion with a custom
+        // message by the user
+        let assertion_message = match kind {
+            AssignmentKind::Assert { message, .. } if !compiled.checks.is_empty() => Some(message),
+            _ => None,
+        };
 
         if in_trailing_position {
             // Note that, even though the variables used within trailing position are separate
@@ -239,11 +260,11 @@ impl<'module> Generator<'module> {
             // since we are at the trailing statement position. Therefore, there is no problem
             // in not resetting the scope here, even though we are using a new variable (the
             // subject).
-            if !has_assertion {
+            let Some(message) = assertion_message else {
                 // No assertions, so we don't use the subject (it would be used in the checks).
                 // Just return the value directly.
                 return Ok(value);
-            }
+            };
 
             // No need to add any assignments when we are in trailing position (i.e. the 'let'
             // assignment is the last statement in the parent block or function).
@@ -253,7 +274,8 @@ impl<'module> Generator<'module> {
                 subject.clone(),
                 subject,
                 pattern_location,
-            );
+                message.as_deref(),
+            )?;
 
             // If the value being assigned is complex and needs a subject variable,
             // assign it so it can be used within the check.
@@ -296,7 +318,7 @@ impl<'module> Generator<'module> {
 
             let assignments = dummy_assignment.into_iter().chain(compiled.assignments);
 
-            Ok(if has_assertion {
+            Ok(if let Some(message) = assertion_message {
                 // We first assign a dummy value to a variable whose only purpose is performing
                 // an assertion. The idea is that, if the assertion fails, the variable will
                 // throw an error upon evaluation instead of returning the dummy value.
@@ -313,7 +335,8 @@ impl<'module> Generator<'module> {
                         subject,
                         "null".to_doc(),
                         pattern_location,
-                    ),
+                        message.as_deref(),
+                    )?,
                 )
                 .append(break_("", " "));
 
@@ -562,15 +585,25 @@ impl<'module> Generator<'module> {
                 if self.strict_eval_vars.is_empty() {
                     self.expression(expression)?
                 } else {
+                    // It will be a parameter of 'seq' / 'seqAll' below, so it
+                    // must be wrapped in parentheses if necessary
                     self.wrap_child_expression(expression)?
                 }
             }
 
-            Statement::Assignment(assignment) => self.assignment(assignment, true)?,
-
-            Statement::Use(_) => {
-                unreachable!("use statements must not be present for Nix generation")
+            // NOTE: Can't unify with the branch above as 'use_.call' is a
+            // boxed expression, but the code should be the same
+            Statement::Use(use_) => {
+                if self.strict_eval_vars.is_empty() {
+                    self.expression(&use_.call)?
+                } else {
+                    // It will be a parameter of 'seq' / 'seqAll' below, so it
+                    // must be wrapped in parentheses if necessary
+                    self.wrap_child_expression(&use_.call)?
+                }
             }
+
+            Statement::Assignment(assignment) => self.assignment(assignment, true)?,
         };
 
         let mut strict_eval_vars = std::mem::take(&mut self.strict_eval_vars)
@@ -975,17 +1008,49 @@ impl Generator<'_> {
         Ok(docvec![record, ".", escaped_label])
     }
 
+    /// Generate a record update from:
+    ///
+    /// ```gleam
+    /// RecordUpdate(..rec, a: 5, b: 6)
+    /// ```
+    ///
+    /// into:
+    ///
+    /// ```nix
+    /// rec // { a = 5; b = 6; }
+    /// ```
+    ///
+    /// Note that this isn't technically correct, considering the JS target and the
+    /// current implementation, as the typer expects us to do:
+    ///
+    /// ```nix
+    /// let
+    ///   rec$ = rec;
+    /// in Constructor 5 6 rec$.old_field rec$.other_old_field
+    /// ```
+    ///
+    /// At the moment, however, it doesn't make a difference, so we introspect
+    /// into the generated assignments and ignore generated arguments.
+    /// We may need to revise this in the future if features are added which
+    /// may change the constructor variant.
     fn record_update<'a>(
         &mut self,
-        record: &'a TypedExpr,
-        updates: &'a [TypedRecordUpdateArg],
+        record: &'a TypedAssignment,
+        _constructor: &'a TypedExpr,
+        args: &'a [TypedCallArg],
     ) -> Output<'a> {
+        let record = &record.value;
         let record = self.wrap_child_expression(record)?;
-        let fields = updates
+        let fields = args
             .iter()
-            .map(|TypedRecordUpdateArg { label, value, .. }| {
+            .filter(|TypedCallArg { implicit, .. }| implicit.is_none())
+            .map(|TypedCallArg { label, value, .. }| {
                 (
-                    syntax::maybe_quoted_attr_set_label_from_identifier(label),
+                    syntax::maybe_quoted_attr_set_label_from_identifier(
+                        label
+                            .as_ref()
+                            .expect("record update arg should have a label"),
+                    ),
                     self.wrap_child_expression(value),
                 )
             });
@@ -1141,9 +1206,10 @@ impl Generator<'_> {
         subject: Document<'a>,
         success_value: Document<'a>,
         location: SrcSpan,
-    ) -> Document<'a> {
+        message: Option<&'a TypedExpr>,
+    ) -> Output<'a> {
         let checks = self.pattern_checks_doc(checks, false);
-        docvec![
+        Ok(docvec![
             "if",
             docvec![
                 docvec![break_("", " "), checks].nest(INDENT),
@@ -1151,27 +1217,31 @@ impl Generator<'_> {
                 "then",
             ]
             .group(),
-            docvec![break_("", " "), self.assignment_no_match(location, subject)]
-                .nest(INDENT)
-                .group(),
+            docvec![
+                break_("", " "),
+                self.assignment_no_match(location, subject, message)?
+            ]
+            .nest(INDENT)
+            .group(),
             break_("", " "),
             "else",
             docvec![break_("", " "), success_value].nest(INDENT).group(),
         ]
-        .group()
+        .group())
     }
 
     fn assignment_no_match<'a>(
         &mut self,
         location: SrcSpan,
         subject: Document<'a>,
-    ) -> Document<'a> {
-        self.throw_error(
-            "let_assert",
-            &"\"Pattern match failed, no pattern matched the value.\"".to_doc(),
-            location,
-            [("value", subject)],
-        )
+        message: Option<&'a TypedExpr>,
+    ) -> Output<'a> {
+        let message = match message {
+            Some(m) => self.wrap_child_expression(m)?,
+            None => "\"Pattern match failed, no pattern matched the value.\"".to_doc(),
+        };
+
+        Ok(self.throw_error("let_assert", &message, location, [("value", subject)]))
     }
 }
 

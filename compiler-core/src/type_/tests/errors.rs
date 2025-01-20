@@ -1675,34 +1675,6 @@ pub fn update_person(person: Person) {
 }
 
 #[test]
-fn generic_record_update1() {
-    // A record update on polymorphic types with a field of the wrong type
-    assert_module_error!(
-        "
-pub type Box(a) {
-  Box(value: a, i: Int)
-}
-pub fn update_box(box: Box(Int), value: String) {
-  Box(..box, value: value)
-}"
-    );
-}
-
-#[test]
-fn generic_record_update2() {
-    // A record update on polymorphic types with generic fields of the wrong type
-    assert_module_error!(
-        "
-pub type Box(a) {
-  Box(value: a, i: Int)
-}
-pub fn update_box(box: Box(a), value: b) {
-  Box(..box, value: value)
-}"
-    );
-}
-
-#[test]
 fn type_vars_must_be_declared() {
     // https://github.com/gleam-lang/gleam/issues/734
     assert_module_error!(
@@ -2586,26 +2558,6 @@ pub fn main(wibble: wibble.Wibble) {
 }
 
 #[test]
-fn inferred_variant_record_update_change_type_parameter() {
-    assert_module_error!(
-        r#"
-pub type Box(a) {
-  Locked(password: String, value: a)
-  Unlocked(password: String, value: a)
-}
-
-pub fn main() {
-  let box = Locked("ungu€$$4bLe", 11)
-  case box {
-    Locked(..) as box -> Locked(..box, value: True)
-    Unlocked(..) as box -> Unlocked(..box, value: False)
-  }
-}
-"#
-    );
-}
-
-#[test]
 fn inferred_variant_record_update_change_type_parameter_different_branches() {
     assert_module_error!(
         r#"
@@ -2637,6 +2589,59 @@ pub fn main() {
   let wobble = Wibble(..wibble, thing: 1, thing: 2)
 }
 "
+    );
+}
+
+#[test]
+fn record_update_compatible_fields_wrong_variant() {
+    assert_module_error!(
+        r#"
+pub type Wibble {
+  A(a: Int, b: Int)
+  B(a: Int, b: Int)
+}
+
+pub fn b_to_a(value: Wibble) {
+  case value {
+    A(..) -> value
+    B(..) as b -> A(..b, b: 3)
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn record_update_compatible_fields_wrong_type() {
+    assert_module_error!(
+        r#"
+pub type A {
+  A(a: Int, b: Int)
+}
+
+pub type B {
+  B(a: Int, b: Int)
+}
+
+pub fn b_to_a(value: B) {
+  A(..value, b: 5)
+}
+"#
+    );
+}
+
+#[test]
+fn record_update_incompatible_but_linked_generics() {
+    assert_module_error!(
+        r#"
+pub type Wibble(a) {
+  Wibble(a: a, b: a)
+}
+
+pub fn b_to_a(value: Wibble(a)) -> Wibble(Int) {
+  Wibble(..value, a: 5)
+}
+"#
     );
 }
 

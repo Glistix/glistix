@@ -32,8 +32,9 @@ use super::{
     code_action::{
         code_action_add_missing_patterns, code_action_convert_qualified_constructor_to_unqualified,
         code_action_convert_unqualified_constructor_to_qualified, code_action_import_module,
-        AddAnnotations, CodeActionBuilder, FillInMissingLabelledArgs, LabelShorthandSyntax,
-        LetAssertToCase, RedundantTupleInCaseSubject,
+        code_action_inexhaustive_let_to_case, AddAnnotations, CodeActionBuilder, DesugarUse,
+        ExpandFunctionCapture, ExtractVariable, FillInMissingLabelledArgs, GenerateDynamicDecoder,
+        LabelShorthandSyntax, LetAssertToCase, RedundantTupleInCaseSubject, TurnIntoUse,
     },
     completer::Completer,
     signature_help, src_span_to_lsp_range, DownloadDependencies, MakeLocker,
@@ -270,7 +271,7 @@ where
                     .compiler
                     .get_module_interface(import.module.as_str())
                     .map(|importing_module| {
-                        completer.unqualified_completions_from_module(importing_module)
+                        completer.unqualified_completions_from_module(importing_module, true)
                     }),
 
                 Located::ModuleStatement(Definition::ModuleConstant(_)) => None,
@@ -280,6 +281,8 @@ where
                 Located::Arg(_) => None,
 
                 Located::Annotation(_, _) => Some(completer.completion_types()),
+
+                Located::Label(_, _) => None,
             };
 
             Ok(completions)
@@ -296,19 +299,43 @@ where
                 return Ok(None);
             };
 
-            code_action_unused_values(module, &params, &mut actions);
-            code_action_unused_imports(module, &params, &mut actions);
-            code_action_convert_qualified_constructor_to_unqualified(module, &params, &mut actions);
-            code_action_convert_unqualified_constructor_to_qualified(module, &params, &mut actions);
-            code_action_fix_names(module, &params, &this.error, &mut actions);
-            code_action_import_module(module, &params, &this.error, &mut actions);
-            code_action_add_missing_patterns(module, &params, &this.error, &mut actions);
-            actions.extend(LetAssertToCase::new(module, &params).code_actions());
-            actions.extend(RedundantTupleInCaseSubject::new(module, &params).code_actions());
-            actions.extend(LabelShorthandSyntax::new(module, &params).code_actions());
-            actions.extend(FillInMissingLabelledArgs::new(module, &params).code_actions());
-            AddAnnotations::new(module, &params).code_action(&mut actions);
+            let lines = LineNumbers::new(&module.code);
 
+            code_action_unused_values(module, &lines, &params, &mut actions);
+            code_action_unused_imports(module, &lines, &params, &mut actions);
+            code_action_convert_qualified_constructor_to_unqualified(
+                module,
+                &lines,
+                &params,
+                &mut actions,
+            );
+            code_action_convert_unqualified_constructor_to_qualified(
+                module,
+                &lines,
+                &params,
+                &mut actions,
+            );
+            code_action_fix_names(&lines, &params, &this.error, &mut actions);
+            code_action_import_module(module, &lines, &params, &this.error, &mut actions);
+            code_action_add_missing_patterns(module, &lines, &params, &this.error, &mut actions);
+            code_action_inexhaustive_let_to_case(
+                module,
+                &lines,
+                &params,
+                &this.error,
+                &mut actions,
+            );
+            actions.extend(LetAssertToCase::new(module, &lines, &params).code_actions());
+            actions
+                .extend(RedundantTupleInCaseSubject::new(module, &lines, &params).code_actions());
+            actions.extend(LabelShorthandSyntax::new(module, &lines, &params).code_actions());
+            actions.extend(FillInMissingLabelledArgs::new(module, &lines, &params).code_actions());
+            actions.extend(DesugarUse::new(module, &lines, &params).code_actions());
+            actions.extend(TurnIntoUse::new(module, &lines, &params).code_actions());
+            actions.extend(ExpandFunctionCapture::new(module, &lines, &params).code_actions());
+            actions.extend(ExtractVariable::new(module, &lines, &params).code_actions());
+            GenerateDynamicDecoder::new(module, &lines, &params, &mut actions).code_actions();
+            AddAnnotations::new(module, &lines, &params).code_action(&mut actions);
             Ok(if actions.is_empty() {
                 None
             } else {
@@ -597,6 +624,9 @@ Unused labelled fields:
                         module,
                     ))
                 }
+                Located::Label(location, type_) => {
+                    Some(hover_for_label(location, type_, lines, module))
+                }
             })
         })
     }
@@ -729,7 +759,7 @@ fn custom_type_symbol(
                 } else {
                     SymbolKind::CONSTRUCTOR
                 },
-                tags: None,
+                tags: make_deprecated_symbol_tag(&constructor.deprecation),
                 deprecated: None,
                 range: src_span_to_lsp_range(full_constructor_span, line_numbers),
                 selection_range: src_span_to_lsp_range(constructor.name_location, line_numbers),
@@ -866,6 +896,20 @@ fn hover_for_annotation(
     }
 }
 
+fn hover_for_label(
+    location: SrcSpan,
+    type_: Arc<Type>,
+    line_numbers: LineNumbers,
+    module: &Module,
+) -> Hover {
+    let type_ = Printer::new(&module.ast.names).print_type(&type_);
+    let contents = format!("```gleam\n{type_}\n```");
+    Hover {
+        contents: HoverContents::Scalar(MarkedString::String(contents)),
+        range: Some(src_span_to_lsp_range(location, &line_numbers)),
+    }
+}
+
 fn hover_for_module_constant(
     constant: &ModuleConstant<Arc<Type>, EcoString>,
     line_numbers: LineNumbers,
@@ -961,6 +1005,7 @@ fn position_within(position: Position, range: Range) -> bool {
 
 fn code_action_unused_values(
     module: &Module,
+    line_numbers: &LineNumbers,
     params: &lsp::CodeActionParams,
     actions: &mut Vec<CodeAction>,
 ) {
@@ -980,9 +1025,6 @@ fn code_action_unused_values(
         return;
     }
 
-    // Convert src spans to lsp range
-    let line_numbers = LineNumbers::new(&module.code);
-
     // Sort spans by start position, with longer spans coming first
     unused_values.sort_by_key(|span| (span.start, -(span.end as i64 - span.start as i64)));
 
@@ -990,7 +1032,7 @@ fn code_action_unused_values(
 
     for unused in unused_values {
         let SrcSpan { start, end } = *unused;
-        let hover_range = src_span_to_lsp_range(SrcSpan::new(start, end), &line_numbers);
+        let hover_range = src_span_to_lsp_range(SrcSpan::new(start, end), line_numbers);
 
         // Check if this span is contained within any previously processed span
         if processed_lsp_range
@@ -1006,7 +1048,7 @@ fn code_action_unused_values(
         }
 
         let edit = TextEdit {
-            range: src_span_to_lsp_range(SrcSpan::new(start, start), &line_numbers),
+            range: src_span_to_lsp_range(SrcSpan::new(start, start), line_numbers),
             new_text: "let _ = ".into(),
         };
 
@@ -1022,6 +1064,7 @@ fn code_action_unused_values(
 
 fn code_action_unused_imports(
     module: &Module,
+    line_numbers: &LineNumbers,
     params: &lsp::CodeActionParams,
     actions: &mut Vec<CodeAction>,
 ) {
@@ -1042,8 +1085,6 @@ fn code_action_unused_imports(
         return;
     }
 
-    // Convert src spans to lsp range
-    let line_numbers = LineNumbers::new(&module.code);
     let mut hovered = false;
     let mut edits = Vec::with_capacity(unused.len());
 
@@ -1052,13 +1093,13 @@ fn code_action_unused_imports(
 
         // If removing an unused alias or at the beginning of the file, don't backspace
         // Otherwise, adjust the end position by 1 to ensure the entire line is deleted with the import.
-        let adjusted_end = if delete_line(unused, &line_numbers) {
+        let adjusted_end = if delete_line(unused, line_numbers) {
             end + 1
         } else {
             end
         };
 
-        let range = src_span_to_lsp_range(SrcSpan::new(start, adjusted_end), &line_numbers);
+        let range = src_span_to_lsp_range(SrcSpan::new(start, adjusted_end), line_numbers);
         // Keep track of whether any unused import has is where the cursor is
         hovered = hovered || overlaps(params.range, range);
 
@@ -1087,7 +1128,7 @@ struct NameCorrection {
 }
 
 fn code_action_fix_names(
-    module: &Module,
+    line_numbers: &LineNumbers,
     params: &lsp::CodeActionParams,
     error: &Option<Error>,
     actions: &mut Vec<CodeAction>,
@@ -1115,16 +1156,13 @@ fn code_action_fix_names(
         return;
     }
 
-    // Convert src spans to lsp range
-    let line_numbers = LineNumbers::new(&module.code);
-
     for name_correction in name_corrections {
         let NameCorrection {
             location,
             correction,
         } = name_correction;
 
-        let range = src_span_to_lsp_range(location, &line_numbers);
+        let range = src_span_to_lsp_range(location, line_numbers);
         // Check if the user's cursor is on the invalid name
         if overlaps(params.range, range) {
             let edit = TextEdit {

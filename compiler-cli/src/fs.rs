@@ -1,6 +1,6 @@
 use glistix_core::{
     build::{NullTelemetry, Target},
-    error::{Error, FileIoAction, FileKind},
+    error::{parse_os, Error, FileIoAction, FileKind, OS},
     io::{
         BeamCompiler, CommandExecutor, Content, DirEntry, FileSystemReader, FileSystemWriter,
         OutputFile, ReadDir, Stdio, WrappedReader,
@@ -13,7 +13,6 @@ use glistix_core::{
 };
 use std::{
     collections::HashSet,
-    ffi::OsStr,
     fmt::Debug,
     fs::File,
     io::{self, BufRead, BufReader, Write},
@@ -55,6 +54,32 @@ pub fn get_project_root(path: Utf8PathBuf) -> Result<Utf8PathBuf, Error> {
     })
 }
 
+pub fn get_os() -> OS {
+    parse_os(std::env::consts::OS, get_distro_str().as_str())
+}
+
+// try to extract the distro id from /etc/os-release
+pub fn extract_distro_id(os_release: String) -> String {
+    let distro = os_release.lines().find(|line| line.starts_with("ID="));
+    if let Some(distro) = distro {
+        let id = distro.split('=').nth(1).unwrap_or("").replace("\"", "");
+        return id;
+    }
+    "".to_string()
+}
+
+pub fn get_distro_str() -> String {
+    let path = Utf8Path::new("/etc/os-release");
+    if std::env::consts::OS != "linux" || !path.exists() {
+        return "other".to_string();
+    }
+    let os_release = read(path);
+    match os_release {
+        Ok(os_release) => extract_distro_id(os_release),
+        Err(_) => "other".to_string(),
+    }
+}
+
 /// A `FileWriter` implementation that writes to the file system.
 #[derive(Debug, Clone)]
 pub struct ProjectIO {
@@ -74,38 +99,6 @@ impl ProjectIO {
 }
 
 impl FileSystemReader for ProjectIO {
-    fn gleam_source_files(&self, dir: &Utf8Path) -> Vec<Utf8PathBuf> {
-        if !dir.is_dir() {
-            return vec![];
-        }
-        let dir = dir.to_path_buf();
-        walkdir::WalkDir::new(dir)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_file())
-            .map(|d| d.into_path())
-            .filter(move |d| d.extension() == Some(OsStr::new("gleam")))
-            .map(|pb| Utf8PathBuf::from_path_buf(pb).expect("Non Utf-8 Path"))
-            .collect()
-    }
-
-    fn gleam_cache_files(&self, dir: &Utf8Path) -> Vec<Utf8PathBuf> {
-        if !dir.is_dir() {
-            return vec![];
-        }
-        let dir = dir.to_path_buf();
-        walkdir::WalkDir::new(dir)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_file())
-            .map(|d| d.into_path())
-            .filter(|p| p.extension().and_then(OsStr::to_str) == Some("cache"))
-            .map(|pb| Utf8PathBuf::from_path_buf(pb).expect("Non Utf-8 Path"))
-            .collect()
-    }
-
     fn read(&self, path: &Utf8Path) -> Result<String, Error> {
         read(path)
     }
@@ -216,6 +209,7 @@ impl CommandExecutor for ProjectIO {
             Err(error) => Err(match error.kind() {
                 io::ErrorKind::NotFound => Error::ShellProgramNotFound {
                     program: program.to_string(),
+                    os: get_os(),
                 },
 
                 other => Error::ShellCommand {

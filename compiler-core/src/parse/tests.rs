@@ -1574,3 +1574,119 @@ fn missing_type_constructor_arguments_in_type_annotation_2() {
 }"
     );
 }
+
+#[test]
+fn tuple_without_hash() {
+    assert_module_error!(
+        r#"
+pub fn main() {
+    let triple = (1, 2.2, "three")
+    io.debug(triple)
+    let (a, *, *) = triple
+    io.debug(a)
+    io.debug(triple.1)
+}
+"#
+    );
+}
+
+#[test]
+fn deprecation_attribute_on_type_variant() {
+    assert_parse_module!(
+        r#"
+type Wibble {
+    @deprecated("1")
+    Wibble1
+    Wibble2
+}
+"#
+    );
+}
+
+#[test]
+
+fn float_empty_exponent() {
+    assert_error!("1.32e");
+}
+
+#[test]
+fn multiple_deprecation_attribute_on_type_variant() {
+    assert_module_error!(
+        r#"
+type Wibble {
+    @deprecated("1")
+    @deprecated("2")
+    Wibble1
+    Wibble2
+}
+"#
+    );
+}
+
+#[test]
+fn target_attribute_on_type_variant() {
+    assert_module_error!(
+        r#"
+type Wibble {
+    @target(erlang)
+    Wibble2
+}
+"#
+    );
+}
+
+#[test]
+fn internal_attribute_on_type_variant() {
+    assert_module_error!(
+        r#"
+type Wibble {
+    @internal
+    Wibble1
+}
+"#
+    );
+}
+
+#[test]
+fn external_attribute_on_type_variant() {
+    assert_module_error!(
+        r#"
+type Wibble {
+    @external(erlang, "one", "two")
+    Wibble1
+}
+"#
+    );
+}
+
+#[test]
+fn multiple_unsupported_attributes_on_type_variant() {
+    assert_module_error!(
+        r#"
+type Wibble {
+    @external(erlang, "one", "two")
+    @target(erlang)
+    @internal
+    Wibble1
+}
+"#
+    );
+}
+
+#[test]
+// https://github.com/gleam-lang/gleam/issues/3870
+fn nested_tuple_access_after_function() {
+    assert_parse!("tuple().0.1");
+}
+
+#[test]
+fn glistix_external_nix_attribute_on_type_variant() {
+    assert_module_error!(
+        r#"
+type Wibble {
+    @external(nix, "one.nix", "two")
+    Wibble1
+}
+"#
+    );
+}

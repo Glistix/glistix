@@ -138,14 +138,14 @@ where
 impl PackageConfig {
     pub fn dependencies_for(&self, mode: Mode) -> Result<Dependencies> {
         match mode {
-            Mode::Dev | Mode::Lsp => self.all_drect_dependencies(),
+            Mode::Dev | Mode::Lsp => self.all_direct_dependencies(),
             Mode::Prod => Ok(self.dependencies.clone()),
         }
     }
 
     // Return all the dependencies listed in the configuration, that is, all the
     // direct dependencies, both in the `dependencies` and `dev-dependencies`.
-    pub fn all_drect_dependencies(&self) -> Result<Dependencies> {
+    pub fn all_direct_dependencies(&self) -> Result<Dependencies> {
         let mut deps =
             HashMap::with_capacity(self.dependencies.len() + self.dev_dependencies.len());
         for (name, requirement) in self.dependencies.iter().chain(&self.dev_dependencies) {
@@ -186,7 +186,7 @@ impl PackageConfig {
         match manifest {
             None => Ok(HashMap::new()),
             Some(manifest) => {
-                StalePackageRemover::fresh_and_locked(&self.all_drect_dependencies()?, manifest)
+                StalePackageRemover::fresh_and_locked(&self.all_direct_dependencies()?, manifest)
             }
         }
     }
@@ -341,7 +341,7 @@ fn locked_no_changes() {
     ]
     .into();
     let manifest = Manifest {
-        requirements: config.all_drect_dependencies().unwrap(),
+        requirements: config.all_direct_dependencies().unwrap(),
         packages: vec![
             manifest_package("prod1", "1.1.0", &[]),
             manifest_package("prod2", "1.2.0", &[]),
@@ -367,7 +367,7 @@ fn locked_some_removed() {
     config.dependencies = [("prod1".into(), Requirement::hex("~> 1.0"))].into();
     config.dev_dependencies = [("dev2".into(), Requirement::hex("~> 2.0"))].into();
     let manifest = Manifest {
-        requirements: config.all_drect_dependencies().unwrap(),
+        requirements: config.all_direct_dependencies().unwrap(),
         packages: vec![
             manifest_package("prod1", "1.1.0", &[]),
             manifest_package("prod2", "1.2.0", &[]), // Not in config
@@ -959,7 +959,7 @@ mod package_name {
             Ok(name.into())
         } else {
             let error =
-                "Package names may only container lowercase letters, numbers, and underscores";
+                "Package names may only contain lowercase letters, numbers, and underscores";
             Err(serde::de::Error::custom(error))
         }
     }
@@ -974,7 +974,7 @@ name = "one-two"
         toml::from_str::<PackageConfig>(input)
             .unwrap_err()
             .to_string(),
-        "Package names may only container lowercase letters, numbers, and underscores for key `name` at line 1 column 1"
+        "Package names may only contain lowercase letters, numbers, and underscores for key `name` at line 1 column 1"
     )
 }
 
@@ -987,6 +987,6 @@ name = "1"
         toml::from_str::<PackageConfig>(input)
             .unwrap_err()
             .to_string(),
-        "Package names may only container lowercase letters, numbers, and underscores for key `name` at line 1 column 1"
+        "Package names may only contain lowercase letters, numbers, and underscores for key `name` at line 1 column 1"
     )
 }

@@ -385,3 +385,18 @@ pub fn should_not_be_generated(x) {
 "#
     );
 }
+
+#[test]
+fn target_nix() {
+    assert_nix!(
+        r#"
+@target(nix)
+pub fn nix_only() {
+  10
+}
+
+pub fn func() {
+  nix_only()
+}"#
+    )
+}

@@ -1,5 +1,6 @@
 use crate::{
     ast::{SrcSpan, TodoKind},
+    build::Target,
     diagnostic::{self, Diagnostic, Location},
     error::wrap,
     type_::{
@@ -167,7 +168,9 @@ pub enum Warning {
 pub enum DeprecatedSyntaxWarning {
     /// If someone uses the deprecated syntax to append to a list:
     /// `["a"..rest]`, notice how there's no comma!
-    DeprecatedListPrepend { location: SrcSpan },
+    DeprecatedListPrepend {
+        location: SrcSpan,
+    },
 
     /// If someone uses the deprecated syntax to pattern match on a list:
     /// ```gleam
@@ -178,7 +181,9 @@ pub enum DeprecatedSyntaxWarning {
     /// }
     /// ```
     ///
-    DeprecatedListPattern { location: SrcSpan },
+    DeprecatedListPattern {
+        location: SrcSpan,
+    },
 
     /// If someone uses the deprecated syntax to match on all lists instead of
     /// a common `_`:
@@ -190,7 +195,9 @@ pub enum DeprecatedSyntaxWarning {
     /// }
     /// ```
     ///
-    DeprecatedListCatchAllPattern { location: SrcSpan },
+    DeprecatedListCatchAllPattern {
+        location: SrcSpan,
+    },
 
     /// If a record pattern has a spread that is not preceded by a comma:
     /// ```gleam
@@ -200,7 +207,14 @@ pub enum DeprecatedSyntaxWarning {
     /// }
     /// ```
     ///
-    DeprecatedRecordSpreadPattern { location: SrcSpan },
+    DeprecatedRecordSpreadPattern {
+        location: SrcSpan,
+    },
+
+    DeprecatedTargetShorthand {
+        target: Target,
+        location: SrcSpan,
+    },
 }
 
 impl Warning {
@@ -311,6 +325,36 @@ To match on all possible lists, use the `_` catch-all pattern instead.",
                 }),
             },
 
+            Warning::DeprecatedSyntax {
+                path,
+                src,
+                warning: DeprecatedSyntaxWarning::DeprecatedTargetShorthand { location, target },
+            } => {
+                let full_name = match target {
+                    Target::Erlang => "erlang",
+                    Target::JavaScript => "javascript",
+                    Target::Nix => "nix",
+                };
+
+                Diagnostic {
+                    title: "Deprecated target shorthand syntax".into(),
+                    text: wrap(&format!(
+                        "This shorthand target name is deprecated. Use the full name: `{full_name}` instead."
+                    )),
+                    hint: None,
+                    level: diagnostic::Level::Warning,
+                    location: Some(Location {
+                        label: diagnostic::Label {
+                            text: Some(format!("This should be replaced with `{full_name}`")),
+                            span: *location,
+                        },
+                        path: path.clone(),
+                        src: src.clone(),
+                        extra_labels: vec![],
+                    }),
+                }
+            }
+
             Self::Type { path, warning, src } => match warning {
                 type_::Warning::Todo {
                     kind,
@@ -325,12 +369,18 @@ running your program.",
                     );
                     let title = match kind {
                         TodoKind::Keyword => "Todo found",
+                        TodoKind::EmptyBlock => {
+                            text.push_str(
+                                "
+A block must always contain at least one expression.",
+                            );
+                            "Incomplete block"
+                        }
                         TodoKind::EmptyFunction => "Unimplemented function",
                         TodoKind::IncompleteUse => {
                             text.push_str(
                                 "
-A use expression must always be followed by at least one more
-expression.",
+A use expression must always be followed by at least one expression.",
                             );
                             "Incomplete use expression"
                         }
@@ -581,15 +631,10 @@ Hint: You can safely remove it.
                     }),
                 },
 
-                type_::Warning::UnusedVariable {
-                    location,
-                    how_to_ignore,
-                } => Diagnostic {
+                type_::Warning::UnusedVariable { location, origin } => Diagnostic {
                     title: "Unused variable".into(),
                     text: "".into(),
-                    hint: how_to_ignore.as_ref().map(|rewrite_as| {
-                        format!("You can ignore it with an underscore: `{rewrite_as}`.")
-                    }),
+                    hint: origin.how_to_ignore(),
                     level: diagnostic::Level::Warning,
                     location: Some(Location {
                         src: src.clone(),
@@ -1032,6 +1077,12 @@ See: https://tour.gleam.run/functions/pipelines/",
                         }
                         FeatureKind::RecordAccessVariantInference => {
                             "Field access on custom types when the variant is known was"
+                        }
+                        FeatureKind::LetAssertWithMessage => {
+                            "Specifying a custom panic message when using let assert was"
+                        }
+                        FeatureKind::VariantWithDeprecatedAnnotation => {
+                            "Deprecating individual custom type variants was"
                         }
                     };
 

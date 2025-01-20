@@ -40,7 +40,10 @@
 
 use crate::{
     analyse::Inferred,
-    type_::{ModuleValueConstructor, PatternConstructor, TypedCallArg, ValueConstructor},
+    type_::{
+        error::VariableOrigin, ModuleValueConstructor, PatternConstructor, TypedCallArg,
+        ValueConstructor,
+    },
 };
 use std::sync::Arc;
 
@@ -50,9 +53,9 @@ use crate::type_::Type;
 
 use super::{
     untyped::FunctionLiteralKind, AssignName, BinOp, BitArrayOption, CallArg, Definition, Pattern,
-    SrcSpan, Statement, TodoKind, TypeAst, TypedArg, TypedAssignment, TypedClause, TypedDefinition,
-    TypedExpr, TypedExprBitArraySegment, TypedFunction, TypedModule, TypedModuleConstant,
-    TypedPattern, TypedPatternBitArraySegment, TypedRecordUpdateArg, TypedStatement, Use,
+    SrcSpan, Statement, TodoKind, TypeAst, TypedArg, TypedAssignment, TypedClause, TypedCustomType,
+    TypedDefinition, TypedExpr, TypedExprBitArraySegment, TypedFunction, TypedModule,
+    TypedModuleConstant, TypedPattern, TypedPatternBitArraySegment, TypedStatement, TypedUse,
 };
 
 pub trait Visit<'ast> {
@@ -70,6 +73,10 @@ pub trait Visit<'ast> {
 
     fn visit_typed_module_constant(&mut self, constant: &'ast TypedModuleConstant) {
         visit_typed_module_constant(self, constant);
+    }
+
+    fn visit_typed_custom_type(&mut self, custom_type: &'ast TypedCustomType) {
+        visit_typed_custom_type(self, custom_type);
     }
 
     fn visit_typed_expr(&mut self, expr: &'ast TypedExpr) {
@@ -264,10 +271,11 @@ pub trait Visit<'ast> {
         &mut self,
         location: &'ast SrcSpan,
         type_: &'ast Arc<Type>,
-        record: &'ast TypedExpr,
-        args: &'ast [TypedRecordUpdateArg],
+        record: &'ast TypedAssignment,
+        constructor: &'ast TypedExpr,
+        args: &'ast [TypedCallArg],
     ) {
-        visit_typed_expr_record_update(self, location, type_, record, args);
+        visit_typed_expr_record_update(self, location, type_, record, constructor, args);
     }
 
     fn visit_typed_expr_negate_bool(&mut self, location: &'ast SrcSpan, value: &'ast TypedExpr) {
@@ -290,8 +298,8 @@ pub trait Visit<'ast> {
         visit_typed_assignment(self, assignment);
     }
 
-    fn visit_use(&mut self, use_: &'ast Use) {
-        visit_use(self, use_);
+    fn visit_typed_use(&mut self, use_: &'ast TypedUse) {
+        visit_typed_use(self, use_);
     }
 
     fn visit_typed_call_arg(&mut self, arg: &'ast TypedCallArg) {
@@ -304,10 +312,6 @@ pub trait Visit<'ast> {
 
     fn visit_typed_expr_bit_array_segment(&mut self, segment: &'ast TypedExprBitArraySegment) {
         visit_typed_expr_bit_array_segment(self, segment);
-    }
-
-    fn visit_typed_record_update_arg(&mut self, arg: &'ast TypedRecordUpdateArg) {
-        visit_typed_record_update_arg(self, arg);
     }
 
     fn visit_typed_bit_array_option(&mut self, option: &'ast BitArrayOption<TypedExpr>) {
@@ -335,8 +339,9 @@ pub trait Visit<'ast> {
         location: &'ast SrcSpan,
         name: &'ast EcoString,
         type_: &'ast Arc<Type>,
+        origin: &'ast VariableOrigin,
     ) {
-        visit_typed_pattern_variable(self, location, name, type_);
+        visit_typed_pattern_variable(self, location, name, type_, origin);
     }
 
     fn visit_typed_pattern_var_usage(
@@ -492,7 +497,7 @@ where
     match def {
         Definition::Function(fun) => v.visit_typed_function(fun),
         Definition::TypeAlias(_typealias) => { /* TODO */ }
-        Definition::CustomType(_custom_type) => { /* TODO */ }
+        Definition::CustomType(custom_type) => v.visit_typed_custom_type(custom_type),
         Definition::Import(_import) => { /* TODO */ }
         Definition::ModuleConstant(constant) => v.visit_typed_module_constant(constant),
     }
@@ -590,6 +595,12 @@ where
 }
 
 pub fn visit_typed_module_constant<'a, V>(_v: &mut V, _constant: &'a TypedModuleConstant)
+where
+    V: Visit<'a> + ?Sized,
+{
+}
+
+pub fn visit_typed_custom_type<'a, V>(_v: &mut V, _custom_type: &'a TypedCustomType)
 where
     V: Visit<'a> + ?Sized,
 {
@@ -716,8 +727,9 @@ where
             location,
             type_,
             record,
+            constructor,
             args,
-        } => v.visit_typed_expr_record_update(location, type_, record, args),
+        } => v.visit_typed_expr_record_update(location, type_, record, constructor, args),
         TypedExpr::NegateBool { location, value } => {
             v.visit_typed_expr_negate_bool(location, value)
         }
@@ -970,15 +982,17 @@ pub fn visit_typed_expr_bit_array<'a, V>(
 pub fn visit_typed_expr_record_update<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
-    record: &'a TypedExpr,
-    args: &'a [TypedRecordUpdateArg],
+    _type: &'a Arc<Type>,
+    record: &'a TypedAssignment,
+    constructor: &'a TypedExpr,
+    args: &'a [TypedCallArg],
 ) where
     V: Visit<'a> + ?Sized,
 {
-    v.visit_typed_expr(record);
+    v.visit_typed_expr(constructor);
+    v.visit_typed_assignment(record);
     for arg in args {
-        v.visit_typed_record_update_arg(arg);
+        v.visit_typed_call_arg(arg);
     }
 }
 
@@ -1003,7 +1017,7 @@ where
     match stmt {
         Statement::Expression(expr) => v.visit_typed_expr(expr),
         Statement::Assignment(assignment) => v.visit_typed_assignment(assignment),
-        Statement::Use(use_) => v.visit_use(use_),
+        Statement::Use(use_) => v.visit_typed_use(use_),
     }
 }
 
@@ -1015,11 +1029,12 @@ where
     v.visit_typed_pattern(&assignment.pattern);
 }
 
-pub fn visit_use<'a, V>(_v: &mut V, _use_: &'a Use)
+pub fn visit_typed_use<'a, V>(v: &mut V, use_: &'a TypedUse)
 where
     V: Visit<'a> + ?Sized,
 {
-    /* TODO */
+    v.visit_typed_expr(&use_.call);
+    // TODO: We should also visit the typed patterns!!
 }
 
 pub fn visit_typed_call_arg<'a, V>(v: &mut V, arg: &'a TypedCallArg)
@@ -1052,13 +1067,6 @@ where
     for option in &segment.options {
         v.visit_typed_bit_array_option(option);
     }
-}
-
-pub fn visit_typed_record_update_arg<'a, V>(v: &mut V, arg: &'a TypedRecordUpdateArg)
-where
-    V: Visit<'a> + ?Sized,
-{
-    v.visit_typed_expr(&arg.value);
 }
 
 pub fn visit_typed_bit_array_option<'a, V>(v: &mut V, option: &'a BitArrayOption<TypedExpr>)
@@ -1111,7 +1119,8 @@ where
             location,
             name,
             type_,
-        } => v.visit_typed_pattern_variable(location, name, type_),
+            origin,
+        } => v.visit_typed_pattern_variable(location, name, type_, origin),
         Pattern::VarUsage {
             location,
             name,
@@ -1197,6 +1206,7 @@ pub fn visit_typed_pattern_variable<'a, V>(
     _location: &'a SrcSpan,
     _name: &'a EcoString,
     _type: &'a Arc<Type>,
+    _origin: &'a VariableOrigin,
 ) where
     V: Visit<'a> + ?Sized,
 {

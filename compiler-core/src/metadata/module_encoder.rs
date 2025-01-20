@@ -56,7 +56,7 @@ impl<'a> ModuleEncoder<'a> {
     fn set_line_numbers(&mut self, module: &mut module::Builder<'_>) {
         let mut line_numbers = module.reborrow().init_line_numbers();
         line_numbers.set_length(self.data.line_numbers.length);
-        let line_starts =
+        let mut line_starts =
             line_numbers.init_line_starts(self.data.line_numbers.line_starts.len() as u32);
         for (i, l) in self.data.line_numbers.line_starts.iter().enumerate() {
             line_starts.reborrow().set(i as u32, *l);
@@ -64,7 +64,6 @@ impl<'a> ModuleEncoder<'a> {
     }
 
     fn set_module_accessors(&mut self, module: &mut module::Builder<'_>) {
-        tracing::trace!("Writing module metadata accessors");
         let mut builder = module
             .reborrow()
             .init_accessors(self.data.accessors.len() as u32);
@@ -121,7 +120,6 @@ impl<'a> ModuleEncoder<'a> {
     }
 
     fn set_module_types(&mut self, module: &mut module::Builder<'_>) {
-        tracing::trace!("Writing module metadata types");
         let mut types = module.reborrow().init_types(self.data.types.len() as u32);
         for (i, (name, type_)) in self.data.types.iter().enumerate() {
             let mut property = types.reborrow().get(i as u32);
@@ -131,7 +129,6 @@ impl<'a> ModuleEncoder<'a> {
     }
 
     fn set_module_types_constructors(&mut self, module: &mut module::Builder<'_>) {
-        tracing::trace!("Writing module metadata types to constructors mapping");
         let mut types_constructors = module
             .reborrow()
             .init_types_constructors(self.data.types_value_constructors.len() as u32);
@@ -163,7 +160,6 @@ impl<'a> ModuleEncoder<'a> {
     }
 
     fn set_module_values(&mut self, module: &mut module::Builder<'_>) {
-        tracing::trace!("Writing module metadata values");
         let mut values = module.reborrow().init_values(self.data.values.len() as u32);
         for (i, (name, value)) in self.data.values.iter().enumerate() {
             let mut property = values.reborrow().get(i as u32);
@@ -526,12 +522,18 @@ impl<'a> ModuleEncoder<'a> {
                 args,
                 module,
                 package,
+                inferred_variant,
                 ..
             } => {
                 let mut app = builder.init_app();
                 app.set_name(name);
                 app.set_module(module);
                 app.set_package(package);
+                let mut variant_builder = app.reborrow().init_inferred_variant();
+                match inferred_variant {
+                    Some(variant) => variant_builder.set_inferred(*variant),
+                    None => variant_builder.set_unknown(()),
+                }
                 self.build_types(app.reborrow().init_parameters(args.len() as u32), args);
             }
 

@@ -8,7 +8,7 @@ use glistix_core::{
         TargetCodegenConfiguration,
     },
     config::PackageConfig,
-    io::FileSystemWriter,
+    io::{FileSystemReader, FileSystemWriter},
     warning::{VectorWarningEmitterIO, WarningEmitter},
 };
 use std::{
@@ -43,7 +43,7 @@ pub fn prepare(path: &str) -> String {
     let warnings = VectorWarningEmitterIO::default();
     let warning_emitter = WarningEmitter::new(Rc::new(warnings.clone()));
     let filesystem = test_helpers_rs::to_in_memory_filesystem(&root);
-    let initial_files = filesystem.paths();
+    let initial_files = filesystem.files();
     let root = Utf8PathBuf::from("");
     let out = Utf8PathBuf::from("/out/lib/the_package");
     let lib = Utf8PathBuf::from("/out/lib");
@@ -72,7 +72,9 @@ pub fn prepare(path: &str) -> String {
     match result {
         Outcome::Ok(_) => {
             for path in initial_files {
-                filesystem.delete_file(&path).unwrap();
+                if filesystem.is_file(&path) {
+                    filesystem.delete_file(&path).unwrap();
+                }
             }
             let files = filesystem.into_contents();
             let warnings = warnings.take();

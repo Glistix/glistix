@@ -185,6 +185,23 @@ pub fn main() {
     );
 }
 
+// https://github.com/gleam-lang/gleam/issues/3894
+#[test]
+fn let_assert_nested_string_prefix() {
+    assert_js!(
+        r#"
+type Wibble {
+  Wibble(wibble: String)
+}
+
+pub fn main() {
+  let assert Wibble(wibble: "w" as prefix <> rest) = Wibble("wibble")
+  prefix <> rest
+}
+"#
+    );
+}
+
 // https://github.com/gleam-lang/gleam/issues/2931
 #[test]
 fn keyword_assignment() {
@@ -205,6 +222,30 @@ fn escaped_variables_in_constants() {
         r#"
 pub const class = 5
 pub const something = class
+"#
+    );
+}
+
+#[test]
+fn message() {
+    assert_js!(
+        r#"
+pub fn unwrap_or_panic(value) {
+  let assert Ok(inner) = value as "Oops, there was an error"
+  inner
+}
+"#
+    );
+}
+
+#[test]
+fn variable_message() {
+    assert_js!(
+        r#"
+pub fn expect(value, message) {
+  let assert Ok(inner) = value as message
+  inner
+}
 "#
     );
 }

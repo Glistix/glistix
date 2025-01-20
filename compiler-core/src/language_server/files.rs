@@ -51,7 +51,11 @@ where
     }
 
     pub fn delete_mem_cache(&self, path: &Utf8Path) -> Result<()> {
-        self.edit_cache.delete_directory(path)
+        if self.edit_cache.is_directory(path) {
+            self.edit_cache.delete_directory(path)
+        } else {
+            self.edit_cache.delete_file(path)
+        }
     }
 }
 
@@ -105,14 +109,6 @@ impl<IO> FileSystemReader for FileSystemProxy<IO>
 where
     IO: FileSystemReader,
 {
-    fn gleam_source_files(&self, dir: &Utf8Path) -> Vec<Utf8PathBuf> {
-        self.io.gleam_source_files(dir)
-    }
-
-    fn gleam_cache_files(&self, dir: &Utf8Path) -> Vec<Utf8PathBuf> {
-        self.io.gleam_cache_files(dir)
-    }
-
     fn read_dir(&self, path: &Utf8Path) -> Result<ReadDir> {
         self.io.read_dir(path)
     }

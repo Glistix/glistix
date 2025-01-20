@@ -63,11 +63,12 @@ use crate::ast::{
     TypeAlias, TypeAst, TypeAstConstructor, TypeAstFn, TypeAstHole, TypeAstTuple, TypeAstVar,
     UnqualifiedImport, UntypedArg, UntypedClause, UntypedClauseGuard, UntypedConstant,
     UntypedDefinition, UntypedExpr, UntypedModule, UntypedPattern, UntypedRecordUpdateArg,
-    UntypedStatement, Use, UseAssignment, CAPTURE_VARIABLE,
+    UntypedStatement, UntypedUseAssignment, Use, UseAssignment, CAPTURE_VARIABLE,
 };
 use crate::build::Target;
 use crate::error::wrap;
 use crate::parse::extra::ModuleExtra;
+use crate::type_::error::VariableOrigin;
 use crate::type_::expression::Implementations;
 use crate::type_::Deprecation;
 use crate::warning::{DeprecatedSyntaxWarning, WarningEmitter};
@@ -925,12 +926,13 @@ where
         Ok(Statement::Use(Use {
             location: SrcSpan::new(start, call.location().end),
             assignments_location,
+            right_hand_side_location: call.location(),
             assignments,
             call: Box::new(call),
         }))
     }
 
-    fn parse_use_assignment(&mut self) -> Result<Option<UseAssignment>, ParseError> {
+    fn parse_use_assignment(&mut self) -> Result<Option<UntypedUseAssignment>, ParseError> {
         let start = self.tok0.as_ref().map(|t| t.0).unwrap_or(0);
 
         let pattern = self.parse_pattern()?.ok_or_else(|| ParseError {
@@ -953,10 +955,11 @@ where
 
     // An assignment, with `Let` already consumed
     fn parse_assignment(&mut self, start: u32) -> Result<UntypedStatement, ParseError> {
-        let kind = if let Some((assert_start, Token::Assert, assert_end)) = self.tok0 {
+        let mut kind = if let Some((assert_start, Token::Assert, assert_end)) = self.tok0 {
             _ = self.next_tok();
             AssignmentKind::Assert {
                 location: SrcSpan::new(assert_start, assert_end),
+                message: None,
             }
         } else {
             AssignmentKind::Let
@@ -989,11 +992,22 @@ where
                 },
             },
         })?;
+
+        let mut end = value.location().end;
+
+        match &mut kind {
+            AssignmentKind::Let | AssignmentKind::Generated => {}
+            AssignmentKind::Assert { message, .. } => {
+                if self.maybe_one(&Token::As).is_some() {
+                    let message_expression = self.expect_expression_unit()?;
+                    end = message_expression.location().end;
+                    *message = Some(Box::new(message_expression));
+                }
+            }
+        }
+
         Ok(Statement::Assignment(Assignment {
-            location: SrcSpan {
-                start,
-                end: value.location().end,
-            },
+            location: SrcSpan { start, end },
             value: Box::new(value),
             pattern,
             annotation,
@@ -1063,13 +1077,19 @@ where
         let body = self.parse_statement_seq()?;
         let (_, end) = self.expect_one(&Token::RightBrace)?;
         let location = SrcSpan { start, end };
-        match body {
-            None => parse_error(ParseErrorType::NoExpression, SrcSpan { start, end }),
-            Some((statements, _)) => Ok(UntypedExpr::Block {
-                statements,
+        let statements = match body {
+            Some((statements, _)) => statements,
+            None => vec1![Statement::Expression(UntypedExpr::Todo {
+                kind: TodoKind::EmptyBlock,
                 location,
-            }),
-        }
+                message: None
+            })],
+        };
+
+        Ok(UntypedExpr::Block {
+            location,
+            statements,
+        })
     }
 
     // The left side of an "=" or a "->"
@@ -1109,6 +1129,7 @@ where
                             )
                         }
                         _ => Pattern::Variable {
+                            origin: VariableOrigin::Variable(name.clone()),
                             location: SrcSpan { start, end },
                             name,
                             type_: (),
@@ -1554,13 +1575,20 @@ where
 
             Some((start, Token::Name { name }, end)) => {
                 self.advance();
-                let mut unit = ClauseGuard::Var {
-                    location: SrcSpan { start, end },
-                    type_: (),
-                    name,
-                };
 
                 self.parse_function_call_in_clause_guard(start)?;
+
+                let mut unit = if let Some(record) =
+                    self.parse_record_in_clause_guard(&name, SrcSpan { start, end })?
+                {
+                    record
+                } else {
+                    ClauseGuard::Var {
+                        location: SrcSpan { start, end },
+                        type_: (),
+                        name,
+                    }
+                };
 
                 loop {
                     let dot_s = match self.maybe_one(&Token::Dot) {
@@ -1638,6 +1666,37 @@ where
                     Ok(None)
                 }
             }
+        }
+    }
+
+    fn parse_record_in_clause_guard(
+        &mut self,
+        module: &EcoString,
+        module_location: SrcSpan,
+    ) -> Result<Option<UntypedClauseGuard>, ParseError> {
+        let (name, end) = match (self.tok0.take(), self.peek_tok1()) {
+            (Some((_, Token::Dot, _)), Some(Token::UpName { .. })) => {
+                self.advance(); // dot
+                let Some((_, Token::UpName { name }, end)) = self.next_tok() else {
+                    return Ok(None);
+                };
+                (name, end)
+            }
+            (tok0, _) => {
+                self.tok0 = tok0;
+                return Ok(None);
+            }
+        };
+
+        if let Some(record) = self.parse_const_record_finish(
+            module_location.start,
+            Some((module.clone(), module_location)),
+            name,
+            end,
+        )? {
+            Ok(Some(ClauseGuard::Constant(record)))
+        } else {
+            Ok(None)
         }
     }
 
@@ -1725,6 +1784,7 @@ where
                         location: SrcSpan { start, end },
                         label: Some(name.clone()),
                         value: UntypedPattern::Variable {
+                            origin: VariableOrigin::LabelShorthand(name.clone()),
                             name,
                             location: SrcSpan { start, end },
                             type_: (),
@@ -2153,6 +2213,25 @@ where
             let constructors = Parser::series_of(
                 self,
                 &|p| {
+                    // The only attribute supported on constructors is @deprecated
+                    let mut attributes = Attributes::default();
+                    let attr_loc = Parser::parse_attributes(p, &mut attributes)?;
+
+                    if let Some(attr_span) = attr_loc {
+                        // Expecting all but the deprecated atterbutes to be default
+                        if attributes.external_erlang.is_some()
+                            || attributes.external_javascript.is_some()
+                            || attributes.external_nix.is_some()
+                            || attributes.target.is_some()
+                            || attributes.internal != InternalAttribute::Missing
+                        {
+                            return parse_error(
+                                ParseErrorType::UnknownAttributeRecordVariant,
+                                attr_span,
+                            );
+                        }
+                    }
+
                     if let Some((c_s, c_n, c_e)) = Parser::maybe_upname(p) {
                         let documentation = p.take_documentation(c_s);
                         let (args, args_e) = Parser::parse_type_constructor_args(p)?;
@@ -2166,6 +2245,7 @@ where
                             name: c_n,
                             arguments: args,
                             documentation,
+                            deprecation: attributes.deprecated,
                         }))
                     } else {
                         Ok(None)
@@ -2201,6 +2281,7 @@ where
         } else {
             (vec![], end)
         };
+
         Ok(Some(Definition::CustomType(CustomType {
             documentation,
             location: SrcSpan { start, end },
@@ -3288,16 +3369,34 @@ functions are declared separately from types.";
 
     // Expect a target name. e.g. `javascript` or `erlang`
     fn expect_target(&mut self) -> Result<Target, ParseError> {
-        let (_, t, _) = match self.next_tok() {
+        let (start, t, end) = match self.next_tok() {
             Some(t) => t,
             None => {
                 return parse_error(ParseErrorType::UnexpectedEof, SrcSpan { start: 0, end: 0 })
             }
         };
         match t {
-            Token::Name { name } => match Target::from_str(&name) {
-                Ok(target) => Ok(target),
-                Err(_) => self.next_tok_unexpected(Target::variant_strings()),
+            Token::Name { name } => match name.as_str() {
+                "javascript" => Ok(Target::JavaScript),
+                "erlang" => Ok(Target::Erlang),
+                "nix" => Ok(Target::Nix),
+                "js" => {
+                    self.warnings
+                        .push(DeprecatedSyntaxWarning::DeprecatedTargetShorthand {
+                            location: SrcSpan { start, end },
+                            target: Target::JavaScript,
+                        });
+                    Ok(Target::JavaScript)
+                }
+                "erl" => {
+                    self.warnings
+                        .push(DeprecatedSyntaxWarning::DeprecatedTargetShorthand {
+                            location: SrcSpan { start, end },
+                            target: Target::Erlang,
+                        });
+                    Ok(Target::Erlang)
+                }
+                _ => self.next_tok_unexpected(Target::variant_strings()),
             },
             _ => self.next_tok_unexpected(Target::variant_strings()),
         }

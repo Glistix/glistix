@@ -6,7 +6,7 @@ use glistix_core::{
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, NullTelemetry, Options, ProjectCompiler, Telemetry},
     config::PackageConfig,
-    io::FileSystemWriter,
+    io::{FileSystemReader, FileSystemWriter},
     paths::ProjectPaths,
     warning::VectorWarningEmitterIO,
 };
@@ -15,7 +15,7 @@ use std::rc::Rc;
 pub fn prepare(path: &str, mode: Mode) -> String {
     let root = Utf8PathBuf::from(path).canonicalize_utf8().unwrap();
     let filesystem = test_helpers_rs::to_in_memory_filesystem(&root);
-    let initial_files = filesystem.paths();
+    let initial_files = filesystem.files();
 
     let toml = std::fs::read_to_string(root.join("gleam.toml")).unwrap();
     let config: PackageConfig = toml::from_str(&toml).unwrap();
@@ -45,7 +45,9 @@ pub fn prepare(path: &str, mode: Mode) -> String {
     compiler.compile().unwrap();
 
     for path in initial_files {
-        filesystem.delete_file(&path).unwrap();
+        if filesystem.is_file(&path) {
+            filesystem.delete_file(&path).unwrap();
+        }
     }
     let files = filesystem.into_contents();
     let warnings = warnings.take();
