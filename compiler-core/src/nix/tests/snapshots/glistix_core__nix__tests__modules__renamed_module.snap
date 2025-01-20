@@ -1,0 +1,13 @@
+---
+source: compiler-core/src/nix/tests/modules.rs
+expression: "\nimport x as y\nconst z = y.v\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+import x as y
+const z = y.v
+
+
+----- COMPILED NIX
+let y' = builtins.import ./../x.nix; z = y'.v; in { }

@@ -1,0 +1,25 @@
+---
+source: compiler-core/src/nix/tests/tuples.rs
+expression: "\nfn go(a) {\n  case a {\n    #(2, a) -> a\n    #(1, 1) -> 1\n    #(a, b) -> a + b\n  }\n}\n"
+snapshot_kind: text
+---
+----- SOURCE CODE
+
+fn go(a) {
+  case a {
+    #(2, a) -> a
+    #(1, 1) -> 1
+    #(a, b) -> a + b
+  }
+}
+
+
+----- COMPILED NIX
+let
+  go =
+    a:
+    if (builtins.elemAt a 0) == 2 then let a'1 = (builtins.elemAt a 1); in a'1
+    else if (builtins.elemAt a 0) == 1 && (builtins.elemAt a 1) == 1 then 1
+    else let a'1 = (builtins.elemAt a 0); b = (builtins.elemAt a 1); in a'1 + b;
+in
+{ }
