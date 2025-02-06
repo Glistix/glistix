@@ -649,8 +649,8 @@ impl<'module> Generator<'module> {
                     Statement::Assignment(assignment) => {
                         self.wrap_child_expression(assignment.value.as_ref())
                     }
-                    Statement::Use(_) => {
-                        unreachable!("use statements must not be present for Nix generation")
+                    Statement::Use(use_) => {
+                        self.wrap_child_expression(&use_.call)
                     }
                 }
             },
