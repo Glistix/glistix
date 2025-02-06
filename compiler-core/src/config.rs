@@ -777,7 +777,7 @@ pub struct GlistixPreviewConfig {
 }
 
 #[derive(Deserialize, Debug, Default, PartialEq, Eq, Clone)]
-pub struct GlistixPatches(HashMap<EcoString, GlistixPatch>);
+pub struct GlistixPatches(pub HashMap<EcoString, GlistixPatch>);
 
 impl PackageConfig {
     /// Apply patches to the root config.

@@ -864,4 +864,100 @@ mod tests {
         assert_eq!(parse_exact_version("~> 1.0.0"), None);
         assert_eq!(parse_exact_version(">= 1.0.0"), None);
     }
+
+    mod glistix_patches {
+        use std::collections::HashMap;
+
+        use ecow::eco_format;
+        use hexpm::version::{Range, Version};
+        use hexpm::Release;
+
+        use crate::config::{GlistixPatch, GlistixPatches};
+        use crate::requirement::Requirement;
+
+        use super::resolve_versions;
+
+        fn glistix_remote() -> Box<super::Remote> {
+            let mut remote = super::make_remote();
+            let _ = remote.deps.insert(
+                "glistix_stdlib".into(),
+                hexpm::Package {
+                    name: "glistix_stdlib".into(),
+                    repository: "hexpm".into(),
+                    releases: vec![
+                        Release {
+                            version: Version::try_from("0.1.0").unwrap(),
+                            requirements: [].into(),
+                            retirement_status: None,
+                            outer_checksum: vec![1, 2, 3],
+                            meta: (),
+                        },
+                        Release {
+                            version: Version::try_from("0.2.0").unwrap(),
+                            requirements: [].into(),
+                            retirement_status: None,
+                            outer_checksum: vec![1, 2, 3],
+                            meta: (),
+                        },
+                        Release {
+                            version: Version::try_from("0.2.2").unwrap(),
+                            requirements: [].into(),
+                            retirement_status: None,
+                            outer_checksum: vec![1, 2, 3],
+                            meta: (),
+                        },
+                        Release {
+                            version: Version::try_from("0.3.0").unwrap(),
+                            requirements: [].into(),
+                            retirement_status: None,
+                            outer_checksum: vec![1, 2, 3],
+                            meta: (),
+                        },
+                    ],
+                },
+            );
+
+            remote
+        }
+
+        fn glistix_stdlib_patch() -> GlistixPatches {
+            let mut patches = HashMap::new();
+            _ = patches.insert(
+                eco_format!("gleam_stdlib"),
+                GlistixPatch {
+                    name: eco_format!("glistix_stdlib"),
+                    source: Requirement::Hex {
+                        version: Range::new(">= 0.2.0".into()),
+                    },
+                },
+            );
+
+            GlistixPatches(patches)
+        }
+
+        // Note: only nested dependencies are patched, top-level requirements are
+        // kept to avoid confusion. Requirements should be patched before they are
+        // given to the 'resolve_versions' function.
+        #[test]
+        fn glistix_patch_nested_deps() {
+            let result = resolve_versions(
+                glistix_remote(),
+                HashMap::new(),
+                "app".into(),
+                vec![("gleam_otp".into(), Range::new("~> 0.1".into()))].into_iter(),
+                &vec![].into_iter().collect(),
+                &glistix_stdlib_patch(),
+            )
+            .unwrap();
+            assert_eq!(
+                result,
+                vec![
+                    ("gleam_otp".into(), Version::try_from("0.2.0").unwrap()),
+                    ("glistix_stdlib".into(), Version::try_from("0.3.0").unwrap())
+                ]
+                .into_iter()
+                .collect()
+            );
+        }
+    }
 }
