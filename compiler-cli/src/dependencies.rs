@@ -704,7 +704,7 @@ fn resolve_versions<Telem: Telemetry>(
         config.name.clone(),
         root_requirements.into_iter(),
         &locked,
-        &config.glistix.preview.replacements,
+        &config.glistix.preview.patch,
     )?;
 
     // Convert the hex packages and local packages into manifest packages
@@ -714,7 +714,7 @@ fn resolve_versions<Telem: Telemetry>(
                 name,
                 version,
                 &provided_packages,
-                &config.glistix.preview.replacements,
+                &config.glistix.preview.patch,
             )
         },
     )))?;
@@ -837,12 +837,12 @@ fn provide_package(
     }
     // Load the package
     let config = crate::config::read_unpatched(package_path.join("gleam.toml")).map(|mut c| {
-        // Patch transitive dependencies with root's replacements
+        // Patch transitive dependencies with root's patches
         // (ignore their own)
         root_config
             .glistix
             .preview
-            .replacements
+            .patch
             .patch_config(&mut c, false);
         c
     })?;
@@ -952,7 +952,7 @@ async fn lookup_package(
     name: String,
     version: Version,
     provided: &HashMap<EcoString, ProvidedPackage>,
-    glistix_replacements: &glistix_core::config::GlistixReplacements,
+    glistix_patches: &glistix_core::config::GlistixPatches,
 ) -> Result<ManifestPackage> {
     match provided.get(name.as_str()) {
         Some(provided_package) => Ok(provided_package.to_manifest_package(name.as_str())),
@@ -970,7 +970,7 @@ async fn lookup_package(
                 .requirements
                 .keys()
                 .map(|s| EcoString::from(s.as_str()))
-                .map(|s| glistix_replacements.replace_name_ecostring(s))
+                .map(|s| glistix_patches.replace_name_ecostring(s))
                 .collect_vec();
             Ok(ManifestPackage {
                 name: name.into(),

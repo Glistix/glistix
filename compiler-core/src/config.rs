@@ -773,29 +773,29 @@ pub struct GlistixPreviewConfig {
 
     /// Replaces a package with another recursively.
     #[serde(default)]
-    pub replacements: GlistixReplacements,
+    pub patch: GlistixPatches,
 }
 
 #[derive(Deserialize, Debug, Default, PartialEq, Eq, Clone)]
-pub struct GlistixReplacements(HashMap<EcoString, GlistixReplacement>);
+pub struct GlistixPatches(HashMap<EcoString, GlistixPatch>);
 
 impl PackageConfig {
-    /// Apply replacements to the root config.
-    pub fn apply_glistix_replacements(&mut self) {
+    /// Apply patches to the root config.
+    pub fn apply_glistix_patches(&mut self) {
         self.glistix
             .preview
-            .replacements
+            .patch
             .patch_req_hash_map(&mut self.dependencies, true);
     }
 
-    /// Apply replacements to the root config (owned version).
-    pub fn with_glistix_replacements_applied(mut self) -> Self {
-        self.apply_glistix_replacements();
+    /// Apply patches to the root config (owned version).
+    pub fn with_glistix_patches_applied(mut self) -> Self {
+        self.apply_glistix_patches();
         self
     }
 }
 
-impl GlistixReplacements {
+impl GlistixPatches {
     /// Replace this package's name with another if necessary.
     pub fn replace_name<'s: 'n, 'n>(&'s self, name: &'n str) -> &'n str {
         self.0.get(name).map(|r| &*r.name).unwrap_or(name)
@@ -812,7 +812,7 @@ impl GlistixReplacements {
     }
 
     /// Replace all packages in a requirements hash map according to this
-    /// instance's stored replacements.
+    /// instance's stored patches.
     pub fn patch_req_hash_map(&self, deps: &mut HashMap<EcoString, Requirement>, is_root: bool) {
         for (name, replacement) in &self.0 {
             // If the replaced package is present, insert the replacing package.
@@ -830,7 +830,7 @@ impl GlistixReplacements {
     }
 
     /// Patch a hash map of hexpm dependencies according to the specified
-    /// replacements. Must not correspond to root dependencies.
+    /// patches. Must not correspond to root dependencies.
     pub fn patch_dep_hash_map(&self, deps: &mut HashMap<String, hexpm::Dependency>) {
         for (old_name, replacement) in &self.0 {
             if let Some(mut dep) = deps.get(&**old_name).cloned() {
@@ -850,7 +850,7 @@ impl GlistixReplacements {
     }
 
     /// Patch a hash map of version ranges according to the specified
-    /// replacements. Must not correspond to root dependencies.
+    /// patches. Must not correspond to root dependencies.
     pub fn patch_range_hash_map(&self, deps: &mut HashMap<EcoString, version::Range>) {
         for (old_name, replacement) in &self.0 {
             if let Some(mut dep) = deps.get(old_name).cloned() {
@@ -870,7 +870,7 @@ impl GlistixReplacements {
     }
 
     /// Replace all packages in an owned hash map according to this instance's stored
-    /// replacements.
+    /// patches.
     pub fn patch_owned_hash_map(
         &self,
         mut deps: HashMap<EcoString, Requirement>,
@@ -881,7 +881,7 @@ impl GlistixReplacements {
     }
 
     /// Replace all packages in a config according to this instance's stored
-    /// replacements.
+    /// patches.
     pub fn patch_config(&self, config: &mut PackageConfig, is_root: bool) {
         self.patch_req_hash_map(&mut config.dependencies, is_root);
     }
@@ -927,7 +927,7 @@ impl GlistixReplacements {
             (
                 None,
                 Some(iter.map(|(name, requirement)| match self.0.get(name) {
-                    Some(GlistixReplacement {
+                    Some(GlistixPatch {
                         name: new_name,
                         source,
                     }) => (new_name, source),
@@ -951,7 +951,7 @@ impl GlistixReplacements {
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
-pub struct GlistixReplacement {
+pub struct GlistixPatch {
     /// Name of the package that will replace the old one.
     pub name: EcoString,
     /// Version or source of the package that will replace the old one.

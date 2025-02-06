@@ -515,11 +515,11 @@ where
         };
         let config_path = package_root.join("gleam.toml");
         let config = PackageConfig::read(config_path, &self.io).map(|mut c| {
-            // Apply root config's replacements to dependency
+            // Apply root config's patches to dependency
             self.config
                 .glistix
                 .preview
-                .replacements
+                .patch
                 .patch_config(&mut c, false);
             c
         })?;

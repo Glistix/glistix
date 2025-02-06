@@ -22,7 +22,7 @@ pub fn resolve_versions<Requirements>(
     root_name: EcoString,
     dependencies: Requirements,
     locked: &HashMap<EcoString, Version>,
-    glistix_replacements: &crate::config::GlistixReplacements,
+    glistix_patches: &crate::config::GlistixPatches,
 ) -> Result<PackageVersions>
 where
     Requirements: Iterator<Item = (EcoString, Range)>,
@@ -58,7 +58,7 @@ where
             root,
             locked,
             exact_deps,
-            glistix_replacements,
+            glistix_patches,
         ),
         root_name.as_str().into(),
         root_version,
@@ -162,7 +162,7 @@ struct DependencyProvider<'a> {
     // and the version 1 bump ahead. That default breaks on prerelease builds since a bump includes the whole patch
     exact_only: &'a HashMap<String, Version>,
     optional_dependencies: RefCell<HashMap<EcoString, pubgrub::range::Range<Version>>>,
-    glistix_replacements: &'a crate::config::GlistixReplacements,
+    glistix_patches: &'a crate::config::GlistixPatches,
 }
 
 impl<'a> DependencyProvider<'a> {
@@ -172,7 +172,7 @@ impl<'a> DependencyProvider<'a> {
         root: hexpm::Package,
         locked: &'a HashMap<EcoString, Version>,
         exact_only: &'a HashMap<String, Version>,
-        glistix_replacements: &'a crate::config::GlistixReplacements,
+        glistix_patches: &'a crate::config::GlistixPatches,
     ) -> Self {
         let _ = packages.insert(root.name.as_str().into(), root);
         Self {
@@ -181,7 +181,7 @@ impl<'a> DependencyProvider<'a> {
             remote,
             exact_only,
             optional_dependencies: RefCell::new(Default::default()),
-            glistix_replacements,
+            glistix_patches,
         }
     }
 
@@ -203,7 +203,7 @@ impl<'a> DependencyProvider<'a> {
             let mut package = self.remote.get_dependencies(name)?;
 
             // Glistix: Update dependencies.
-            self.glistix_replacements.patch_hex_package(&mut package);
+            self.glistix_patches.patch_hex_package(&mut package);
 
             // Sort the packages from newest to oldest, pres after all others
             package.releases.sort_by(|a, b| a.version.cmp(&b.version));

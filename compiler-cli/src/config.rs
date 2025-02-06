@@ -45,13 +45,13 @@ pub fn find_package_config_for_module(
         }
 
         // Since this is a submodule, we should be using the parent's
-        // replacements, whichever they are.
+        // patches, whichever they are.
         let mut configuration = read_unpatched(root.join("gleam.toml"))?;
 
         root_config
             .glistix
             .preview
-            .replacements
+            .patch
             .patch_config(&mut configuration, false);
 
         return Ok((configuration, PackageKind::Dependency));
@@ -71,14 +71,14 @@ fn package_root(package: &ManifestPackage, project_paths: &ProjectPaths) -> Utf8
     }
 }
 
-/// Default to patching with the config's own replacements.
+/// Default to patching with the config's own patches.
 ///
 /// However, note that sometimes it is necessary to use another config's
-/// replacements instead of its own. This can be observed, in particular, when
+/// patches instead of its own. This can be observed, in particular, when
 /// loading provided (local and Git) dependencies of the root project: the root
 /// project's config shall prevail in that case, not the dependencies'.
 pub fn read(config_path: Utf8PathBuf) -> Result<PackageConfig, Error> {
-    read_unpatched(config_path).map(PackageConfig::with_glistix_replacements_applied)
+    read_unpatched(config_path).map(PackageConfig::with_glistix_patches_applied)
 }
 
 pub fn read_unpatched(config_path: Utf8PathBuf) -> Result<PackageConfig, Error> {
