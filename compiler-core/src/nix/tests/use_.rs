@@ -85,7 +85,8 @@ fn apply(arg, fun) {
 
 #[test]
 fn use_in_block() {
-    assert_nix!(r#"
+    assert_nix!(
+        r#"
 pub fn main() {
   [{
     use x <- func()
@@ -95,5 +96,6 @@ pub fn main() {
 pub fn func(m) -> Int {
   m(10)
 }
-"#);
+"#
+    );
 }
