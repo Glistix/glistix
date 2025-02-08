@@ -348,6 +348,7 @@ fn locked_no_changes() {
             manifest_package("dev1", "1.1.0", &[]),
             manifest_package("dev2", "1.2.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
@@ -374,6 +375,7 @@ fn locked_some_removed() {
             manifest_package("dev1", "1.1.0", &[]),  // Not in config
             manifest_package("dev2", "1.2.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
@@ -414,6 +416,7 @@ fn locked_some_changed() {
             manifest_package("dev1", "1.1.0", &[]),
             manifest_package("dev2", "1.2.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
@@ -459,6 +462,7 @@ fn locked_nested_are_removed_too() {
             manifest_package("2.2.2", "2.1.0", &[]),
             manifest_package("shared", "2.1.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
@@ -499,6 +503,7 @@ fn locked_unlock_new() {
             manifest_package("2", "1.1.0", &["3"]),
             manifest_package("3", "1.1.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
@@ -986,7 +991,7 @@ impl GlistixPatches {
     }
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(serde::Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct GlistixPatch {
     /// Name of the package that will replace the old one.
     ///

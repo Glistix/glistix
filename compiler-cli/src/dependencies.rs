@@ -722,6 +722,11 @@ fn resolve_versions<Telem: Telemetry>(
     let manifest = Manifest {
         packages: manifest_packages,
         requirements: config.all_direct_dependencies()?,
+        glistix: glistix_core::manifest::GlistixManifest {
+            preview: glistix_core::manifest::GlistixPreviewManifest {
+                patch: config.glistix.preview.patch.clone(),
+            },
+        },
     };
 
     Ok(manifest)
