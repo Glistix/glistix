@@ -15,6 +15,12 @@ pub fn root_config() -> Result<PackageConfig, Error> {
     read(paths.root_config())
 }
 
+pub fn root_config_unpatched() -> Result<PackageConfig, Error> {
+    let dir = get_project_root(get_current_directory()?)?;
+    let paths = ProjectPaths::new(dir);
+    read_unpatched(paths.root_config())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum PackageKind {
     Dependency,
