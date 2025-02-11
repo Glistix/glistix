@@ -868,7 +868,7 @@ mod tests {
     mod glistix_patches {
         use std::collections::HashMap;
 
-        use ecow::eco_format;
+        use ecow::{eco_format, EcoString};
         use hexpm::version::{Range, Version};
         use hexpm::Release;
 
@@ -920,33 +920,48 @@ mod tests {
             remote
         }
 
-        fn glistix_stdlib_patch() -> GlistixPatches {
-            let mut patches = HashMap::new();
-            _ = patches.insert(
+        fn glistix_stdlib_patch() -> (EcoString, GlistixPatch) {
+            (
                 eco_format!("gleam_stdlib"),
                 GlistixPatch {
-                    name: eco_format!("glistix_stdlib"),
+                    name: Some(eco_format!("glistix_stdlib")),
                     source: Requirement::Hex {
                         version: Range::new(">= 0.2.0".into()),
                     },
                 },
-            );
+            )
+        }
 
-            GlistixPatches(patches)
+        fn gleam_stdlib_version_patch() -> (EcoString, GlistixPatch) {
+            (
+                eco_format!("gleam_stdlib"),
+                GlistixPatch {
+                    // Don't rename it
+                    name: None,
+                    source: Requirement::Hex {
+                        version: Range::new("== 0.1.0".into()),
+                    },
+                },
+            )
+        }
+
+        fn make_patches<const N: usize>(patches: [(EcoString, GlistixPatch); N]) -> GlistixPatches {
+            GlistixPatches(patches.into_iter().collect())
         }
 
         // Note: only nested dependencies are patched, top-level requirements are
         // kept to avoid confusion. Requirements should be patched before they are
         // given to the 'resolve_versions' function.
         #[test]
-        fn glistix_patch_nested_deps() {
+        fn glistix_patch_nested_deps_rename() {
+            let patches = make_patches([glistix_stdlib_patch()]);
             let result = resolve_versions(
                 glistix_remote(),
                 HashMap::new(),
                 "app".into(),
                 vec![("gleam_otp".into(), Range::new("~> 0.1".into()))].into_iter(),
                 &vec![].into_iter().collect(),
-                &glistix_stdlib_patch(),
+                &patches,
             )
             .unwrap();
             assert_eq!(
@@ -954,6 +969,29 @@ mod tests {
                 vec![
                     ("gleam_otp".into(), Version::try_from("0.2.0").unwrap()),
                     ("glistix_stdlib".into(), Version::try_from("0.3.0").unwrap())
+                ]
+                .into_iter()
+                .collect()
+            );
+        }
+
+        #[test]
+        fn glistix_patch_nested_deps_just_change_version() {
+            let patches = make_patches([gleam_stdlib_version_patch()]);
+            let result = resolve_versions(
+                glistix_remote(),
+                HashMap::new(),
+                "app".into(),
+                vec![("gleam_otp".into(), Range::new("~> 0.1".into()))].into_iter(),
+                &vec![].into_iter().collect(),
+                &patches,
+            )
+            .unwrap();
+            assert_eq!(
+                result,
+                vec![
+                    ("gleam_otp".into(), Version::try_from("0.2.0").unwrap()),
+                    ("gleam_stdlib".into(), Version::try_from("0.1.0").unwrap())
                 ]
                 .into_iter()
                 .collect()

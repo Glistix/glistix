@@ -797,13 +797,21 @@ impl PackageConfig {
 
 impl GlistixPatches {
     /// Replace this package's name with another if necessary.
+    /// Otherwise, returns the package's original name.
     pub fn replace_name<'s: 'n, 'n>(&'s self, name: &'n str) -> &'n str {
-        self.0.get(name).map(|r| &*r.name).unwrap_or(name)
+        self.0
+            .get(name)
+            .and_then(|r| r.name.as_deref())
+            .unwrap_or(name)
     }
 
     /// Replace this package's name with another if necessary (EcoString version).
+    /// Otherwise, returns the package's original name.
     pub fn replace_name_ecostring(&self, name: EcoString) -> EcoString {
-        self.0.get(&name).map(|r| r.name.clone()).unwrap_or(name)
+        self.0
+            .get(&name)
+            .and_then(|r| r.name.clone())
+            .unwrap_or(name)
     }
 
     /// Replace this package's requirement with another if necessary.
@@ -814,17 +822,24 @@ impl GlistixPatches {
     /// Replace all packages in a requirements hash map according to this
     /// instance's stored patches.
     pub fn patch_req_hash_map(&self, deps: &mut HashMap<EcoString, Requirement>, is_root: bool) {
-        for (name, replacement) in &self.0 {
+        for (old_name, patch) in &self.0 {
             // If the replaced package is present, insert the replacing package.
             // Alternatively, forcefully insert the replacing package as a root
             // dependency so it is fetched.
-            if deps.contains_key(name) || is_root {
-                _ = deps.insert(replacement.name.clone(), replacement.source.clone());
+            if deps.contains_key(old_name) || is_root {
+                _ = deps.insert(
+                    patch.name.as_ref().unwrap_or(old_name).clone(),
+                    patch.source.clone(),
+                );
             }
 
             // If the replaced package is present, remove it.
-            if &replacement.name != name {
-                _ = deps.remove(name);
+            if patch
+                .name
+                .as_ref()
+                .is_some_and(|new_name| new_name != old_name)
+            {
+                _ = deps.remove(old_name);
             }
         }
     }
@@ -832,17 +847,27 @@ impl GlistixPatches {
     /// Patch a hash map of hexpm dependencies according to the specified
     /// patches. Must not correspond to root dependencies.
     pub fn patch_dep_hash_map(&self, deps: &mut HashMap<String, hexpm::Dependency>) {
-        for (old_name, replacement) in &self.0 {
+        for (old_name, patch) in &self.0 {
             if let Some(mut dep) = deps.get(&**old_name).cloned() {
-                if let Requirement::Hex { version } = &replacement.source {
+                // If the patched-to package is a local or git package, it is
+                // provided and so always overrides hex dependencies, so we
+                // don't need to change the dependency version at all since
+                // the version will be whichever version is locally available.
+                if let Requirement::Hex { version } = &patch.source {
                     dep.requirement = version.clone();
                 }
 
                 // Insert replacing dependency with updated name and version
-                _ = deps.insert((*replacement.name).into(), dep);
+                let new_name = patch.name.as_ref().unwrap_or(old_name).to_string();
+                _ = deps.insert(new_name, dep);
             }
 
-            if &replacement.name != old_name {
+            // If the replaced package is present, remove it.
+            if patch
+                .name
+                .as_ref()
+                .is_some_and(|new_name| new_name != old_name)
+            {
                 // Remove replaced dependency
                 _ = deps.remove(&**old_name);
             }
@@ -852,17 +877,25 @@ impl GlistixPatches {
     /// Patch a hash map of version ranges according to the specified
     /// patches. Must not correspond to root dependencies.
     pub fn patch_range_hash_map(&self, deps: &mut HashMap<EcoString, version::Range>) {
-        for (old_name, replacement) in &self.0 {
+        for (old_name, patch) in &self.0 {
             if let Some(mut dep) = deps.get(old_name).cloned() {
-                if let Requirement::Hex { version } = &replacement.source {
+                // If the patched-to package is a local or git package, it is
+                // provided and so always overrides hex dependencies, so we
+                // don't need to change the dependency version at all since
+                // the version will be whichever version is locally available.
+                if let Requirement::Hex { version } = &patch.source {
                     dep = version.clone();
                 }
 
                 // Insert replacing dependency with updated name and version
-                _ = deps.insert(replacement.name.clone(), dep);
+                _ = deps.insert(patch.name.as_ref().unwrap_or(old_name).clone(), dep);
             }
 
-            if &replacement.name != old_name {
+            if patch
+                .name
+                .as_ref()
+                .is_some_and(|new_name| new_name != old_name)
+            {
                 // Remove replaced dependency
                 _ = deps.remove(old_name);
             }
@@ -888,11 +921,14 @@ impl GlistixPatches {
 
     /// Replace a hex package's name.
     pub fn patch_hex_package(&self, package: &mut hexpm::Package) {
-        if let Some(replacement) = self.0.get(&*package.name) {
+        if let Some(patch) = self.0.get(&*package.name) {
             // package.name = name.into();
-            eprintln!(
-                "Warning: Tried to replace top-level {} to {:?}!",
-                replacement.name, replacement.source
+            // TODO: Maybe this is fine since we have to patch deps anyway
+            tracing::warn!(
+                from=?package.name,
+                to=?patch.name,
+                new_source=?patch.source,
+                "Tried to patch top-level package!",
             );
         }
 
@@ -930,7 +966,7 @@ impl GlistixPatches {
                     Some(GlistixPatch {
                         name: new_name,
                         source,
-                    }) => (new_name, source),
+                    }) => (new_name.as_ref().unwrap_or(name), source),
                     None => (name, requirement),
                 })),
             )
@@ -945,15 +981,15 @@ impl GlistixPatches {
     /// An iterator over all replacing (not replaced) packages.
     pub fn replacement_name_req_iter(&self) -> impl Iterator<Item = (&EcoString, &Requirement)> {
         self.0
-            .values()
-            .map(|replacement| (&replacement.name, &replacement.source))
+            .iter()
+            .map(|(old_name, patch)| (patch.name.as_ref().unwrap_or(old_name), &patch.source))
     }
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct GlistixPatch {
     /// Name of the package that will replace the old one.
-    pub name: EcoString,
+    pub name: Option<EcoString>,
     /// Version or source of the package that will replace the old one.
     pub source: Requirement,
 }
