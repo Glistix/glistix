@@ -989,8 +989,17 @@ impl GlistixPatches {
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct GlistixPatch {
     /// Name of the package that will replace the old one.
+    ///
+    /// If unspecified, the old package will be kept but will use a different
+    /// source (for example, to pin a different Hex version).
+    #[serde(default)]
     pub name: Option<EcoString>,
+
     /// Version or source of the package that will replace the old one.
+    ///
+    /// This is specified as 'version = ...', 'path = ...' or 'git = ...'
+    /// due to flattening, for simplicity.
+    #[serde(flatten)]
     pub source: Requirement,
 }
 
