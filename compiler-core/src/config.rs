@@ -185,9 +185,11 @@ impl PackageConfig {
     pub fn locked(&self, manifest: Option<&Manifest>) -> Result<HashMap<EcoString, Version>> {
         match manifest {
             None => Ok(HashMap::new()),
-            Some(manifest) => {
-                StalePackageRemover::fresh_and_locked(&self.all_direct_dependencies()?, manifest)
-            }
+            Some(manifest) => StalePackageRemover::fresh_and_locked(
+                &self.all_direct_dependencies()?,
+                manifest,
+                &self.glistix.preview.patch,
+            ),
         }
     }
 
@@ -251,32 +253,52 @@ impl<'a> StalePackageRemover<'a> {
     pub fn fresh_and_locked(
         requirements: &'a HashMap<EcoString, Requirement>,
         manifest: &'a Manifest,
+        glistix_patches: &'a GlistixPatches,
     ) -> Result<HashMap<EcoString, Version>> {
         let locked = manifest
             .packages
             .iter()
             .map(|p| (p.name.clone(), &p.requirements))
             .collect();
+
         Self {
             fresh: HashSet::new(),
             locked,
         }
-        .run(requirements, manifest)
+        .run(requirements, manifest, glistix_patches)
     }
 
     fn run(
         &mut self,
         requirements: &'a HashMap<EcoString, Requirement>,
         manifest: &'a Manifest,
+        glistix_patches: &'a GlistixPatches,
     ) -> Result<HashMap<EcoString, Version>> {
+        let glistix_newly_patched_packages: Vec<&'a str> = glistix_patches
+            .0
+            .iter()
+            .filter(|(old_name, patch)| {
+                manifest.glistix.preview.patch.0.get(*old_name) != Some(&patch)
+            })
+            .flat_map(|(old_name, patch)| {
+                // Include both 'old_name' and 'new_name' as packages
+                // potentially affected by the patch changes.
+                Some(&**old_name)
+                    .into_iter()
+                    .chain(patch.name.as_deref().into_iter())
+            })
+            .collect::<Vec<_>>();
+
         // Record all the requirements that have not changed
         for (name, requirement) in requirements {
-            if manifest.requirements.get(name) != Some(requirement) {
+            if manifest.requirements.get(name) != Some(requirement)
+                || glistix_newly_patched_packages.contains(&&**name)
+            {
                 continue; // This package has changed, don't record it
             }
 
             // Recursively record the package and its deps as being fresh
-            self.record_tree_fresh(name)?;
+            self.record_tree_fresh(name, &glistix_newly_patched_packages)?;
         }
 
         // Return all the previously resolved packages that have not been
@@ -285,10 +307,19 @@ impl<'a> StalePackageRemover<'a> {
             .packages
             .iter()
             .filter(|package| {
+                // If any requirement was patched, it might have been renamed to something else,
+                // so we force the package to be re-fetched.
+                let glistix_depends_on_newly_patched_packages = !glistix_newly_patched_packages
+                    .is_empty()
+                    && package
+                        .requirements
+                        .iter()
+                        .any(|r| glistix_newly_patched_packages.contains(&&**r));
+
                 let new = requirements.contains_key(package.name.as_str())
                     && !manifest.requirements.contains_key(package.name.as_str());
                 let fresh = self.fresh.contains(package.name.as_str());
-                let locked = !new && fresh;
+                let locked = !glistix_depends_on_newly_patched_packages && !new && fresh;
                 if !locked {
                     tracing::info!(name = package.name.as_str(), "unlocking_stale_package");
                 }
@@ -298,14 +329,23 @@ impl<'a> StalePackageRemover<'a> {
             .collect())
     }
 
-    fn record_tree_fresh(&mut self, name: &'a str) -> Result<()> {
+    fn record_tree_fresh(
+        &mut self,
+        name: &'a str,
+        glistix_newly_patched_packages: &[&'a str],
+    ) -> Result<()> {
         // Record the top level package
         let _ = self.fresh.insert(name);
 
         let deps = self.locked.get(name).ok_or(Error::CorruptManifest)?;
         // Record each of its deps recursively
         for package in *deps {
-            self.record_tree_fresh(package)?;
+            if glistix_newly_patched_packages.contains(&&**package) {
+                // Dep was affected by a patch
+                continue;
+            }
+
+            self.record_tree_fresh(package, glistix_newly_patched_packages)?;
         }
         Ok(())
     }
