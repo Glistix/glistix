@@ -1262,8 +1262,14 @@ impl GlistixPatches {
         for (old_name, patch) in &self.0 {
             // If the replaced package is present, insert the replacing package.
             // Alternatively, forcefully insert the replacing package as a root
-            // dependency so it is fetched.
-            if deps.contains_key(old_name) || is_root {
+            // dependency so it is provided if it's a local or git package.
+            if deps.contains_key(old_name)
+                || is_root
+                    && matches!(
+                        patch.source,
+                        Requirement::Path { .. } | Requirement::Git { .. }
+                    )
+            {
                 _ = deps.insert(
                     patch.name.as_ref().unwrap_or(old_name).clone(),
                     patch.source.clone(),
@@ -1375,8 +1381,9 @@ impl GlistixPatches {
     }
 
     /// Replace name and requirements in an iterator, as needed.
-    /// If 'is_root' is true, this will append all replacing requirements, even
-    /// if they don't replace anything originally.
+    /// If 'is_root' is true, this will append all replacing local and Git
+    /// requirements, even if they don't replace anything originally, so they
+    /// can be provided.
     pub fn patch_name_req_iter<
         's: 'a,
         'a: 's,
@@ -1389,10 +1396,11 @@ impl GlistixPatches {
         let (root_iter, non_root_iter) = if is_root {
             // Non-replaced requirements + All replacing requirements
             (
-                Some(
-                    iter.filter(|(name, _)| !self.0.contains_key(*name))
-                        .chain(self.replacement_name_req_iter()),
-                ),
+                Some(iter.filter(|(name, _)| !self.0.contains_key(*name)).chain(
+                    self.replacement_name_req_iter().filter(|(_, req)| {
+                        matches!(req, Requirement::Path { .. } | Requirement::Git { .. })
+                    }),
+                )),
                 None,
             )
         } else {
