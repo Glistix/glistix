@@ -274,7 +274,23 @@ impl<'a> StalePackageRemover<'a> {
         manifest: &'a Manifest,
         glistix_patches: &'a GlistixPatches,
     ) -> Result<HashMap<EcoString, Version>> {
-        let glistix_newly_patched_packages: Vec<&'a str> = glistix_patches
+        // Track packages from removed patches so they are re-fetched or removed
+        let glistix_packages_from_removed_patches = manifest
+            .glistix
+            .preview
+            .patch
+            .0
+            .iter()
+            .filter(|(old_name, _)| !glistix_patches.0.contains_key(*old_name))
+            .flat_map(|(old_name, patch)| {
+                // Include both 'old_name' and 'new_name' as packages
+                // potentially affected by the patch changes.
+                Some(&**old_name).into_iter().chain(patch.name.as_deref())
+            });
+
+        // Track packages from new or modified patches so they are re-fetched
+        // or removed
+        let glistix_newly_patched_packages = glistix_patches
             .0
             .iter()
             .filter(|(old_name, patch)| {
@@ -285,8 +301,25 @@ impl<'a> StalePackageRemover<'a> {
                 // potentially affected by the patch changes.
                 Some(&**old_name)
                     .into_iter()
-                    .chain(patch.name.as_deref().into_iter())
-            })
+                    .chain(patch.name.as_deref())
+                    .chain(
+                        // Also unlock the previous renamed-to name as it is no
+                        // longer receiving a patch, so requirements will have
+                        // to be updated.
+                        manifest
+                            .glistix
+                            .preview
+                            .patch
+                            .0
+                            .get(&**old_name)
+                            .filter(|p| p.name != patch.name)
+                            .and_then(|p| p.name.as_deref()),
+                    )
+            });
+
+        // Join packages from removed patches with added and motified patches
+        let glistix_newly_patched_packages: Vec<&'a str> = glistix_packages_from_removed_patches
+            .chain(glistix_newly_patched_packages)
             .collect::<Vec<_>>();
 
         // Record all the requirements that have not changed
@@ -549,6 +582,365 @@ fn locked_unlock_new() {
         config.locked(Some(&manifest)).unwrap(),
         [locked_version("1", "1.1.0"), locked_version("2", "1.1.0"),].into()
     )
+}
+
+#[cfg(test)]
+fn generate_glistix_patches(
+    patches: impl IntoIterator<Item = (&'static str, Option<&'static str>, Requirement)>,
+) -> GlistixPatches {
+    let patches = patches
+        .into_iter()
+        .map(|(old_name, new_name, source)| {
+            (
+                EcoString::from(old_name),
+                GlistixPatch {
+                    name: new_name.map(EcoString::from),
+                    source,
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    GlistixPatches(patches)
+}
+
+#[test]
+fn glistix_locked_top_level_are_removed_with_new_patches() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("d2".into(), Requirement::hex("== 0.1.0")),
+        ("something_else".into(), Requirement::hex("== 0.1.0")),
+        ("f".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch = generate_glistix_patches([
+        ("unexistent", Some("a"), Requirement::hex("== 0.1.0")),
+        ("d1", Some("d2"), Requirement::hex("== 0.1.0")),
+        ("e", Some("something_else"), Requirement::hex("== 0.1.0")),
+        ("f", None, Requirement::hex("== 0.1.0")),
+    ]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &["b", "c"]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d1", "0.1.0", &[]),
+            manifest_package("d2", "0.1.0", &[]),
+            manifest_package("e", "0.1.0", &[]),
+            manifest_package("f", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "unexistent",
+            Some("a"),
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // a was patched but the patch didn't change, so it was kept
+            // d1, d2, e, f are the new targets of patches, removed
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+            locked_version("c", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_are_removed_with_patches_removed() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("d2".into(), Requirement::hex("== 0.1.0")),
+        ("something_else".into(), Requirement::hex("== 0.1.0")),
+        ("f".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch =
+        generate_glistix_patches([("unexistent", Some("a"), Requirement::hex("== 0.1.0"))]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &["b", "c"]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d1", "0.1.0", &[]),
+            manifest_package("d2", "0.1.0", &[]),
+            manifest_package("e", "0.1.0", &[]),
+            manifest_package("f", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([
+            ("unexistent", Some("a"), Requirement::hex("== 0.1.0")),
+            ("d1", Some("d2"), Requirement::hex("== 0.1.0")),
+            ("e", Some("something_else"), Requirement::hex("== 0.1.0")),
+            ("f", None, Requirement::hex("== 0.1.0")),
+        ])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // a was patched but the patch didn't change, so it was kept
+            // d1 was the original target of a patch, removed
+            // d2 was the rename target of a patch, removed
+            // e was the original target of a patch, removed
+            // f was the original target of a patch, removed
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+            locked_version("c", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_patches_added() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("b".into(), Requirement::hex("== 0.1.0")),
+        ("c".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch =
+        generate_glistix_patches([("c", Some("d"), Requirement::hex("== 0.1.0"))]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &[]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // c and d participating in patch, removed
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_patch_removed() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("b".into(), Requirement::hex("== 0.1.0")),
+        ("c".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch = generate_glistix_patches([]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &[]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "c",
+            Some("d"),
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // c and d participating in patch, removed
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_rename_patch_modified() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("b".into(), Requirement::hex("== 0.1.0")),
+        ("c".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch =
+        generate_glistix_patches([("c", Some("d"), Requirement::hex("== 0.1.0"))]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &[]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "c",
+            Some("b"),
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // b, c and d participating in old and new patches, removed
+            locked_version("a", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_non_rename_patch_modified() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("b".into(), Requirement::hex("== 0.1.0")),
+        ("c".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch =
+        generate_glistix_patches([("c", None, Requirement::hex("== 0.2.0"))]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &[]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "c",
+            None,
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // c patch changed, unlocked
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+            locked_version("d", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_nested_patches_added_unlocks_dependent() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+        ("h".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch = generate_glistix_patches([
+        ("m", Some("d"), Requirement::hex("== 0.1.0")),
+        ("b", Some("h"), Requirement::hex("== 0.1.0")),
+        ("f", None, Requirement::hex("== 0.1.0")),
+    ]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &["b", "c"]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &["e"]),
+            manifest_package("e", "0.1.0", &["f"]),
+            manifest_package("f", "0.1.0", &[]),
+            manifest_package("h", "0.1.0", &["g"]),
+            manifest_package("g", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "m",
+            Some("d"),
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // "a" depends on "b" which is no longer patched, so it is unlocked
+            // with "b"
+            // "h" was what "b" used to be patched to so it is also unlocked
+            // "e" depends on "f" which used to be patched so both are unlocked,
+            // however "d" can still depend on "e" since "e" itself wasn't
+            // affected
+            // "d" is also kept as its existing patch wasn't changed
+            // "g" is unlocked as it was simply a dependency of "h"
+            locked_version("c", "0.1.0"),
+            locked_version("d", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_nested_patches_removed_unlocks_dependent() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+        ("g".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch = generate_glistix_patches([
+        // This one isn't modified
+        ("m", Some("d"), Requirement::hex("== 0.1.0")),
+    ]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &["b", "c"]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &["e"]),
+            manifest_package("e", "0.1.0", &["f"]),
+            manifest_package("f", "0.1.0", &[]),
+            manifest_package("g", "0.1.0", &["h"]),
+            manifest_package("h", "0.1.0", &["i"]),
+            manifest_package("i", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([
+            ("m", Some("d"), Requirement::hex("== 0.1.0")),
+            ("b", Some("h"), Requirement::hex("== 0.1.0")),
+            ("f", None, Requirement::hex("== 0.1.0")),
+        ])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // Should be the opposite as the previous situation:
+            // Removed patches to b affecting h, and to f
+            // So all three should be unlocked
+            // However, patch to "d" is kept
+            locked_version("c", "0.1.0"),
+            locked_version("d", "0.1.0"),
+        ]
+        .into()
+    );
 }
 
 #[test]

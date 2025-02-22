@@ -250,6 +250,14 @@ pub struct GlistixPreviewManifest {
     pub patch: crate::config::GlistixPatches,
 }
 
+impl GlistixManifest {
+    pub fn with_patches(patch: crate::config::GlistixPatches) -> Self {
+        Self {
+            preview: GlistixPreviewManifest { patch },
+        }
+    }
+}
+
 fn ordered_glistix_patches<S>(
     value: &crate::config::GlistixPatches,
     serializer: S,
