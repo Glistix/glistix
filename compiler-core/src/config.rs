@@ -294,7 +294,7 @@ impl<'a> StalePackageRemover<'a> {
             .0
             .iter()
             .filter(|(old_name, patch)| {
-                manifest.glistix.preview.patch.0.get(*old_name) != Some(&patch)
+                manifest.glistix.preview.patch.0.get(*old_name) != Some(patch)
             })
             .flat_map(|(old_name, patch)| {
                 // Include both 'old_name' and 'new_name' as packages

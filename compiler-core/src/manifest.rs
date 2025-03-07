@@ -130,7 +130,7 @@ impl Manifest {
                 buffer.push_str("{ name = \"");
                 buffer.push_str(new_name);
                 buffer.push_str("\", ");
-                buffer.push_str(&patch.source.to_toml(root_path).trim_start_matches("{ "));
+                buffer.push_str(patch.source.to_toml(root_path).trim_start_matches("{ "));
             } else {
                 buffer.push_str(&patch.source.to_toml(root_path));
             }
