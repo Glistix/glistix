@@ -479,6 +479,7 @@ zzz = { version = "> 0.0.0" }
                     },
                 },
             ],
+            glistix: Default::default(),
         };
 
         let buffer = manifest.to_toml(HOME.into());
