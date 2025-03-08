@@ -2187,7 +2187,7 @@ but no type in scope with that name."
                     Diagnostic {
                         title: "Unknown type".into(),
                         text,
-                        hint: None,
+                        hint: glistix_maybe_forgot_patch_hint(path),
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -2215,7 +2215,7 @@ but no type in scope with that name."
                     Diagnostic {
                         title: "Unknown variable".into(),
                         text,
-                        hint: None,
+                        hint: glistix_maybe_forgot_patch_hint(path),
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -2337,7 +2337,7 @@ Private types can only be used within the module that defines them.",
                     Diagnostic {
                         title: "Unknown module value".into(),
                         text,
-                        hint: None,
+                        hint: glistix_maybe_forgot_patch_hint(path),
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -3106,7 +3106,7 @@ and there is no implementation for the {} target.\n",
                     Diagnostic {
                         title: "Unsupported target".into(),
                         text,
-                        hint: Some(hint),
+                        hint: glistix_maybe_forgot_patch_hint(path).or(Some(hint)),
                         level: Level::Error,
                         location: Some(Location {
                             path: path.clone(),
@@ -3992,6 +3992,16 @@ or you can publish it using a different version number"),
                 hint: Some("Please add the --replace flag if you want to replace the release.".into()),
             }],
         }
+    }
+}
+
+fn glistix_maybe_forgot_patch_hint(path: &Utf8PathBuf) -> Option<String> {
+    if path.as_str().contains("gleam_stdlib") {
+        Some(wrap("You may have forgotten to patch 'gleam_stdlib' with 'glistix_stdlib' as per the Glistix handbook instructions (see https://glistix.github.io/book)."))
+    } else if path.as_str().contains("build") {
+        Some(wrap("If this error occurs in a dependency, check if it supports the Nix target. If it doesn't, try patching it with a fork implementing Nix support (see https://glistix.github.io/book)."))
+    } else {
+        None
     }
 }
 
