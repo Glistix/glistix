@@ -11,7 +11,7 @@ fn test_shell_program_not_found_error() {
         for os in &oses {
             if os != &"linux" {
                 let err = Error::ShellProgramNotFound {
-                    program: (*cmd).to_string(),
+                    program: cmd.to_string(),
                     os: parse_os(os, "other"),
                 }
                 .to_diagnostics();
@@ -22,7 +22,7 @@ fn test_shell_program_not_found_error() {
             } else {
                 for distro in &distros {
                     let err = Error::ShellProgramNotFound {
-                        program: (*cmd).to_string(),
+                        program: cmd.to_string(),
                         os: parse_os(os, distro),
                     }
                     .to_diagnostics();
