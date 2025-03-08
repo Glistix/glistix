@@ -260,7 +260,6 @@ impl<'a> StalePackageRemover<'a> {
             .iter()
             .map(|p| (p.name.clone(), &p.requirements))
             .collect();
-
         Self {
             fresh: HashSet::new(),
             locked,
@@ -276,6 +275,7 @@ impl<'a> StalePackageRemover<'a> {
     ) -> Result<HashMap<EcoString, Version>> {
         // TODO: Don't unlock dependents of newly-patched packages when only the
         // version changed, but not any names
+
         // Track packages from removed patches so they are re-fetched or removed
         let glistix_packages_from_removed_patches = manifest
             .glistix
