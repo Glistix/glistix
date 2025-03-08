@@ -230,8 +230,8 @@ glistix_gleeunit = "{GLEEUNIT_REQUIREMENT}"
 # This is needed so stdlib will work on the Nix target.
 gleam_stdlib = {{ name = "glistix_stdlib", version = "{GLISTIX_STDLIB_REQUIREMENT}" }}
 # otherpkg = "3.4.5" # change version
-# anotherpkg = {{ path = "./external/submodule" }} # point to local dependency
-# renamedpkg = {{ name = "anotherpkg", path = "./external/submodule" }}
+# anotherpkg = {{ path = "./external/submodule1" }} # point to local dependency
+# renamedpkg = {{ name = "differentpkg", path = "./external/submodule2" }}
 
 [glistix.preview]
 # If you're patching a package using a local dependency/Git submodule and you
