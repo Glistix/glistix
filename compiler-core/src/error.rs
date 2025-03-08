@@ -3996,10 +3996,16 @@ or you can publish it using a different version number"),
 }
 
 fn glistix_maybe_forgot_patch_hint(path: &Utf8PathBuf) -> Option<String> {
+    const GLISTIX_BOOK_LINK: &str = "https://glistix.github.io/book";
+
     if path.as_str().contains("gleam_stdlib") {
-        Some(wrap("You may have forgotten to patch 'gleam_stdlib' with 'glistix_stdlib' as per the Glistix handbook instructions (see https://glistix.github.io/book)."))
+        Some(wrap_format!(
+            "You may have forgotten to patch 'gleam_stdlib' with 'glistix_stdlib'
+as per the Glistix handbook's instructions (see {GLISTIX_BOOK_LINK} for details)."
+        ))
     } else if path.as_str().contains("build") {
-        Some(wrap("If this error occurs in a dependency, check if it supports the Nix target. If it doesn't, try patching it with a fork implementing Nix support (see https://glistix.github.io/book)."))
+        Some(wrap_format!("If this error occurs in a dependency, check if it supports the Nix target.
+If it doesn't, try patching it with a fork implementing Nix support (see {GLISTIX_BOOK_LINK} for details)."))
     } else {
         None
     }
