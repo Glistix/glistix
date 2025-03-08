@@ -4003,7 +4003,7 @@ fn glistix_maybe_forgot_patch_hint(path: &Utf8PathBuf) -> Option<String> {
             "You may have forgotten to patch 'gleam_stdlib' with 'glistix_stdlib'
 as per the Glistix handbook's instructions (see {GLISTIX_BOOK_LINK} for details)."
         ))
-    } else if path.as_str().contains("build") {
+    } else if path.as_str().contains("build/packages") {
         Some(wrap_format!("If this error occurs in a dependency, check if it supports the Nix target.
 If it doesn't, try patching it with a fork implementing Nix support (see {GLISTIX_BOOK_LINK} for details)."))
     } else {
