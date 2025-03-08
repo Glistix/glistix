@@ -490,6 +490,11 @@ fn get_manifest<Telem: Telemetry>(
             &config.all_direct_dependencies()?,
             paths.root(),
         )?
+        && glistix_is_same_patches(
+            &manifest.glistix.preview.patch,
+            &config.glistix.preview.patch,
+            paths.root(),
+        )?
     {
         tracing::debug!("manifest_up_to_date");
         Ok((false, manifest))
@@ -519,6 +524,45 @@ fn is_same_requirements(
 
     for (key, requirement1) in requirements1 {
         if !same_requirements(requirement1, requirements2.get(key), root_path)? {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+/// Check whether all patches are identical.
+///
+/// This is supposed to be almost identical to the function above, while
+/// also checking if the 'renamed-to' names of packages are also the same.
+fn glistix_is_same_patches(
+    patches1: &glistix_core::config::GlistixPatches,
+    patches2: &glistix_core::config::GlistixPatches,
+    root_path: &Utf8Path,
+) -> Result<bool> {
+    let patches1 = &patches1.0;
+    let patches2 = &patches2.0;
+    if patches1.len() != patches2.len() {
+        return Ok(false);
+    }
+
+    // NOTE: In principle, we consider that patches don't affect each other,
+    // or ignore any behavior similar to that.
+    for (key, patch) in patches1 {
+        let glistix_core::config::GlistixPatch {
+            name: name1,
+            source: patch1,
+        } = patch;
+
+        let Some(glistix_core::config::GlistixPatch {
+            name: name2,
+            source: patch2,
+        }) = patches2.get(key)
+        else {
+            return Ok(false);
+        };
+
+        if name1 != name2 || !same_requirements(patch1, Some(patch2), root_path)? {
             return Ok(false);
         }
     }
