@@ -18,36 +18,43 @@ target = "nix"
 # https://gleam.run/writing-gleam/gleam-toml/.
 
 [dependencies]
-gleam_stdlib = ">= 0.44.0 and < 2.0.0"
+# Use Glistix-maintained fork of the Gleam standard library with support for the
+# Nix target.
+#
+# Consider depending on gleam_stdlib instead if you're publishing a package to
+# non-Glistix users on Hex (Glistix users can still patch gleam_stdlib on their
+# projects). Otherwise, you can depend on the fork directly.
+glistix_stdlib = ">= 0.34.0 and < 2.0.0"
 
 [dev-dependencies]
 glistix_gleeunit = ">= 1.0.0 and < 2.0.0"
 
 # The [glistix.preview] namespace contains useful settings which will be needed
 # during Glistix beta. In the future, we hope these won't be necessary anymore.
+# None of the settings below are recognized by the official Gleam compiler.
 
-# The section below allows you to replace dependencies with alternative packages,
+# The section below allows replacing transitive dependencies with other packages,
 # such as forks providing support for the Nix target. For example, `gleam_stdlib`
-# does not support the Nix target by default, so we replace it with the `glistix_stdlib`
-# fork. You can also specify local dependencies here.
+# does not support the Nix target, so we replace it with the `glistix_stdlib` fork.
+# Replacing Hex packages with local packages is also supported (and Git packages
+# in a future Glistix version).
+#
+# Specifying a version (or local path) is always required.
+#
+# NOTE: This section is ignored when publishing to Hex. It is only read on top-level
+# Glistix projects. However, it can still be useful on packages to allow running unit
+# tests, so you can keep this here regardless. Just keep this in mind if a user
+# complains about a missing dependency: they are responsible for patching.
 [glistix.preview.patch]
-# Replace 'gleam_stdlib' with 'glistix_stdlib' for this package and all transitive dependencies.
+# Replaces 'gleam_stdlib' with 'glistix_stdlib' on all transitive dependencies.
 # This is needed so stdlib will work on the Nix target.
 gleam_stdlib = { name = "glistix_stdlib", version = ">= 0.34.0 and < 2.0.0" }
+# otherpkg = "3.4.5" # change version
+# anotherpkg = { path = "./external/submodule" } # point to local dependency
+# renamedpkg = { name = "anotherpkg", path = "./external/submodule" }
 
 [glistix.preview]
 # If you're patching a package using a local dependency/Git submodule and you
-# get a local dependency conflict error, add it to the list below.
-# local-overrides = ["gleam_stdlib"]
-
-# The section below allows publishing your package to Hex despite having
-# local dependencies, by declaring that you depend on another Hex package
-# instead.
-# This could be needed to be able to patch some package locally for Nix
-# compatibility during development and at the same time publish to Hex without the
-# patch.
-# The section below should only be used for this purpose. Please do not abuse
-# this feature, as it is mostly a temporary workaround while Gleam doesn't have
-# its own dependency patching system.
-[glistix.preview.hex-patch]
-# gleam_stdlib = ">= 0.44.0 and < 2.0.0"
+# get a local dependency conflict error, add its name to the list below.
+# This setting might be deprecated in the future.
+local-overrides = []
