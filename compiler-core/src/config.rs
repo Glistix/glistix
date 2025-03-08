@@ -1220,11 +1220,20 @@ pub struct GlistixPatches(pub HashMap<EcoString, GlistixPatch>);
 
 impl PackageConfig {
     /// Apply patches to the root config.
+    ///
+    /// This is identical to [`GlistixPatches::patch_config`], however it
+    /// has to be reimplemented to avoid conflicting borrows on `self` (one
+    /// borrowing `GlistixPatches` itself and another borrowing the whole config).
     pub fn apply_glistix_patches(&mut self) {
         self.glistix
             .preview
             .patch
             .patch_req_hash_map(&mut self.dependencies, true);
+
+        self.glistix
+            .preview
+            .patch
+            .patch_req_hash_map(&mut self.dev_dependencies, true);
     }
 
     /// Apply patches to the root config (owned version).
@@ -1319,6 +1328,7 @@ impl GlistixPatches {
     /// patches.
     pub fn patch_config(&self, config: &mut PackageConfig, is_root: bool) {
         self.patch_req_hash_map(&mut config.dependencies, is_root);
+        self.patch_req_hash_map(&mut config.dev_dependencies, is_root);
     }
 
     /// Patch all requirements of a hex package.
@@ -1467,6 +1477,168 @@ fn glistix_test_patch_deps() {
 
     assert_eq!(
         config.with_glistix_patches_applied().dependencies,
+        [
+            (EcoString::from("hex_to_hex"), Requirement::hex("== 5.0.0")),
+            (
+                EcoString::from("local_to_hex"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("hex_to_local"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("local_to_local"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("hex_did_rename"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("local_did_rename"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("hex_to_local_did_rename"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("unpatched_hex"),
+                Requirement::hex(">= 1.0.0")
+            ),
+            (
+                EcoString::from("unpatched_local"),
+                Requirement::path("./external/local")
+            ),
+            // Any 'to local' patches must become dependencies so they are provided.
+            // Unused 'to hex' patches do not, however, as they are fetched on the fly.
+            (
+                EcoString::from("unused_did_local_rename"),
+                Requirement::path("./external/patched")
+            ),
+        ]
+        .into_iter()
+        .collect()
+    );
+}
+
+#[test]
+fn glistix_test_patch_dev_deps() {
+    let config = PackageConfig {
+        dev_dependencies: [
+            (EcoString::from("hex_to_hex"), Requirement::hex(">= 1.0.0")),
+            (
+                EcoString::from("local_to_hex"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("hex_to_local"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("local_to_local"),
+                Requirement::path("./external/local"),
+            ),
+            (EcoString::from("hex_rename"), Requirement::hex(">= 1.0.0")),
+            (
+                EcoString::from("local_rename"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("hex_to_local_rename"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("unpatched_hex"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("unpatched_local"),
+                Requirement::path("./external/local"),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        glistix: GlistixConfig {
+            preview: GlistixPreviewConfig {
+                patch: GlistixPatches(
+                    [
+                        (
+                            EcoString::from("hex_to_hex"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_to_hex"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_to_local"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_to_local"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("hex_did_rename")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("local_did_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_to_local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("hex_to_local_did_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("unused_hex_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("unused_did_hex_rename")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("unused_local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("unused_did_local_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+                ..Default::default()
+            },
+        },
+        ..Default::default()
+    };
+
+    assert_eq!(
+        config.with_glistix_patches_applied().dev_dependencies,
         [
             (EcoString::from("hex_to_hex"), Requirement::hex("== 5.0.0")),
             (
