@@ -1235,6 +1235,7 @@ impl PackageConfig {
 impl GlistixPatches {
     /// Replace this package's name with another if necessary.
     /// Otherwise, returns the package's original name.
+    #[allow(unused)]
     pub fn replace_name<'s: 'n, 'n>(&'s self, name: &'n str) -> &'n str {
         self.0
             .get(name)
@@ -1249,11 +1250,6 @@ impl GlistixPatches {
             .get(&name)
             .and_then(|r| r.name.clone())
             .unwrap_or(name)
-    }
-
-    /// Replace this package's requirement with another if necessary.
-    pub fn replace_package(&self, name: &str) -> Option<Requirement> {
-        self.0.get(name).map(|r| r.source.clone())
     }
 
     /// Replace all packages in a requirements hash map according to this
@@ -1317,117 +1313,22 @@ impl GlistixPatches {
         }
     }
 
-    /// Patch a hash map of version ranges according to the specified
-    /// patches. Must not correspond to root dependencies.
-    pub fn patch_range_hash_map(&self, deps: &mut HashMap<EcoString, version::Range>) {
-        for (old_name, patch) in &self.0 {
-            if let Some(mut dep) = deps.get(old_name).cloned() {
-                // If the patched-to package is a local or git package, it is
-                // provided and so always overrides hex dependencies, so we
-                // don't need to change the dependency version at all since
-                // the version will be whichever version is locally available.
-                if let Requirement::Hex { version } = &patch.source {
-                    dep = version.clone();
-                }
-
-                // Insert replacing dependency with updated name and version
-                _ = deps.insert(patch.name.as_ref().unwrap_or(old_name).clone(), dep);
-            }
-
-            if patch
-                .name
-                .as_ref()
-                .is_some_and(|new_name| new_name != old_name)
-            {
-                // Remove replaced dependency
-                _ = deps.remove(old_name);
-            }
-        }
-    }
-
-    /// Replace all packages in an owned hash map according to this instance's stored
-    /// patches.
-    pub fn patch_owned_hash_map(
-        &self,
-        mut deps: HashMap<EcoString, Requirement>,
-        is_root: bool,
-    ) -> HashMap<EcoString, Requirement> {
-        self.patch_req_hash_map(&mut deps, is_root);
-        deps
-    }
-
     /// Replace all packages in a config according to this instance's stored
     /// patches.
     pub fn patch_config(&self, config: &mut PackageConfig, is_root: bool) {
         self.patch_req_hash_map(&mut config.dependencies, is_root);
     }
 
-    /// Replace a hex package's name.
+    /// Patch all requirements of a hex package.
+    ///
+    /// The name of the package itself is assumed to be final and kept unchanged
+    /// regardless of patches, especially since this package might just be the
+    /// result of an earlier patch, in which case we still need to patch
+    /// requirements.
     pub fn patch_hex_package(&self, package: &mut hexpm::Package) {
-        if let Some(patch) = self.0.get(&*package.name) {
-            // package.name = name.into();
-            // TODO: Maybe this is fine since we have to patch deps anyway
-            tracing::warn!(
-                from=?package.name,
-                to=?patch.name,
-                new_source=?patch.source,
-                "Tried to patch top-level package!",
-            );
-        }
-
         for release in &mut package.releases {
             self.patch_dep_hash_map(&mut release.requirements);
         }
-    }
-
-    /// Replace name and requirements in an iterator, as needed.
-    /// If 'is_root' is true, this will append all replacing local and Git
-    /// requirements, even if they don't replace anything originally, so they
-    /// can be provided.
-    pub fn patch_name_req_iter<
-        's: 'a,
-        'a: 's,
-        I: Iterator<Item = (&'a EcoString, &'a Requirement)> + 's,
-    >(
-        &'s self,
-        iter: I,
-        is_root: bool,
-    ) -> impl Iterator<Item = (&'s EcoString, &'s Requirement)> + use<'a, 's, I> {
-        let (root_iter, non_root_iter) = if is_root {
-            // Non-replaced requirements + All replacing requirements
-            (
-                Some(iter.filter(|(name, _)| !self.0.contains_key(*name)).chain(
-                    self.replacement_name_req_iter().filter(|(_, req)| {
-                        matches!(req, Requirement::Path { .. } | Requirement::Git { .. })
-                    }),
-                )),
-                None,
-            )
-        } else {
-            // Non-replaced requirements + Replaced requirements
-            (
-                None,
-                Some(iter.map(|(name, requirement)| match self.0.get(name) {
-                    Some(GlistixPatch {
-                        name: new_name,
-                        source,
-                    }) => (new_name.as_ref().unwrap_or(name), source),
-                    None => (name, requirement),
-                })),
-            )
-        };
-
-        root_iter
-            .into_iter()
-            .flatten()
-            .chain(non_root_iter.into_iter().flatten())
-    }
-
-    /// An iterator over all replacing (not replaced) packages.
-    pub fn replacement_name_req_iter(&self) -> impl Iterator<Item = (&EcoString, &Requirement)> {
-        self.0
-            .iter()
-            .map(|(old_name, patch)| (patch.name.as_ref().unwrap_or(old_name), &patch.source))
     }
 }
 
