@@ -3645,7 +3645,7 @@ Fix the warnings and try again."
                 crate::nix::Error::Unsupported { feature, location } => vec![Diagnostic {
                     title: "Unsupported feature for compilation target".into(),
                     text: format!("{feature} is not supported for Nix compilation."),
-                    hint: None,
+                    hint: glistix_maybe_forgot_patch_hint(path),
                     level: Level::Error,
                     location: Some(Location {
                         label: Label {
