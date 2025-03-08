@@ -229,8 +229,8 @@ glistix_gleeunit = "{GLEEUNIT_REQUIREMENT}"
 # Replaces 'gleam_stdlib' with 'glistix_stdlib' on all transitive dependencies.
 # This is needed so stdlib will work on the Nix target.
 gleam_stdlib = {{ name = "glistix_stdlib", version = "{GLISTIX_STDLIB_REQUIREMENT}" }}
-# otherpkg = "3.4.5" # change version
-# anotherpkg = {{ path = "./external/submodule1" }} # point to local dependency
+# otherpkg = {{ version = "3.4.5" }} # replace with another Hex version
+# anotherpkg = {{ path = "./external/submodule1" }} # replace with local package
 # renamedpkg = {{ name = "differentpkg", path = "./external/submodule2" }}
 
 [glistix.preview]
