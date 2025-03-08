@@ -1019,7 +1019,11 @@ async fn lookup_package(
                 .requirements
                 .keys()
                 .map(|s| EcoString::from(s.as_str()))
-                .map(|s| glistix_patches.replace_name_ecostring(s))
+                .map(|s| {
+                    // Ensure dependencies renamed by a patch are also renamed
+                    // in the 'requirements' section of dependents in the manifest.
+                    glistix_patches.replace_name_ecostring(s)
+                })
                 .collect_vec();
             Ok(ManifestPackage {
                 name: name.into(),
