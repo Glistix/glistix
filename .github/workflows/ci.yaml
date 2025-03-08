@@ -235,6 +235,15 @@ jobs:
         working-directory: ./test/project_javascript
         if: ${{ matrix.run-integration-tests }}
 
+      - name: test/glistix_project_nix
+        run: |
+          glistix run
+          glistix check
+          glistix test
+          glistix docs build
+        working-directory: ./test/glistix_project_nix
+        if: ${{ matrix.run-integration-tests }}
+
       - name: test/project_path_deps
         run: |
           glistix update

@@ -304,8 +304,7 @@ pub struct NewOptions {
     #[arg(long, ignore_case = true, default_value = "nix", help = template_doc())]
     pub template: new::Template,
 
-    /// Skip git initialization and creation of external/{stdlib,gleeunit}, .gitignore,
-    /// .git/* and .github/* files
+    /// Skip git initialization and creation of .gitignore, .git/* and .github/* files
     #[arg(long)]
     pub skip_git: bool,
 

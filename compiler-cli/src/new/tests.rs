@@ -29,10 +29,6 @@ fn new() {
     assert!(path.join("test/my_project_test.gleam").exists());
     assert!(path.join(".github/workflows/test.yml").exists());
 
-    // Don't add external/stdlib to testing as they depend on
-    // the network
-    assert!(path.join("external").exists());
-
     assert!(path.join("flake.nix").exists());
     assert!(path.join("default.nix").exists());
     assert!(path.join("shell.nix").exists());
