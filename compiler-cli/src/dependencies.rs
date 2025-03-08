@@ -239,6 +239,13 @@ pub fn download<Telem: Telemetry>(
     let mut config = crate::config::read(paths.root_config())?;
     let project_name = config.name.clone();
 
+    // GLISTIX: Ensure config's patches are consistent
+    config
+        .glistix
+        .preview
+        .patch
+        .check_for_conflicting_patches()?;
+
     // Insert the new packages to add, if it exists
     if let Some((packages, dev)) = new_package {
         for (package, requirement) in packages {

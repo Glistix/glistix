@@ -1244,6 +1244,46 @@ impl PackageConfig {
 }
 
 impl GlistixPatches {
+    /// Used as a workaround for determinism in case of overlapping patches.
+    fn sorted_iter(&self) -> impl Iterator<Item = (&EcoString, &GlistixPatch)> {
+        itertools::Itertools::sorted_unstable_by_key(self.0.iter(), |i| {
+            (
+                i.0,
+                &i.1.name,
+                match &i.1.source {
+                    Requirement::Hex { version } => version.as_str(),
+                    Requirement::Path { path } => path.as_str(),
+                    Requirement::Git { git, .. } => git.as_str(),
+                },
+            )
+        })
+    }
+
+    /// Check if a package is being patched to a certain source, and another
+    /// package is being renamed to that package with a different source. Then,
+    /// patching behavior would be unspecified and depend on order.
+    pub fn check_for_conflicting_patches(&self) -> Result<()> {
+        if let Some((package, conflicting_rename)) = self.0.iter().find_map(|(name, original)| {
+            self.0.iter().find_map(|(other_name, other)| {
+                if other.name.as_ref() == Some(name)
+                    && (original.name.as_ref().is_some_and(|rename| rename != name)
+                        || original.source != other.source)
+                {
+                    Some((name.clone(), other_name.clone()))
+                } else {
+                    None
+                }
+            })
+        }) {
+            Err(Error::GlistixConflictingPatches {
+                package,
+                conflicting_rename,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
     /// Replace this package's name with another if necessary.
     /// Otherwise, returns the package's original name.
     #[allow(unused)]
@@ -1266,7 +1306,7 @@ impl GlistixPatches {
     /// Replace all packages in a requirements hash map according to this
     /// instance's stored patches.
     pub fn patch_req_hash_map(&self, deps: &mut HashMap<EcoString, Requirement>, is_root: bool) {
-        for (old_name, patch) in &self.0 {
+        for (old_name, patch) in self.sorted_iter() {
             // If the replaced package is present, insert the replacing package.
             // Alternatively, forcefully insert the replacing package as a root
             // dependency so it is provided if it's a local or git package.
@@ -1297,7 +1337,7 @@ impl GlistixPatches {
     /// Patch a hash map of hexpm dependencies according to the specified
     /// patches. Must not correspond to root dependencies.
     pub fn patch_dep_hash_map(&self, deps: &mut HashMap<String, hexpm::Dependency>) {
-        for (old_name, patch) in &self.0 {
+        for (old_name, patch) in self.sorted_iter() {
             if let Some(mut dep) = deps.get(&**old_name).cloned() {
                 // If the patched-to package is a local or git package, it is
                 // provided and so always overrides hex dependencies, so we
@@ -1474,6 +1514,13 @@ fn glistix_test_patch_deps() {
         },
         ..Default::default()
     };
+
+    assert!(config
+        .glistix
+        .preview
+        .patch
+        .check_for_conflicting_patches()
+        .is_ok());
 
     assert_eq!(
         config.with_glistix_patches_applied().dependencies,
@@ -1684,6 +1731,190 @@ fn glistix_test_patch_dev_deps() {
         .collect()
     );
 }
+
+// Overlapping patches will be applied in unspecified, but consistent, order.
+#[test]
+fn glistix_test_conflicting_overlapping_patches() {
+    let config = PackageConfig {
+        dependencies: [
+            (
+                EcoString::from("B_first_rename_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("A_first_renamed_to_receiver"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("D_second_renamed_to_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("C_second_rename_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        glistix: GlistixConfig {
+            preview: GlistixPreviewConfig {
+                patch: GlistixPatches(
+                    [
+                        (
+                            EcoString::from("A_first_renamed_to_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("B_first_rename_receiver")),
+                                source: Requirement::hex("== 10.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("B_first_rename_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("first_renamed")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("C_second_rename_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("second_renamed")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("D_second_renamed_to_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("C_second_rename_receiver")),
+                                source: Requirement::hex("== 10.0.0"),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+                ..Default::default()
+            },
+        },
+        ..Default::default()
+    };
+
+    assert!(config
+        .glistix
+        .preview
+        .patch
+        .check_for_conflicting_patches()
+        .is_err());
+
+    assert_eq!(
+        config.with_glistix_patches_applied().dependencies,
+        [
+            (
+                EcoString::from("first_renamed"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("C_second_rename_receiver"),
+                Requirement::hex("== 10.0.0")
+            ),
+            (
+                EcoString::from("second_renamed"),
+                Requirement::hex("== 5.0.0")
+            ),
+        ]
+        .into_iter()
+        .collect()
+    );
+}
+
+#[test]
+fn glistix_test_non_conflicting_overlapping_patches() {
+    let config = PackageConfig {
+        dependencies: [
+            (
+                EcoString::from("B_first_rename_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("A_first_renamed_to_receiver"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("D_second_renamed_to_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("C_second_rename_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        glistix: GlistixConfig {
+            preview: GlistixPreviewConfig {
+                patch: GlistixPatches(
+                    [
+                        (
+                            EcoString::from("A_first_renamed_to_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("B_first_rename_receiver")),
+                                source: Requirement::path("./external/path"),
+                            },
+                        ),
+                        (
+                            EcoString::from("B_first_rename_receiver"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/path"),
+                            },
+                        ),
+                        (
+                            EcoString::from("C_second_rename_receiver"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("D_second_renamed_to_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("C_second_rename_receiver")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+                ..Default::default()
+            },
+        },
+        ..Default::default()
+    };
+
+    assert!(config
+        .glistix
+        .preview
+        .patch
+        .check_for_conflicting_patches()
+        .is_ok());
+
+    assert_eq!(
+        config.with_glistix_patches_applied().dependencies,
+        [
+            (
+                EcoString::from("B_first_rename_receiver"),
+                Requirement::path("./external/path"),
+            ),
+            (
+                EcoString::from("C_second_rename_receiver"),
+                Requirement::hex("== 5.0.0")
+            ),
+        ]
+        .into_iter()
+        .collect()
+    );
+}
+
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Repository {
