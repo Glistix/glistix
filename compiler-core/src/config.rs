@@ -1269,6 +1269,9 @@ impl GlistixPatches {
                     && (original.name.as_ref().is_some_and(|rename| rename != name)
                         || original.source != other.source)
                 {
+                    // TODO: Consider using 'is_same_requirements()' from CLI
+                    // here, i.e., not conflicting if the paths resolve to the
+                    // same location.
                     Some((name.clone(), other_name.clone()))
                 } else {
                     None

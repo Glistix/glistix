@@ -725,7 +725,7 @@ fn resolve_versions<Telem: Telemetry>(
 
     // GLISTIX: Provide local and Git patches
     for (name, patch) in &config.glistix.preview.patch.0 {
-        let name = patch.name.as_ref().unwrap_or(name).clone();
+        let name = patch.name.as_ref().unwrap_or(name);
         match &patch.source {
             Requirement::Hex { .. } => {}
             Requirement::Path { path } => {
