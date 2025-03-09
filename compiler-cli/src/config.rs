@@ -15,6 +15,12 @@ pub fn root_config() -> Result<PackageConfig, Error> {
     read(paths.root_config())
 }
 
+pub fn root_config_unpatched() -> Result<PackageConfig, Error> {
+    let dir = get_project_root(get_current_directory()?)?;
+    let paths = ProjectPaths::new(dir);
+    read_unpatched(paths.root_config())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum PackageKind {
     Dependency,
@@ -28,6 +34,7 @@ pub fn find_package_config_for_module(
     manifest: &Manifest,
     project_paths: &ProjectPaths,
 ) -> Result<(PackageConfig, PackageKind), Error> {
+    let root_config = root_config()?;
     for package in &manifest.packages {
         // Not a Gleam package
         if !package.build_tools.contains(&"gleam".into()) {
@@ -43,11 +50,21 @@ pub fn find_package_config_for_module(
             continue;
         }
 
-        let configuration = read(root.join("gleam.toml"))?;
+        // Since this is a submodule, we should be using the parent's
+        // patches, whichever they are.
+        let mut configuration = read_unpatched(root.join("gleam.toml"))?;
+
+        root_config
+            .glistix
+            .preview
+            .patch
+            .patch_config(&mut configuration, project_paths.root());
+
         return Ok((configuration, PackageKind::Dependency));
     }
 
-    Ok((root_config()?, PackageKind::Root))
+    // Using the root config, already patched.
+    Ok((root_config, PackageKind::Root))
 }
 
 fn package_root(package: &ManifestPackage, project_paths: &ProjectPaths) -> Utf8PathBuf {
@@ -60,7 +77,17 @@ fn package_root(package: &ManifestPackage, project_paths: &ProjectPaths) -> Utf8
     }
 }
 
+/// Default to patching with the config's own patches.
+///
+/// However, note that sometimes it is necessary to use another config's
+/// patches instead of its own. This can be observed, in particular, when
+/// loading provided (local and Git) dependencies of the root project: the root
+/// project's config shall prevail in that case, not the dependencies'.
 pub fn read(config_path: Utf8PathBuf) -> Result<PackageConfig, Error> {
+    read_unpatched(config_path).map(PackageConfig::with_glistix_patches_applied)
+}
+
+pub fn read_unpatched(config_path: Utf8PathBuf) -> Result<PackageConfig, Error> {
     let toml = crate::fs::read(&config_path)?;
     let config: PackageConfig = toml::from_str(&toml).map_err(|e| Error::FileIo {
         action: FileIoAction::Parse,

@@ -191,6 +191,7 @@ impl PackageConfig {
                 let fresh_and_locked = stale_package_remover::StalePackageRemover::fresh_and_locked(
                     &requirements,
                     manifest,
+                    &self.glistix.preview.patch,
                 );
                 Ok(fresh_and_locked)
             }
@@ -282,6 +283,7 @@ fn locked_no_changes() {
             manifest_package("dev1", "1.1.0", &[]),
             manifest_package("dev2", "1.2.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
@@ -308,6 +310,7 @@ fn locked_some_removed() {
             manifest_package("dev1", "1.1.0", &[]),  // Not in config
             manifest_package("dev2", "1.2.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
@@ -348,6 +351,7 @@ fn locked_some_changed() {
             manifest_package("dev1", "1.1.0", &[]),
             manifest_package("dev2", "1.2.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
@@ -393,6 +397,7 @@ fn locked_nested_are_removed_too() {
             manifest_package("2.2.2", "2.1.0", &[]),
             manifest_package("shared", "2.1.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
@@ -433,11 +438,371 @@ fn locked_unlock_new() {
             manifest_package("2", "1.1.0", &["3"]),
             manifest_package("3", "1.1.0", &[]),
         ],
+        glistix: Default::default(),
     };
     assert_eq!(
         config.locked(Some(&manifest)).unwrap(),
         [locked_version("1", "1.1.0"), locked_version("2", "1.1.0"),].into()
     )
+}
+
+#[cfg(test)]
+fn generate_glistix_patches(
+    patches: impl IntoIterator<Item = (&'static str, Option<&'static str>, Requirement)>,
+) -> GlistixPatches {
+    let patches = patches
+        .into_iter()
+        .map(|(old_name, new_name, source)| {
+            (
+                EcoString::from(old_name),
+                GlistixPatch {
+                    name: new_name.map(EcoString::from),
+                    source,
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    GlistixPatches(patches)
+}
+
+#[test]
+fn glistix_locked_top_level_are_removed_with_new_patches() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("d2".into(), Requirement::hex("== 0.1.0")),
+        ("something_else".into(), Requirement::hex("== 0.1.0")),
+        ("f".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch = generate_glistix_patches([
+        ("unexistent", Some("a"), Requirement::hex("== 0.1.0")),
+        ("d1", Some("d2"), Requirement::hex("== 0.1.0")),
+        ("e", Some("something_else"), Requirement::hex("== 0.1.0")),
+        ("f", None, Requirement::hex("== 0.1.0")),
+    ]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &["b", "c"]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d1", "0.1.0", &[]),
+            manifest_package("d2", "0.1.0", &[]),
+            manifest_package("e", "0.1.0", &[]),
+            manifest_package("f", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "unexistent",
+            Some("a"),
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // a was patched but the patch didn't change, so it was kept
+            // d1, d2, e, f are the new targets of patches, removed
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+            locked_version("c", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_are_removed_with_patches_removed() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("d2".into(), Requirement::hex("== 0.1.0")),
+        ("something_else".into(), Requirement::hex("== 0.1.0")),
+        ("f".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch =
+        generate_glistix_patches([("unexistent", Some("a"), Requirement::hex("== 0.1.0"))]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &["b", "c"]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d1", "0.1.0", &[]),
+            manifest_package("d2", "0.1.0", &[]),
+            manifest_package("e", "0.1.0", &[]),
+            manifest_package("f", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([
+            ("unexistent", Some("a"), Requirement::hex("== 0.1.0")),
+            ("d1", Some("d2"), Requirement::hex("== 0.1.0")),
+            ("e", Some("something_else"), Requirement::hex("== 0.1.0")),
+            ("f", None, Requirement::hex("== 0.1.0")),
+        ])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // a was patched but the patch didn't change, so it was kept
+            // d1 was the original target of a patch, removed
+            // d2 was the rename target of a patch, removed
+            // e was the original target of a patch, removed
+            // f was the original target of a patch, removed
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+            locked_version("c", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_patches_added() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("b".into(), Requirement::hex("== 0.1.0")),
+        ("c".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch =
+        generate_glistix_patches([("c", Some("d"), Requirement::hex("== 0.1.0"))]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &[]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // c and d participating in patch, removed
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_patch_removed() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("b".into(), Requirement::hex("== 0.1.0")),
+        ("c".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch = generate_glistix_patches([]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &[]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "c",
+            Some("d"),
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // c and d participating in patch, removed
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_rename_patch_modified() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("b".into(), Requirement::hex("== 0.1.0")),
+        ("c".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch =
+        generate_glistix_patches([("c", Some("d"), Requirement::hex("== 0.1.0"))]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &[]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "c",
+            Some("b"),
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // b, c and d participating in old and new patches, removed
+            locked_version("a", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_top_level_non_rename_patch_modified() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("b".into(), Requirement::hex("== 0.1.0")),
+        ("c".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch =
+        generate_glistix_patches([("c", None, Requirement::hex("== 0.2.0"))]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &[]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "c",
+            None,
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // c patch changed, unlocked
+            locked_version("a", "0.1.0"),
+            locked_version("b", "0.1.0"),
+            locked_version("d", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_nested_patches_added_unlocks_dependent() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+        ("h".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch = generate_glistix_patches([
+        ("m", Some("d"), Requirement::hex("== 0.1.0")),
+        ("b", Some("h"), Requirement::hex("== 0.1.0")),
+        ("f", None, Requirement::hex("== 0.1.0")),
+    ]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &["b", "c"]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &["e"]),
+            manifest_package("e", "0.1.0", &["f"]),
+            manifest_package("f", "0.1.0", &[]),
+            manifest_package("h", "0.1.0", &["g"]),
+            manifest_package("g", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([(
+            "m",
+            Some("d"),
+            Requirement::hex("== 0.1.0"),
+        )])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // "a" depends on "b" which is no longer patched, so it is unlocked
+            // with "b"
+            // "h" was what "b" used to be patched to so it is also unlocked
+            // "e" depends on "f" which used to be patched so both are unlocked,
+            // however "d" can still depend on "e" since "e" itself wasn't
+            // affected
+            // "d" is also kept as its existing patch wasn't changed
+            // "g" is unlocked as it was simply a dependency of "h"
+            locked_version("c", "0.1.0"),
+            locked_version("d", "0.1.0"),
+        ]
+        .into()
+    );
+}
+
+#[test]
+fn glistix_locked_nested_patches_removed_unlocks_dependent() {
+    let mut config = PackageConfig::default();
+    config.dependencies = [
+        ("a".into(), Requirement::hex("== 0.1.0")),
+        ("d".into(), Requirement::hex("== 0.1.0")),
+        ("g".into(), Requirement::hex("== 0.1.0")),
+    ]
+    .into();
+    config.dev_dependencies = [].into();
+    config.glistix.preview.patch = generate_glistix_patches([
+        // This one isn't modified
+        ("m", Some("d"), Requirement::hex("== 0.1.0")),
+    ]);
+    let manifest = Manifest {
+        requirements: config.dependencies.clone(),
+        packages: vec![
+            manifest_package("a", "0.1.0", &["b", "c"]),
+            manifest_package("b", "0.1.0", &[]),
+            manifest_package("c", "0.1.0", &[]),
+            manifest_package("d", "0.1.0", &["e"]),
+            manifest_package("e", "0.1.0", &["f"]),
+            manifest_package("f", "0.1.0", &[]),
+            manifest_package("g", "0.1.0", &["h"]),
+            manifest_package("h", "0.1.0", &["i"]),
+            manifest_package("i", "0.1.0", &[]),
+        ],
+        glistix: crate::manifest::GlistixManifest::with_patches(generate_glistix_patches([
+            ("m", Some("d"), Requirement::hex("== 0.1.0")),
+            ("b", Some("h"), Requirement::hex("== 0.1.0")),
+            ("f", None, Requirement::hex("== 0.1.0")),
+        ])),
+    };
+    assert_eq!(
+        config.locked(Some(&manifest)).unwrap(),
+        [
+            // Should be the opposite as the previous situation:
+            // Removed patches to b affecting h, and to f
+            // So all three should be unlocked
+            // However, patch to "d" is kept
+            locked_version("c", "0.1.0"),
+            locked_version("d", "0.1.0"),
+        ]
+        .into()
+    );
 }
 
 #[test]
@@ -704,6 +1069,892 @@ pub struct GlistixPreviewConfig {
     /// (e.g. stdlib) which is also patched by a local dependency.
     #[serde(default, rename = "local-overrides")]
     pub local_overrides: Vec<EcoString>,
+
+    /// Replaces a package with another recursively.
+    #[serde(default)]
+    pub patch: GlistixPatches,
+}
+
+#[derive(Deserialize, Debug, Default, PartialEq, Eq, Clone)]
+pub struct GlistixPatches(pub HashMap<EcoString, GlistixPatch>);
+
+impl PackageConfig {
+    /// Apply patches to the root config.
+    ///
+    /// This is identical to [`GlistixPatches::patch_config`], however it
+    /// has to be reimplemented to avoid conflicting borrows on `self` (one
+    /// borrowing `GlistixPatches` itself and another borrowing the whole config).
+    pub fn apply_glistix_patches(&mut self) {
+        self.glistix
+            .preview
+            .patch
+            .patch_req_hash_map(&mut self.dependencies, None);
+
+        self.glistix
+            .preview
+            .patch
+            .patch_req_hash_map(&mut self.dev_dependencies, None);
+    }
+
+    /// Apply patches to the root config (owned version).
+    pub fn with_glistix_patches_applied(mut self) -> Self {
+        self.apply_glistix_patches();
+        self
+    }
+}
+
+impl GlistixPatches {
+    /// Used as a workaround for determinism in case of overlapping patches.
+    fn sorted_iter(&self) -> impl Iterator<Item = (&EcoString, &GlistixPatch)> {
+        itertools::Itertools::sorted_unstable_by_key(self.0.iter(), |i| {
+            (
+                i.0,
+                &i.1.name,
+                match &i.1.source {
+                    Requirement::Hex { version } => version.as_str(),
+                    Requirement::Path { path } => path.as_str(),
+                    Requirement::Git { git, .. } => git.as_str(),
+                },
+            )
+        })
+    }
+
+    /// Check if a package is being patched to a certain source, and another
+    /// package is being renamed to that package with a different source. Then,
+    /// patching behavior would be unspecified and depend on order.
+    pub fn check_for_conflicting_patches(&self) -> Result<()> {
+        if let Some((package, conflicting_rename)) = self.0.iter().find_map(|(name, original)| {
+            self.0.iter().find_map(|(other_name, other)| {
+                if other.name.as_ref() == Some(name)
+                    && (original.name.as_ref().is_some_and(|rename| rename != name)
+                        || original.source != other.source)
+                {
+                    // TODO: Consider using 'is_same_requirements()' from CLI
+                    // here, i.e., not conflicting if the paths resolve to the
+                    // same location.
+                    Some((name.clone(), other_name.clone()))
+                } else {
+                    None
+                }
+            })
+        }) {
+            Err(Error::GlistixConflictingPatches {
+                package,
+                conflicting_rename,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Replace this package's name with another if necessary.
+    /// Otherwise, returns the package's original name.
+    #[allow(unused)]
+    pub fn replace_name<'s: 'n, 'n>(&'s self, name: &'n str) -> &'n str {
+        self.0
+            .get(name)
+            .and_then(|r| r.name.as_deref())
+            .unwrap_or(name)
+    }
+
+    /// Replace this package's name with another if necessary (EcoString version).
+    /// Otherwise, returns the package's original name.
+    pub fn replace_name_ecostring(&self, name: EcoString) -> EcoString {
+        self.0
+            .get(&name)
+            .and_then(|r| r.name.clone())
+            .unwrap_or(name)
+    }
+
+    /// Replace all packages in a requirements hash map according to this
+    /// instance's stored patches.
+    ///
+    /// If the `root_path` is `Some(...)`, all relative paths are joined to it
+    /// to ensure they are pointing to the correct location within transitive
+    /// dependencies.
+    pub fn patch_req_hash_map(
+        &self,
+        deps: &mut HashMap<EcoString, Requirement>,
+        root_path: Option<&Utf8Path>,
+    ) {
+        for (old_name, patch) in self.sorted_iter() {
+            // If the replaced package is present, insert the replacing package.
+            if deps.contains_key(old_name) {
+                _ = deps.insert(
+                    patch.name.as_ref().unwrap_or(old_name).clone(),
+                    glistix_requirement_with_root_path(&patch.source, root_path),
+                );
+            }
+
+            // If the replaced package is present, remove it.
+            if patch
+                .name
+                .as_ref()
+                .is_some_and(|new_name| new_name != old_name)
+            {
+                _ = deps.remove(old_name);
+            }
+        }
+    }
+
+    /// Patch a hash map of hexpm dependencies according to the specified
+    /// patches. Must not correspond to root dependencies.
+    pub fn patch_dep_hash_map(&self, deps: &mut HashMap<String, hexpm::Dependency>) {
+        for (old_name, patch) in self.sorted_iter() {
+            if let Some(mut dep) = deps.get(&**old_name).cloned() {
+                // If the patched-to package is a local or git package, it is
+                // provided and so always overrides hex dependencies, so we
+                // don't need to change the dependency version at all since
+                // the version will be whichever version is locally available.
+                if let Requirement::Hex { version } = &patch.source {
+                    dep.requirement = version.clone();
+                }
+
+                // Insert replacing dependency with updated name and version
+                let new_name = patch.name.as_ref().unwrap_or(old_name).to_string();
+                _ = deps.insert(new_name, dep);
+            }
+
+            // If the replaced package is present, remove it.
+            if patch
+                .name
+                .as_ref()
+                .is_some_and(|new_name| new_name != old_name)
+            {
+                // Remove replaced dependency
+                _ = deps.remove(&**old_name);
+            }
+        }
+    }
+
+    /// Replace all packages in a config according to this instance's stored
+    /// patches.
+    ///
+    /// All relative paths are joined to the given root path to ensure they
+    /// are pointing to the correct location within transitive dependencies.
+    pub fn patch_config(&self, config: &mut PackageConfig, root_path: &Utf8Path) {
+        self.patch_req_hash_map(&mut config.dependencies, Some(root_path));
+        self.patch_req_hash_map(&mut config.dev_dependencies, Some(root_path));
+    }
+
+    /// Patch all requirements of a hex package.
+    ///
+    /// The name of the package itself is assumed to be final and kept unchanged
+    /// regardless of patches, especially since this package might just be the
+    /// result of an earlier patch, in which case we still need to patch
+    /// requirements.
+    pub fn patch_hex_package(&self, package: &mut hexpm::Package) {
+        for release in &mut package.releases {
+            self.patch_dep_hash_map(&mut release.requirements);
+        }
+    }
+}
+
+#[inline]
+fn glistix_requirement_with_root_path(
+    req: &Requirement,
+    root_path: Option<&Utf8Path>,
+) -> Requirement {
+    let Some(root_path) = root_path else {
+        return req.clone();
+    };
+
+    match req {
+        Requirement::Path { path } if path.is_relative() => Requirement::Path {
+            path: root_path.join(path),
+        },
+        Requirement::Git { git: _git } => {
+            // TODO: Adjust paths of local repos
+            req.clone()
+        }
+        _ => req.clone(),
+    }
+}
+
+#[derive(serde::Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+pub struct GlistixPatch {
+    /// Name of the package that will replace the old one.
+    ///
+    /// If unspecified, the old package will be kept but will use a different
+    /// source (for example, to pin a different Hex version).
+    #[serde(default)]
+    pub name: Option<EcoString>,
+
+    /// Version or source of the package that will replace the old one.
+    ///
+    /// This is specified as 'version = ...', 'path = ...' or 'git = ...'
+    /// due to flattening, for simplicity.
+    #[serde(flatten)]
+    pub source: Requirement,
+}
+
+#[test]
+fn glistix_test_patch_deps() {
+    let config = PackageConfig {
+        dependencies: [
+            (EcoString::from("hex_to_hex"), Requirement::hex(">= 1.0.0")),
+            (
+                EcoString::from("local_to_hex"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("hex_to_local"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("local_to_local"),
+                Requirement::path("./external/local"),
+            ),
+            (EcoString::from("hex_rename"), Requirement::hex(">= 1.0.0")),
+            (
+                EcoString::from("local_rename"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("hex_to_local_rename"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("unpatched_hex"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("unpatched_local"),
+                Requirement::path("./external/local"),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        glistix: GlistixConfig {
+            preview: GlistixPreviewConfig {
+                patch: GlistixPatches(
+                    [
+                        (
+                            EcoString::from("hex_to_hex"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_to_hex"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_to_local"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_to_local"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("hex_did_rename")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("local_did_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_to_local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("hex_to_local_did_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("unused_hex_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("unused_did_hex_rename")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("unused_local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("unused_did_local_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+                ..Default::default()
+            },
+        },
+        ..Default::default()
+    };
+
+    assert!(config
+        .glistix
+        .preview
+        .patch
+        .check_for_conflicting_patches()
+        .is_ok());
+
+    assert_eq!(
+        config.with_glistix_patches_applied().dependencies,
+        [
+            (EcoString::from("hex_to_hex"), Requirement::hex("== 5.0.0")),
+            (
+                EcoString::from("local_to_hex"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("hex_to_local"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("local_to_local"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("hex_did_rename"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("local_did_rename"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("hex_to_local_did_rename"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("unpatched_hex"),
+                Requirement::hex(">= 1.0.0")
+            ),
+            (
+                EcoString::from("unpatched_local"),
+                Requirement::path("./external/local")
+            ),
+        ]
+        .into_iter()
+        .collect()
+    );
+}
+
+#[test]
+fn glistix_test_patch_dev_deps() {
+    let config = PackageConfig {
+        dev_dependencies: [
+            (EcoString::from("hex_to_hex"), Requirement::hex(">= 1.0.0")),
+            (
+                EcoString::from("local_to_hex"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("hex_to_local"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("local_to_local"),
+                Requirement::path("./external/local"),
+            ),
+            (EcoString::from("hex_rename"), Requirement::hex(">= 1.0.0")),
+            (
+                EcoString::from("local_rename"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("hex_to_local_rename"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("unpatched_hex"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("unpatched_local"),
+                Requirement::path("./external/local"),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        glistix: GlistixConfig {
+            preview: GlistixPreviewConfig {
+                patch: GlistixPatches(
+                    [
+                        (
+                            EcoString::from("hex_to_hex"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_to_hex"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_to_local"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_to_local"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("hex_did_rename")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("local_did_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_to_local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("hex_to_local_did_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("unused_hex_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("unused_did_hex_rename")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("unused_local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("unused_did_local_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+                ..Default::default()
+            },
+        },
+        ..Default::default()
+    };
+
+    assert_eq!(
+        config.with_glistix_patches_applied().dev_dependencies,
+        [
+            (EcoString::from("hex_to_hex"), Requirement::hex("== 5.0.0")),
+            (
+                EcoString::from("local_to_hex"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("hex_to_local"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("local_to_local"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("hex_did_rename"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("local_did_rename"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("hex_to_local_did_rename"),
+                Requirement::path("./external/patched")
+            ),
+            (
+                EcoString::from("unpatched_hex"),
+                Requirement::hex(">= 1.0.0")
+            ),
+            (
+                EcoString::from("unpatched_local"),
+                Requirement::path("./external/local")
+            ),
+        ]
+        .into_iter()
+        .collect()
+    );
+}
+
+#[test]
+fn glistix_test_patch_local_deps_non_root() {
+    let root_config = PackageConfig {
+        dependencies: Default::default(),
+        glistix: GlistixConfig {
+            preview: GlistixPreviewConfig {
+                patch: GlistixPatches(
+                    [
+                        (
+                            EcoString::from("hex_to_hex"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_to_hex"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_to_local"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_to_local"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("hex_did_rename")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("local_did_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("hex_to_local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("hex_to_local_did_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                        (
+                            EcoString::from("unused_hex_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("unused_did_hex_rename")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("unused_local_rename"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("unused_did_local_rename")),
+                                source: Requirement::path("./external/patched"),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+                ..Default::default()
+            },
+        },
+        ..Default::default()
+    };
+
+    let mut dependency_config = PackageConfig {
+        dependencies: [
+            (EcoString::from("hex_to_hex"), Requirement::hex(">= 1.0.0")),
+            (
+                EcoString::from("local_to_hex"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("hex_to_local"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("local_to_local"),
+                Requirement::path("./external/local"),
+            ),
+            (EcoString::from("hex_rename"), Requirement::hex(">= 1.0.0")),
+            (
+                EcoString::from("local_rename"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("hex_to_local_rename"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("unpatched_hex"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("unpatched_local"),
+                Requirement::path("./external/local"),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        ..Default::default()
+    };
+
+    root_config
+        .glistix
+        .preview
+        .patch
+        .patch_config(&mut dependency_config, Utf8Path::new("/root/path"));
+
+    assert_eq!(
+        dependency_config.dependencies,
+        [
+            (EcoString::from("hex_to_hex"), Requirement::hex("== 5.0.0")),
+            (
+                EcoString::from("local_to_hex"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("hex_to_local"),
+                Requirement::path("/root/path/./external/patched")
+            ),
+            (
+                EcoString::from("local_to_local"),
+                Requirement::path("/root/path/./external/patched")
+            ),
+            (
+                EcoString::from("hex_did_rename"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("local_did_rename"),
+                Requirement::path("/root/path/./external/patched")
+            ),
+            (
+                EcoString::from("hex_to_local_did_rename"),
+                Requirement::path("/root/path/./external/patched")
+            ),
+            (
+                EcoString::from("unpatched_hex"),
+                Requirement::hex(">= 1.0.0")
+            ),
+            (
+                EcoString::from("unpatched_local"),
+                Requirement::path("./external/local")
+            ),
+        ]
+        .into_iter()
+        .collect()
+    );
+}
+
+// Overlapping patches will be applied in unspecified, but consistent, order.
+#[test]
+fn glistix_test_conflicting_overlapping_patches() {
+    let config = PackageConfig {
+        dependencies: [
+            (
+                EcoString::from("B_first_rename_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("A_first_renamed_to_receiver"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("D_second_renamed_to_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("C_second_rename_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        glistix: GlistixConfig {
+            preview: GlistixPreviewConfig {
+                patch: GlistixPatches(
+                    [
+                        (
+                            EcoString::from("A_first_renamed_to_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("B_first_rename_receiver")),
+                                source: Requirement::hex("== 10.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("B_first_rename_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("first_renamed")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("C_second_rename_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("second_renamed")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("D_second_renamed_to_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("C_second_rename_receiver")),
+                                source: Requirement::hex("== 10.0.0"),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+                ..Default::default()
+            },
+        },
+        ..Default::default()
+    };
+
+    assert!(config
+        .glistix
+        .preview
+        .patch
+        .check_for_conflicting_patches()
+        .is_err());
+
+    assert_eq!(
+        config.with_glistix_patches_applied().dependencies,
+        [
+            (
+                EcoString::from("first_renamed"),
+                Requirement::hex("== 5.0.0")
+            ),
+            (
+                EcoString::from("C_second_rename_receiver"),
+                Requirement::hex("== 10.0.0")
+            ),
+            (
+                EcoString::from("second_renamed"),
+                Requirement::hex("== 5.0.0")
+            ),
+        ]
+        .into_iter()
+        .collect()
+    );
+}
+
+#[test]
+fn glistix_test_non_conflicting_overlapping_patches() {
+    let config = PackageConfig {
+        dependencies: [
+            (
+                EcoString::from("B_first_rename_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("A_first_renamed_to_receiver"),
+                Requirement::path("./external/local"),
+            ),
+            (
+                EcoString::from("D_second_renamed_to_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+            (
+                EcoString::from("C_second_rename_receiver"),
+                Requirement::hex(">= 1.0.0"),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        glistix: GlistixConfig {
+            preview: GlistixPreviewConfig {
+                patch: GlistixPatches(
+                    [
+                        (
+                            EcoString::from("A_first_renamed_to_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("B_first_rename_receiver")),
+                                source: Requirement::path("./external/path"),
+                            },
+                        ),
+                        (
+                            EcoString::from("B_first_rename_receiver"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::path("./external/path"),
+                            },
+                        ),
+                        (
+                            EcoString::from("C_second_rename_receiver"),
+                            GlistixPatch {
+                                name: None,
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                        (
+                            EcoString::from("D_second_renamed_to_receiver"),
+                            GlistixPatch {
+                                name: Some(EcoString::from("C_second_rename_receiver")),
+                                source: Requirement::hex("== 5.0.0"),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+                ..Default::default()
+            },
+        },
+        ..Default::default()
+    };
+
+    assert!(config
+        .glistix
+        .preview
+        .patch
+        .check_for_conflicting_patches()
+        .is_ok());
+
+    assert_eq!(
+        config.with_glistix_patches_applied().dependencies,
+        [
+            (
+                EcoString::from("B_first_rename_receiver"),
+                Requirement::path("./external/path"),
+            ),
+            (
+                EcoString::from("C_second_rename_receiver"),
+                Requirement::hex("== 5.0.0")
+            ),
+        ]
+        .into_iter()
+        .collect()
+    );
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
