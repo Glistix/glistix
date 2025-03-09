@@ -18,7 +18,8 @@ After release:
 
 1. Update the new version's changelog in the book to display the release date in UTC (both in the changelog's page and in the `src/SUMMARY.md`).
 2. Push a book tag with the new release version.
-3. Update Glistix library forks' flakes to point to the new Glistix version.
+3. Bump the Glistix playground's Glistix version by updating the `GLEAM_VERSION` file.
+4. Update Glistix library forks' flakes to point to the new Glistix version.
 
 ## Gleam checklist
 
