@@ -58,7 +58,7 @@ pub fn find_package_config_for_module(
             .glistix
             .preview
             .patch
-            .patch_config(&mut configuration, false);
+            .patch_config(&mut configuration, project_paths.root());
 
         return Ok((configuration, PackageKind::Dependency));
     }

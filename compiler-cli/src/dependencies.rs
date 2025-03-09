@@ -723,6 +723,28 @@ fn resolve_versions<Telem: Telemetry>(
     // The version requires of the current project
     let mut root_requirements = HashMap::new();
 
+    // GLISTIX: Provide local and Git patches
+    for (name, patch) in &config.glistix.preview.patch.0 {
+        let name = patch.name.as_ref().unwrap_or(name).clone();
+        match &patch.source {
+            Requirement::Hex { .. } => {}
+            Requirement::Path { path } => {
+                _ = provide_local_package(
+                    name.clone(),
+                    path,
+                    project_paths.root(),
+                    project_paths,
+                    config,
+                    &mut provided_packages,
+                    &mut vec![],
+                )?;
+            }
+            Requirement::Git { git } => {
+                _ = provide_git_package(name.clone(), git, project_paths, &mut provided_packages)?;
+            }
+        };
+    }
+
     // Populate the provided_packages and root_requirements maps
     for (name, requirement) in dependencies.into_iter() {
         let version = match requirement {
@@ -899,7 +921,7 @@ fn provide_package(
             .glistix
             .preview
             .patch
-            .patch_config(&mut c, false);
+            .patch_config(&mut c, project_paths.root());
         c
     })?;
 

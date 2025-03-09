@@ -520,7 +520,7 @@ where
                 .glistix
                 .preview
                 .patch
-                .patch_config(&mut c, false);
+                .patch_config(&mut c, self.paths.root());
             c
         })?;
         self.compile_gleam_package(&config, false, package_root)
