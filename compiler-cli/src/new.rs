@@ -232,12 +232,6 @@ gleam_stdlib = {{ name = "glistix_stdlib", version = "{GLISTIX_STDLIB_REQUIREMEN
 # otherpkg = {{ version = "3.4.5" }} # replace with another Hex version
 # anotherpkg = {{ path = "./external/submodule1" }} # replace with local package
 # renamedpkg = {{ name = "differentpkg", path = "./external/submodule2" }}
-
-[glistix.preview]
-# If you're patching a package using a local dependency/Git submodule and you
-# get a local dependency conflict error, add its name to the list below.
-# This setting might be deprecated in the future.
-local-overrides = []
 "#,
             )),
 
