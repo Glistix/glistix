@@ -14,8 +14,8 @@ use crate::{
 
 pub fn command(paths: &ProjectPaths, packages_to_add: Vec<String>, dev: bool) -> Result<()> {
     let mut new_package_requirements = Vec::with_capacity(packages_to_add.len());
-    for specifier in packages_to_add {
-        new_package_requirements.push(parse_gleam_add_specifier(&specifier)?);
+    for specifier in &packages_to_add {
+        new_package_requirements.push(parse_gleam_add_specifier(specifier)?);
     }
 
     // Insert the new packages into the manifest and perform dependency
@@ -75,6 +75,22 @@ pub fn command(paths: &ProjectPaths, packages_to_add: Vec<String>, dev: bool) ->
     // Write the updated config
     fs::write(&paths.root_config(), &gleam_toml.to_string())?;
     fs::write(&paths.manifest(), &manifest_toml.to_string())?;
+
+    // GLISTIX: Regenerate manifest if added package was patched.
+    if crate::config::root_config(paths).is_ok_and(|c| {
+        packages_to_add
+            .iter()
+            .any(|p| c.glistix.preview.patch.0.contains_key(&**p))
+    }) {
+        tracing::debug!("regen_manifest_due_to_added_patched_packages");
+        _ = crate::dependencies::download(
+            &paths,
+            cli::Reporter::new(),
+            None,
+            Vec::new(),
+            UseManifest::Yes,
+        )?;
+    }
 
     Ok(())
 }
