@@ -67,6 +67,7 @@ impl LanguageServerTestIO {
             manifest: Manifest {
                 requirements: HashMap::new(),
                 packages: vec![],
+                glistix: Default::default(),
             },
         }
     }

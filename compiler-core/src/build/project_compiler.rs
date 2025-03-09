@@ -514,7 +514,15 @@ where
             }
         };
         let config_path = package_root.join("gleam.toml");
-        let config = PackageConfig::read(config_path, &self.io)?;
+        let config = PackageConfig::read(config_path, &self.io).map(|mut c| {
+            // Apply root config's patches to dependency
+            self.config
+                .glistix
+                .preview
+                .patch
+                .patch_config(&mut c, self.paths.root());
+            c
+        })?;
         self.compile_gleam_package(&config, false, package_root)
             .into_result()
     }
