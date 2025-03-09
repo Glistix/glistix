@@ -24,6 +24,7 @@ test: ## Run the compiler unit tests
 	cd test/project_javascript && cargo run clean && cargo run check && cargo run test
 	cd test/project_deno && cargo run clean && cargo run check && cargo run test
 	cd test/glistix_project_nix && cargo run clean && cargo run check && cargo run test
+	cd test/glistix_local_patching && cargo run clean && cargo run check && cargo run test
 	cd test/hextarball && make test
 	cd test/running_modules && make test
 	cd test/subdir_ffi && make
