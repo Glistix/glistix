@@ -30,14 +30,17 @@ expression: "crate::fs::read(Utf8PathBuf::from_path_buf(file_path.to_path_buf())
     # Submodules
     # Add any submodules which you use as dependencies here,
     # and then add them to "submodules = [ ... ]" below.
-    stdlib = {
-      url = "github:glistix/stdlib";
-      flake = false;
-    };
+    # This is optional and only necessary to use dependencies
+    # from outside Hex, such as Git dependencies.
+
+    # submodule1 = {
+    #   url = "github:author/submodule1";
+    #   flake = false;
+    # };
   };
 
   outputs =
-    inputs@{ self, nixpkgs, flake-parts, systems, glistix, stdlib, ... }:
+    inputs@{ self, nixpkgs, flake-parts, systems, glistix, ... }:
     let
       # --- CUSTOMIZATION PARAMETERS ---
 
@@ -59,10 +62,10 @@ expression: "crate::fs::read(Utf8PathBuf::from_path_buf(file_path.to_path_buf())
       # Add them as inputs to the flake, and then specify where to clone them to
       # during build below.
       submodules = [
-        {
-          src = stdlib;
-          dest = "external/stdlib";
-        }
+        # {
+        #   src = inputs.submodule1;
+        #   dest = "external/submodule1";
+        # }
       ];
 
       # If you cache your build output, this will specify the path

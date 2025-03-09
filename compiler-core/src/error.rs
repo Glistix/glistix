@@ -40,6 +40,9 @@ macro_rules! wrap_format {
     }
 }
 
+#[allow(unused)]
+const GLISTIX_BOOK_LINK: &str = "https://glistix.github.io/book";
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct UnknownImportDetails {
     pub module: Name,
@@ -300,6 +303,12 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
 
     #[error("Cannot patch Hex dependency {name} through [glistix.preview.hex-patch]")]
     CannotPatchHexWithHex { name: EcoString },
+
+    #[error("Conflict between patches for \"{package}\" and \"{conflicting_rename}\" in [glistix.preview.patch]")]
+    GlistixConflictingPatches {
+        package: EcoString,
+        conflicting_rename: EcoString,
+    },
 
     #[error("The modules {unfinished:?} contain todo expressions and so cannot be published")]
     CannotPublishTodo { unfinished: Vec<EcoString> },
@@ -2187,7 +2196,7 @@ but no type in scope with that name."
                     Diagnostic {
                         title: "Unknown type".into(),
                         text,
-                        hint: None,
+                        hint: glistix_maybe_forgot_patch_hint(path),
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -2215,7 +2224,7 @@ but no type in scope with that name."
                     Diagnostic {
                         title: "Unknown variable".into(),
                         text,
-                        hint: None,
+                        hint: glistix_maybe_forgot_patch_hint(path),
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -2337,7 +2346,7 @@ Private types can only be used within the module that defines them.",
                     Diagnostic {
                         title: "Unknown module value".into(),
                         text,
-                        hint: None,
+                        hint: glistix_maybe_forgot_patch_hint(path),
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -3106,7 +3115,7 @@ and there is no implementation for the {} target.\n",
                     Diagnostic {
                         title: "Unsupported target".into(),
                         text,
-                        hint: Some(hint),
+                        hint: glistix_maybe_forgot_patch_hint(path).or(Some(hint)),
                         level: Level::Error,
                         location: Some(Location {
                             path: path.clone(),
@@ -3645,7 +3654,7 @@ Fix the warnings and try again."
                 crate::nix::Error::Unsupported { feature, location } => vec![Diagnostic {
                     title: "Unsupported feature for compilation target".into(),
                     text: format!("{feature} is not supported for Nix compilation."),
-                    hint: None,
+                    hint: glistix_maybe_forgot_patch_hint(path),
                     level: Level::Error,
                     location: Some(Location {
                         label: Label {
@@ -3775,7 +3784,7 @@ The error from the version resolver library was:
                 let text = format!(
                     "The package `{package}` is provided as both `{source_1}` and `{source_2}`. \
 If your root project has a dependency on `{package}`, you can temporarily work around this by \
-adding `local-overrides = [\"{package}\"]` under `[glistix.preview]` to its `gleam.toml` \
+adding `{package} = {{ path = \"(desired path)\" }}` under `[glistix.preview.patch]` to its `gleam.toml` \
 to ensure the root project's dependency overrides that of transitive dependencies.",
                 );
 
@@ -3959,6 +3968,24 @@ patch it with another Hex version through [glistix.preview.hex-patch]. You can o
                 location: None,
                 hint: None,
             }],
+
+            Error::GlistixConflictingPatches { package, conflicting_rename } => vec![Diagnostic {
+                title: format!("Conflict between patches for \"{package}\" and \"{conflicting_rename}\" in [glistix.preview.patch]"),
+                text: wrap_format!(
+                    "Package \"{package}\" was patched to a certain version, local path or even renamed, whereas \
+package \"{conflicting_rename}\" is being patched precisely to \"{package}\" but in a different way (e.g. to a different version \
+than the one it was patched to), so the two patches conflict (should we apply the first patch to the second package or not?).
+
+As such, please manually apply the first patch on top of the second one, such that \"{conflicting_rename}\" is patched to \
+the exact same package (name and version / local path / Git repository) as \"{package}\".
+
+Check the Glistix handbook at {GLISTIX_BOOK_LINK} for more information."
+                ),
+                level: Level::Error,
+                location: None,
+                hint: None,
+            }],
+
             Error::CorruptManifest => vec![Diagnostic {
                 title: "Corrupt manifest.toml".into(),
                 text: "The `manifest.toml` file is corrupt.".into(),
@@ -3992,6 +4019,20 @@ or you can publish it using a different version number"),
                 hint: Some("Please add the --replace flag if you want to replace the release.".into()),
             }],
         }
+    }
+}
+
+fn glistix_maybe_forgot_patch_hint(path: &Utf8PathBuf) -> Option<String> {
+    if path.as_str().contains("gleam_stdlib") {
+        Some(wrap_format!(
+            "You may have forgotten to patch 'gleam_stdlib' with 'glistix_stdlib' \
+as per the Glistix handbook's instructions (see {GLISTIX_BOOK_LINK} for details)."
+        ))
+    } else if path.as_str().contains("build/packages") {
+        Some(wrap_format!("If this error occurs in a dependency, check if it supports the Nix target. \
+If it doesn't, try patching it with a fork implementing Nix support (see {GLISTIX_BOOK_LINK} for details)."))
+    } else {
+        None
     }
 }
 

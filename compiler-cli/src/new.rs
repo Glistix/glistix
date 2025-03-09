@@ -15,7 +15,9 @@ mod tests;
 
 use crate::{fs::get_current_directory, NewOptions};
 
+#[allow(dead_code)]
 const GLEAM_STDLIB_REQUIREMENT: &str = ">= 0.44.0 and < 2.0.0";
+const GLISTIX_STDLIB_REQUIREMENT: &str = ">= 0.34.0 and < 2.0.0";
 const GLEEUNIT_REQUIREMENT: &str = ">= 1.0.0 and < 2.0.0";
 #[allow(dead_code)]
 const ERLANG_OTP_VERSION: &str = "27.1.2";
@@ -23,8 +25,6 @@ const ERLANG_OTP_VERSION: &str = "27.1.2";
 const REBAR3_VERSION: &str = "3";
 #[allow(dead_code)]
 const ELIXIR_VERSION: &str = "1";
-
-const GLISTIX_STDLIB_URL: &str = "https://github.com/glistix/stdlib";
 
 #[derive(
     Debug, Serialize, Deserialize, Display, EnumString, VariantNames, ValueEnum, Clone, Copy,
@@ -46,8 +46,6 @@ pub struct Creator {
     test: Utf8PathBuf,
     github: Utf8PathBuf,
     workflows: Utf8PathBuf,
-    external: Utf8PathBuf,
-    external_stdlib: Utf8PathBuf,
     #[allow(dead_code)]
     gleam_version: &'static str,
     options: NewOptions,
@@ -200,33 +198,40 @@ version = "1.0.0"
 # https://gleam.run/writing-gleam/gleam-toml/.
 
 [dependencies]
-# Run 'git submodule add --name stdlib -- https://github.com/glistix/stdlib external/stdlib'
-# to clone Glistix's stdlib patch to the local path specified below. This is needed so stdlib
-# will work on the Nix target. Hex dependents will use the stdlib version specified below,
-# in [glistix.preview.hex-patch], instead.
-gleam_stdlib = {{ path = "./external/stdlib" }}
+# Use Glistix-maintained fork of the Gleam standard library with support for the
+# Nix target.
+#
+# Consider depending on gleam_stdlib instead if you're publishing a package to
+# non-Glistix users on Hex (Glistix users can still patch gleam_stdlib on their
+# projects). Otherwise, you can depend on the fork directly.
+glistix_stdlib = "{GLISTIX_STDLIB_REQUIREMENT}"
 
 [dev-dependencies]
 glistix_gleeunit = "{GLEEUNIT_REQUIREMENT}"
 
 # The [glistix.preview] namespace contains useful settings which will be needed
-# during Glistix beta. In the future, it's likely these won't be necessary
-# anymore.
-[glistix.preview]
-# If you're patching a package using a local dependency/Git submodule and you
-# get a local dependency conflict error, add it to the list below.
-local-overrides = ["gleam_stdlib"]
+# during Glistix beta. In the future, we hope these won't be necessary anymore.
+# None of the settings below are recognized by the official Gleam compiler.
 
-# The section below allows publishing your package to Hex despite having
-# local dependencies, by declaring that you depend on another Hex package
-# instead.
-# This is needed to be able to patch stdlib etc. locally during development
-# and at the same time publish to Hex without the patch.
-# The section below should only be used for this purpose. Please do not abuse
-# this feature, as it is mostly a temporary workaround while Gleam doesn't have
-# a proper dependency patching system.
-[glistix.preview.hex-patch]
-gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
+# The section below allows replacing transitive dependencies with other packages,
+# such as forks providing support for the Nix target. For example, `gleam_stdlib`
+# does not support the Nix target, so we replace it with the `glistix_stdlib` fork.
+# Replacing Hex packages with local packages is also supported (and Git packages
+# in a future Glistix version).
+#
+# Specifying a version (or local path) is always required.
+#
+# NOTE: This section is ignored when publishing to Hex. It is only read on top-level
+# Glistix projects. However, it can still be useful on packages to allow running unit
+# tests, so you can keep this here regardless. Just keep this in mind if a user
+# complains about a missing dependency: they are responsible for patching.
+[glistix.preview.patch]
+# Replaces 'gleam_stdlib' with 'glistix_stdlib' on all transitive dependencies.
+# This is needed so stdlib will work on the Nix target.
+gleam_stdlib = {{ name = "glistix_stdlib", version = "{GLISTIX_STDLIB_REQUIREMENT}" }}
+# otherpkg = {{ version = "3.4.5" }} # replace with another Hex version
+# anotherpkg = {{ path = "./external/submodule1" }} # replace with local package
+# renamedpkg = {{ name = "differentpkg", path = "./external/submodule2" }}
 "#,
             )),
 
@@ -291,14 +296,17 @@ jobs:
     # Submodules
     # Add any submodules which you use as dependencies here,
     # and then add them to "submodules = [ ... ]" below.
-    stdlib = {{
-      url = "github:glistix/stdlib";
-      flake = false;
-    }};
+    # This is optional and only necessary to use dependencies
+    # from outside Hex, such as Git dependencies.
+
+    # submodule1 = {{
+    #   url = "github:author/submodule1";
+    #   flake = false;
+    # }};
   }};
 
   outputs =
-    inputs@{{ self, nixpkgs, flake-parts, systems, glistix, stdlib, ... }}:
+    inputs@{{ self, nixpkgs, flake-parts, systems, glistix, ... }}:
     let
       # --- CUSTOMIZATION PARAMETERS ---
 
@@ -320,10 +328,10 @@ jobs:
       # Add them as inputs to the flake, and then specify where to clone them to
       # during build below.
       submodules = [
-        {{
-          src = stdlib;
-          dest = "external/stdlib";
-        }}
+        # {{
+        #   src = inputs.submodule1;
+        #   dest = "external/submodule1";
+        # }}
       ];
 
       # If you cache your build output, this will specify the path
@@ -501,18 +509,12 @@ impl Creator {
         let test = root.join("test");
         let github = root.join(".github");
         let workflows = github.join("workflows");
-        // External folder: we will clone stdlib there if possible.
-        let external = root.join("external");
-        // Use a relative path as that is what is recorded to '.gitmodules'.
-        let external_stdlib = Utf8PathBuf::from("external/stdlib");
         let me = Self {
             root: root.clone(),
             src,
             test,
             github,
             workflows,
-            external,
-            external_stdlib,
             gleam_version,
             options,
             project_name,
@@ -527,29 +529,14 @@ impl Creator {
         crate::fs::mkdir(&self.root)?;
         crate::fs::mkdir(&self.src)?;
         crate::fs::mkdir(&self.test)?;
-        crate::fs::mkdir(&self.external)?;
 
         if !self.options.skip_git && !self.options.skip_github {
             crate::fs::mkdir(&self.github)?;
             crate::fs::mkdir(&self.workflows)?;
         }
 
-        if self.options.skip_git {
-            eprintln!(
-                "WARNING: Skipping Git procedures. You will have to manually clone the \
-Glistix patch for 'stdlib'. If you create a Git repository at the new project's directory, \
-you can do so with the command \
-'git submodule add --name stdlib -- https://github.com/glistix/stdlib external/stdlib'. \
-Otherwise, you can use 'git clone' instead of 'git submodule add --name stdlib'."
-            )
-        } else {
+        if !self.options.skip_git {
             crate::fs::git_init(&self.root)?;
-            crate::fs::git_submodule_add(
-                "stdlib",
-                GLISTIX_STDLIB_URL,
-                &self.root,
-                &self.external_stdlib,
-            )?;
         }
 
         match self.options.template {
