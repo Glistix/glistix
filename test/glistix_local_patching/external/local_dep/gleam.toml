@@ -1,0 +1,13 @@
+name = "local_dep"
+version = "0.1.0"
+target = "nix"
+
+[dependencies]
+gleam_stdlib = "~> 0.18"
+glistix_gleeunit = ">= 1.0.0 and < 2.0.0"
+patch_this_with_other_local_dep = "== 1.2.3"
+
+[dev-dependencies]
+
+[glistix.preview.patch]
+gleam_stdlib = { name = "glistix_stdlib", version = "~> 0.18" }
