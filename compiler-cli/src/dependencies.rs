@@ -239,6 +239,13 @@ pub fn download<Telem: Telemetry>(
     let mut config = crate::config::read(paths.root_config())?;
     let project_name = config.name.clone();
 
+    // GLISTIX: Ensure config's patches are consistent
+    config
+        .glistix
+        .preview
+        .patch
+        .check_for_conflicting_patches()?;
+
     // Insert the new packages to add, if it exists
     if let Some((packages, dev)) = new_package {
         for (package, requirement) in packages {
@@ -490,6 +497,11 @@ fn get_manifest<Telem: Telemetry>(
             &config.all_direct_dependencies()?,
             paths.root(),
         )?
+        && glistix_is_same_patches(
+            &manifest.glistix.preview.patch,
+            &config.glistix.preview.patch,
+            paths.root(),
+        )?
     {
         tracing::debug!("manifest_up_to_date");
         Ok((false, manifest))
@@ -519,6 +531,45 @@ fn is_same_requirements(
 
     for (key, requirement1) in requirements1 {
         if !same_requirements(requirement1, requirements2.get(key), root_path)? {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+/// Check whether all patches are identical.
+///
+/// This is supposed to be almost identical to the function above, while
+/// also checking if the 'renamed-to' names of packages are also the same.
+fn glistix_is_same_patches(
+    patches1: &glistix_core::config::GlistixPatches,
+    patches2: &glistix_core::config::GlistixPatches,
+    root_path: &Utf8Path,
+) -> Result<bool> {
+    let patches1 = &patches1.0;
+    let patches2 = &patches2.0;
+    if patches1.len() != patches2.len() {
+        return Ok(false);
+    }
+
+    // NOTE: In principle, we consider that patches don't affect each other,
+    // or ignore any behavior similar to that.
+    for (key, patch) in patches1 {
+        let glistix_core::config::GlistixPatch {
+            name: name1,
+            source: patch1,
+        } = patch;
+
+        let Some(glistix_core::config::GlistixPatch {
+            name: name2,
+            source: patch2,
+        }) = patches2.get(key)
+        else {
+            return Ok(false);
+        };
+
+        if name1 != name2 || !same_requirements(patch1, Some(patch2), root_path)? {
             return Ok(false);
         }
     }
@@ -672,6 +723,28 @@ fn resolve_versions<Telem: Telemetry>(
     // The version requires of the current project
     let mut root_requirements = HashMap::new();
 
+    // GLISTIX: Provide local and Git patches
+    for (name, patch) in &config.glistix.preview.patch.0 {
+        let name = patch.name.as_ref().unwrap_or(name);
+        match &patch.source {
+            Requirement::Hex { .. } => {}
+            Requirement::Path { path } => {
+                _ = provide_local_package(
+                    name.clone(),
+                    path,
+                    project_paths.root(),
+                    project_paths,
+                    config,
+                    &mut provided_packages,
+                    &mut vec![],
+                )?;
+            }
+            Requirement::Git { git } => {
+                _ = provide_git_package(name.clone(), git, project_paths, &mut provided_packages)?;
+            }
+        };
+    }
+
     // Populate the provided_packages and root_requirements maps
     for (name, requirement) in dependencies.into_iter() {
         let version = match requirement {
@@ -704,18 +777,29 @@ fn resolve_versions<Telem: Telemetry>(
         config.name.clone(),
         root_requirements.into_iter(),
         &locked,
+        &config.glistix.preview.patch,
     )?;
 
     // Convert the hex packages and local packages into manifest packages
-    let manifest_packages = runtime.block_on(future::try_join_all(
-        resolved
-            .into_iter()
-            .map(|(name, version)| lookup_package(name, version, &provided_packages)),
-    ))?;
+    let manifest_packages = runtime.block_on(future::try_join_all(resolved.into_iter().map(
+        |(name, version)| {
+            lookup_package(
+                name,
+                version,
+                &provided_packages,
+                &config.glistix.preview.patch,
+            )
+        },
+    )))?;
 
     let manifest = Manifest {
         packages: manifest_packages,
         requirements: config.all_direct_dependencies()?,
+        glistix: glistix_core::manifest::GlistixManifest {
+            preview: glistix_core::manifest::GlistixPreviewManifest {
+                patch: config.glistix.preview.patch.clone(),
+            },
+        },
     };
 
     Ok(manifest)
@@ -830,7 +914,17 @@ fn provide_package(
         None => (),
     }
     // Load the package
-    let config = crate::config::read(package_path.join("gleam.toml"))?;
+    let config = crate::config::read_unpatched(package_path.join("gleam.toml")).map(|mut c| {
+        // Patch transitive dependencies with root's patches
+        // (ignore their own)
+        root_config
+            .glistix
+            .preview
+            .patch
+            .patch_config(&mut c, project_paths.root());
+        c
+    })?;
+
     // Check that we are loading the correct project
     if config.name != package_name {
         return Err(Error::WrongDependencyProvided {
@@ -936,6 +1030,7 @@ async fn lookup_package(
     name: String,
     version: Version,
     provided: &HashMap<EcoString, ProvidedPackage>,
+    glistix_patches: &glistix_core::config::GlistixPatches,
 ) -> Result<ManifestPackage> {
     match provided.get(name.as_str()) {
         Some(provided_package) => Ok(provided_package.to_manifest_package(name.as_str())),
@@ -953,6 +1048,11 @@ async fn lookup_package(
                 .requirements
                 .keys()
                 .map(|s| EcoString::from(s.as_str()))
+                .map(|s| {
+                    // Ensure dependencies renamed by a patch are also renamed
+                    // in the 'requirements' section of dependents in the manifest.
+                    glistix_patches.replace_name_ecostring(s)
+                })
                 .collect_vec();
             Ok(ManifestPackage {
                 name: name.into(),
