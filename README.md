@@ -66,22 +66,22 @@ You can install Glistix in one of the following ways.
 
 1. **From GitHub Releases:** If you're using Linux (any distro, including NixOS), MacOS or Windows, you can install Glistix by downloading the latest precompiled binary for your platform at [https://github.com/glistix/glistix/releases](https://github.com/glistix/glistix/releases).
 
-2. **With Nix flakes:** Invoke the command below in the command line to download, compile and run a specific release of Glistix - here the latest at the time of writing (v0.6.0).
+2. **With Nix flakes:** Invoke the command below in the command line to download, compile and run a specific release of Glistix - here the latest at the time of writing (v0.7.0).
 
     ```sh
-    nix run 'github:Glistix/glistix/v0.6.0' -- --help
+    nix run 'github:Glistix/glistix/v0.7.0' -- --help
     ```
 
-    To install permanently, you can either add `github:Glistix/glistix/v0.6.0` as an input to your system/Home Manager configuration, or use `nix profile`:
+    To install permanently, you can either add `github:Glistix/glistix/v0.7.0` as an input to your system/Home Manager configuration, or use `nix profile`:
 
     ```sh
-    nix profile install 'github:Glistix/glistix/v0.6.0'
+    nix profile install 'github:Glistix/glistix/v0.7.0'
     ```
 
-3. **With Cargo:** You can use Cargo to compile and install Glistix's latest release (v0.6.0 at the time of writing):
+3. **With Cargo:** You can use Cargo to compile and install Glistix's latest release (v0.7.0 at the time of writing):
 
     ```sh
-    cargo install --git https://github.com/glistix/glistix --tag v0.6.0 --locked
+    cargo install --git https://github.com/glistix/glistix --tag v0.7.0 --locked
     ```
 
 ## Table of Contents
