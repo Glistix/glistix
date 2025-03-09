@@ -96,10 +96,7 @@ where
         }
 
         // Skip unknown file formats that are not supported native files
-        if !matches!(
-            extension,
-            "nix" | "mjs" | "js" | "ts" | "hrl" | "erl" | "ex"
-        ) {
+        if !crate::io::is_native_file_extension(extension) {
             return Ok(());
         }
 
