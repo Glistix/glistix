@@ -52,6 +52,7 @@ fn list_manifest_format() {
                 },
             },
         ],
+        glistix: Default::default(),
     };
     list_manifest_packages(&mut buffer, manifest).unwrap();
     assert_eq!(
@@ -100,6 +101,7 @@ fn tree_format() {
                 },
             },
         ],
+        glistix: Default::default(),
     };
 
     let options = TreeOptions {
@@ -163,6 +165,7 @@ fn tree_package_format() {
                 },
             },
         ],
+        glistix: Default::default(),
     };
     let options = TreeOptions {
         package: Some("gleam_regexp".to_string()),
@@ -223,6 +226,7 @@ fn tree_invert_format() {
                 },
             },
         ],
+        glistix: Default::default(),
     };
     let options = TreeOptions {
         package: None,
@@ -285,6 +289,7 @@ fn list_tree_invalid_package_format() {
                 },
             },
         ],
+        glistix: Default::default(),
     };
     let options = TreeOptions {
         package: Some("zzzzzz".to_string()),
@@ -413,6 +418,7 @@ fn missing_local_packages() {
                 },
             },
         ],
+        glistix: Default::default(),
     };
     let mut extra = LocalPackages {
         packages: [
@@ -484,6 +490,7 @@ fn extra_local_packages() {
                 },
             },
         ],
+        glistix: Default::default(),
     });
     extra.sort();
     assert_eq!(
@@ -974,6 +981,7 @@ fn create_testable_unlock_manifest(
     Manifest {
         packages: manifest_packages,
         requirements: root_requirements,
+        glistix: Default::default(),
     }
 }
 
@@ -1323,6 +1331,7 @@ fn test_remove_do_nothing() {
             manifest_package("a", "1.0.0", vec![]),
             manifest_package("b", "2.0.8", vec![]),
         ],
+        glistix: Default::default(),
     };
 
     let manifest_copy = manifest.clone();
@@ -1340,6 +1349,7 @@ fn test_remove_simple() {
     let mut manifest = Manifest {
         requirements: HashMap::from([("a".into(), Requirement::hex("~>1"))]),
         packages: vec![manifest_package("a", "1.0.0", vec![])],
+        glistix: Default::default(),
     };
 
     remove_extra_requirements(&config, &mut manifest).unwrap();
@@ -1359,6 +1369,7 @@ fn test_remove_package_with_transitive_dependencies() {
             manifest_package("b", "1.2.3", vec!["c".into()]),
             manifest_package("c", "2.0.0", vec![]),
         ],
+        glistix: Default::default(),
     };
 
     remove_extra_requirements(&config, &mut manifest).unwrap();
@@ -1385,6 +1396,7 @@ fn test_remove_package_with_shared_transitive_dependencies() {
             manifest_package("c", "2.0.0", vec![]),
             manifest_package("d", "0.1.0", vec![]),
         ],
+        glistix: Default::default(),
     };
 
     remove_extra_requirements(&config, &mut manifest).unwrap();
@@ -1417,6 +1429,7 @@ fn test_remove_package_that_is_also_a_transitive_dependency() {
             manifest_package("c", "2.0.0", vec![]),
             manifest_package("d", "0.1.0", vec![]),
         ],
+        glistix: Default::default(),
     };
 
     let manifest_copy = manifest.clone();
