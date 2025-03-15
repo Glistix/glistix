@@ -242,7 +242,7 @@ pub fn download<Telem: Telemetry>(
     if !config.glistix.preview.local_overrides.is_empty()
         || !config.glistix.preview.hex_patch.is_empty()
     {
-        eprintln!("\n\n============================================================");
+        eprintln!("\n\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         cli::print_colourful_prefix(
             "WARNING",
             &glistix_core::error::wrap(
@@ -252,7 +252,7 @@ options in your 'gleam.toml' file. Please use [glistix.preview.patch] instead, a
 See the Glistix handbook for migration instructions: https://glistix.github.io/book/compiler/changelog/v0-7-0.html",
             ),
         );
-        eprintln!("\n============================================================\n\n");
+        eprintln!("\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
     }
 
     // GLISTIX: Ensure config's patches are consistent
