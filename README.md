@@ -315,7 +315,7 @@ The above applies to other editors supporting `direnv` as well. For those which 
 
 ### Overriding packages incompatible with Nix
 
-While many Gleam packages can, in principle, be used with Glistix projects, it is also a fact that **a large number of Gleam packages depend on Gleam's usual targets** (Erlang and JavaScript) by depending (heavily or not) on FFI. This makes using them with Glistix a non-starter at first. The way around this is to create a **fork with Nix support** (adding Nix FFI together with Erlang and JavaScript FFI), and then use it through **Git submodules** as local dependencies of your root package (at least while Gleam doesn't support Git dependencies).
+While many Gleam packages can, in principle, be used with Glistix projects, it is also a fact that **a large number of Gleam packages depend on Gleam's usual targets** (Erlang and JavaScript) by depending (heavily or not) on FFI. This makes using them with Glistix a non-starter at first. The way around this is to create a **fork with Nix support** (adding Nix FFI together with Erlang and JavaScript FFI), and either **publish it to Hex** so that it can be used through `[glistix.preview.patch]` to replace transitive dependencies with Nix-compatible forks, or, for forks outside of Hex, use it through **Git submodules** as local dependencies of your root package (at least while Gleam doesn't support Git dependencies).
 
 ### Tail-call optimization
 
