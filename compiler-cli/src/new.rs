@@ -198,14 +198,13 @@ version = "1.0.0"
 # https://gleam.run/writing-gleam/gleam-toml/.
 
 [dependencies]
-# Note that `gleam_stdlib` doesn't support the Nix target by default, so it is
-# replaced with `glistix_stdlib` through a patch below, which also replaces it
-# in transitive dependencies.
+# Use Glistix-maintained fork of the Gleam standard library with support for the
+# Nix target.
 #
-# If you're not going to publish this package to Hex, there is no problem in
-# just depending on `glistix_stdlib` directly (though the patch will still
-# be necessary for dependencies of dependencies).
-gleam_stdlib = "{GLEAM_STDLIB_REQUIREMENT}"
+# Consider depending on gleam_stdlib instead if you're publishing a package to
+# non-Glistix users on Hex (Glistix users can still patch gleam_stdlib on their
+# projects). Otherwise, you can depend on the fork directly.
+glistix_stdlib = "{GLISTIX_STDLIB_REQUIREMENT}"
 
 [dev-dependencies]
 glistix_gleeunit = "{GLEEUNIT_REQUIREMENT}"
