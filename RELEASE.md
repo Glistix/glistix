@@ -13,12 +13,14 @@ Additional instructions for Glistix:
 6. Update the book as needed (there are several compiler internals documented there, including which patches we applied on top of the base Gleam compiler).
 7. Update the Glistix version in the book's installation instructions in "Getting Started".
 8. Ensure the Zulip invite is up-to-date in the README and book (if present).
+9. If the default `gleam.toml` changed, update it in the book's "Project configuration" section.
 
 After release:
 
 1. Update the new version's changelog in the book to display the release date in UTC (both in the changelog's page and in the `src/SUMMARY.md`).
 2. Push a book tag with the new release version.
-3. Update Glistix library forks' flakes to point to the new Glistix version.
+3. Bump the Glistix playground's Glistix version by updating the `GLEAM_VERSION` file.
+4. Update Glistix library forks' flakes to point to the new Glistix version.
 
 ## Gleam checklist
 
