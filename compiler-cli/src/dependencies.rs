@@ -374,6 +374,22 @@ pub fn download<Telem: Telemetry>(
     let mut config = crate::config::read(paths.root_config())?;
     let project_name = config.name.clone();
 
+    if !config.glistix.preview.local_overrides.is_empty()
+        || !config.glistix.preview.hex_patch.is_empty()
+    {
+        eprintln!("\n\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        cli::print_colourful_prefix(
+            "WARNING",
+            &glistix_core::error::wrap(
+                "Using deprecated 'glistix.preview.local-overrides' and 'glistix.preview.hex-patch' \
+options in your 'gleam.toml' file. Please use [glistix.preview.patch] instead, available since Glistix v0.7.0.
+
+See the Glistix handbook for migration instructions: https://glistix.github.io/book/compiler/changelog/v0-7-0.html",
+            ),
+        );
+        eprintln!("\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
+    }
+
     // GLISTIX: Ensure config's patches are consistent
     config
         .glistix
