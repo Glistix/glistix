@@ -4030,7 +4030,12 @@ as per the Glistix handbook's instructions (see {GLISTIX_BOOK_LINK} for details)
         ))
     } else if path.as_str().contains("build/packages") {
         Some(wrap_format!("If this error occurs in a dependency, check if it supports the Nix target. \
-If it doesn't, try patching it with a fork implementing Nix support (see {GLISTIX_BOOK_LINK} for details)."))
+If it doesn't, try patching it with a fork implementing Nix support (see {GLISTIX_BOOK_LINK} for details).
+
+If the package does support the Nix target (or is target-agnostic), this error might also indicate your \
+project is applying a patch through [glistix.preview.patch] which this package is not compatible with. \
+For example, this package might depend on `gleam_stdlib` v0.44 whereas you could be patching it with \
+`glistix_stdlib` v0.38. In that case, you may have to pick different versions for patches or dependencies."))
     } else {
         None
     }

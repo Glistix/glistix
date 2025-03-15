@@ -25,6 +25,7 @@ const ERLANG_OTP_VERSION: &str = "27.1.2";
 const REBAR3_VERSION: &str = "3";
 #[allow(dead_code)]
 const ELIXIR_VERSION: &str = "1";
+const GLISTIX_HANDBOOK_LINK: &str = "https://glistix.github.io/book/";
 
 #[derive(
     Debug, Serialize, Deserialize, Display, EnumString, VariantNames, ValueEnum, Clone, Copy,
@@ -212,6 +213,9 @@ glistix_gleeunit = "{GLEEUNIT_REQUIREMENT}"
 # The [glistix.preview] namespace contains useful settings which will be needed
 # during Glistix beta. In the future, we hope these won't be necessary anymore.
 # None of the settings below are recognized by the official Gleam compiler.
+#
+# For more information on those options, check out the Glistix handbook at
+# this link: {GLISTIX_HANDBOOK_LINK}
 
 # The section below allows replacing transitive dependencies with other packages,
 # such as forks providing support for the Nix target. For example, `gleam_stdlib`
@@ -570,6 +574,11 @@ pub fn create(options: NewOptions, version: &'static str) -> Result<()> {
 The project can be compiled and tested by running these commands:
 
 {}\tglistix test
+
+Please note that Glistix is still in beta and may not have all features you need.
+
+If you need help, check out the Glistix handbook at the website below:
+{GLISTIX_HANDBOOK_LINK}
 ",
         creator.project_name, cd_folder,
     );

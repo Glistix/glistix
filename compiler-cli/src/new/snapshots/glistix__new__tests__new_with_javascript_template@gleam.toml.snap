@@ -32,6 +32,9 @@ glistix_gleeunit = ">= 1.0.0 and < 2.0.0"
 # The [glistix.preview] namespace contains useful settings which will be needed
 # during Glistix beta. In the future, we hope these won't be necessary anymore.
 # None of the settings below are recognized by the official Gleam compiler.
+#
+# For more information on those options, check out the Glistix handbook at
+# this link: https://glistix.github.io/book/
 
 # The section below allows replacing transitive dependencies with other packages,
 # such as forks providing support for the Nix target. For example, `gleam_stdlib`
