@@ -38,7 +38,7 @@ pub enum TypedExpr {
     /// locations when showing it in error messages, etc.
     Pipeline {
         location: SrcSpan,
-        assignments: Vec<TypedAssignment>,
+        assignments: Vec<TypedPipelineAssignment>,
         finally: Box<Self>,
     },
 
@@ -200,7 +200,9 @@ impl TypedExpr {
                 // We don't want to match on todos that were implicitly inserted
                 // by the compiler as it would result in confusing suggestions
                 // from the LSP.
-                TodoKind::EmptyFunction | TodoKind::EmptyBlock | TodoKind::IncompleteUse => None,
+                TodoKind::EmptyFunction { .. } | TodoKind::EmptyBlock | TodoKind::IncompleteUse => {
+                    None
+                }
             },
 
             Self::Pipeline {
@@ -336,8 +338,6 @@ impl TypedExpr {
         matches!(
             self,
             Self::Int{ value, .. } | Self::Float { value, .. } if NON_ZERO.get_or_init(||
-
-
                 Regex::new(r"[1-9]").expect("NON_ZERO regex")).is_match(value)
         )
     }

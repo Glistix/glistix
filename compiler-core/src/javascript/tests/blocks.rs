@@ -215,3 +215,47 @@ fn b() {
 "#
     );
 }
+
+#[test]
+fn block_in_tail_position_is_not_an_iife() {
+    assert_js!(
+        r#"
+fn b() {
+  let x = 1
+  {
+    Nil
+    x + 1
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn block_in_tail_position_shadowing_variables() {
+    assert_js!(
+        r#"
+fn b() {
+  let x = 1
+  {
+    let x = 2
+    x + 1
+  }
+}
+"#
+    );
+}
+
+#[test]
+fn block_in_tail_position_with_just_an_assignment() {
+    assert_js!(
+        r#"
+fn b() {
+  let x = 1
+  {
+    let x = x
+  }
+}
+"#
+    );
+}

@@ -1,8 +1,8 @@
 use crate::{
     analyse::name::correct_name_case,
     ast::{
-        CustomType, Definition, ModuleConstant, SrcSpan, TypedArg, TypedExpr, TypedFunction,
-        TypedModule, TypedPattern,
+        ArgNames, CustomType, Definition, ModuleConstant, Pattern, SrcSpan, TypedArg, TypedExpr,
+        TypedFunction, TypedModule, TypedPattern,
     },
     build::{type_constructor_from_modules, Located, Module, UnqualifiedImport},
     config::PackageConfig,
@@ -13,8 +13,8 @@ use crate::{
     line_numbers::LineNumbers,
     paths::ProjectPaths,
     type_::{
-        self, printer::Printer, Deprecation, ModuleInterface, Type, TypeConstructor,
-        ValueConstructorVariant,
+        self, error::VariableOrigin, printer::Printer, Deprecation, ModuleInterface, Type,
+        TypeConstructor, ValueConstructor, ValueConstructorVariant,
     },
     Error, Result, Warning,
 };
@@ -23,8 +23,9 @@ use ecow::EcoString;
 use itertools::Itertools;
 use lsp::CodeAction;
 use lsp_types::{
-    self as lsp, DocumentSymbol, Hover, HoverContents, MarkedString, Position, Range,
-    SignatureHelp, SymbolKind, SymbolTag, TextEdit, Url,
+    self as lsp, DocumentSymbol, Hover, HoverContents, MarkedString, Position,
+    PrepareRenameResponse, Range, SignatureHelp, SymbolKind, SymbolTag, TextEdit, Url,
+    WorkspaceEdit,
 };
 use std::sync::Arc;
 
@@ -34,9 +35,11 @@ use super::{
         code_action_convert_unqualified_constructor_to_qualified, code_action_import_module,
         code_action_inexhaustive_let_to_case, AddAnnotations, CodeActionBuilder, DesugarUse,
         ExpandFunctionCapture, ExtractVariable, FillInMissingLabelledArgs, GenerateDynamicDecoder,
-        LabelShorthandSyntax, LetAssertToCase, RedundantTupleInCaseSubject, TurnIntoUse,
+        GenerateFunction, LetAssertToCase, PatternMatchOnValue, RedundantTupleInCaseSubject,
+        TurnIntoUse, UseLabelShorthandSyntax,
     },
     completer::Completer,
+    rename::{rename_local_variable, VariableRenameKind},
     signature_help, src_span_to_lsp_range, DownloadDependencies, MakeLocker,
 };
 
@@ -328,12 +331,16 @@ where
             actions.extend(LetAssertToCase::new(module, &lines, &params).code_actions());
             actions
                 .extend(RedundantTupleInCaseSubject::new(module, &lines, &params).code_actions());
-            actions.extend(LabelShorthandSyntax::new(module, &lines, &params).code_actions());
+            actions.extend(UseLabelShorthandSyntax::new(module, &lines, &params).code_actions());
             actions.extend(FillInMissingLabelledArgs::new(module, &lines, &params).code_actions());
             actions.extend(DesugarUse::new(module, &lines, &params).code_actions());
             actions.extend(TurnIntoUse::new(module, &lines, &params).code_actions());
             actions.extend(ExpandFunctionCapture::new(module, &lines, &params).code_actions());
             actions.extend(ExtractVariable::new(module, &lines, &params).code_actions());
+            actions.extend(GenerateFunction::new(module, &lines, &params).code_actions());
+            actions.extend(
+                PatternMatchOnValue::new(module, &lines, &params, &this.compiler).code_actions(),
+            );
             GenerateDynamicDecoder::new(module, &lines, &params, &mut actions).code_actions();
             AddAnnotations::new(module, &lines, &params).code_action(&mut actions);
             Ok(if actions.is_empty() {
@@ -486,6 +493,159 @@ where
             }
 
             Ok(symbols)
+        })
+    }
+
+    pub fn prepare_rename(
+        &mut self,
+        params: lsp::TextDocumentPositionParams,
+    ) -> Response<Option<PrepareRenameResponse>> {
+        self.respond(|this| {
+            let (lines, found) = match this.node_at_position(&params) {
+                Some(value) => value,
+                None => return Ok(None),
+            };
+
+            let success_response = |location| {
+                Some(PrepareRenameResponse::Range(src_span_to_lsp_range(
+                    location, &lines,
+                )))
+            };
+
+            Ok(match found {
+                Located::Expression(TypedExpr::Var {
+                    constructor:
+                        ValueConstructor {
+                            variant: ValueConstructorVariant::LocalVariable { origin, location },
+                            ..
+                        },
+                    ..
+                })
+                | Located::Pattern(Pattern::Variable {
+                    origin, location, ..
+                }) => match origin {
+                    VariableOrigin::Variable(_)
+                    | VariableOrigin::AssignmentPattern
+                    | VariableOrigin::LabelShorthand(_) => success_response(*location),
+                    VariableOrigin::Generated => None,
+                },
+                Located::Pattern(Pattern::VarUsage { constructor, .. }) => constructor
+                    .as_ref()
+                    .and_then(|constructor| match &constructor.variant {
+                        ValueConstructorVariant::LocalVariable { origin, location } => match origin
+                        {
+                            VariableOrigin::Variable(_)
+                            | VariableOrigin::AssignmentPattern
+                            | VariableOrigin::LabelShorthand(_) => success_response(*location),
+                            VariableOrigin::Generated => None,
+                        },
+                        _ => None,
+                    }),
+                Located::Pattern(Pattern::Assign { location, .. }) => success_response(*location),
+                Located::Arg(arg) => match &arg.names {
+                    ArgNames::Named { location, .. }
+                    | ArgNames::NamedLabelled {
+                        name_location: location,
+                        ..
+                    } => success_response(*location),
+                    ArgNames::Discard { .. } | ArgNames::LabelledDiscard { .. } => None,
+                },
+                _ => None,
+            })
+        })
+    }
+
+    pub fn rename(&mut self, params: lsp::RenameParams) -> Response<Option<WorkspaceEdit>> {
+        self.respond(|this| {
+            let position = &params.text_document_position;
+
+            let (lines, found) = match this.node_at_position(position) {
+                Some(value) => value,
+                None => return Ok(None),
+            };
+
+            let Some(module) = this.module_for_uri(&position.text_document.uri) else {
+                return Ok(None);
+            };
+
+            Ok(match found {
+                Located::Expression(TypedExpr::Var {
+                    constructor:
+                        ValueConstructor {
+                            variant: ValueConstructorVariant::LocalVariable { location, origin },
+                            ..
+                        },
+                    ..
+                })
+                | Located::Pattern(Pattern::Variable {
+                    location, origin, ..
+                }) => match origin {
+                    VariableOrigin::Variable(_) | VariableOrigin::AssignmentPattern => {
+                        rename_local_variable(
+                            module,
+                            &lines,
+                            &params,
+                            *location,
+                            VariableRenameKind::Variable,
+                        )
+                    }
+                    VariableOrigin::LabelShorthand(_) => rename_local_variable(
+                        module,
+                        &lines,
+                        &params,
+                        *location,
+                        VariableRenameKind::LabelShorthand,
+                    ),
+                    VariableOrigin::Generated => None,
+                },
+                Located::Pattern(Pattern::VarUsage { constructor, .. }) => constructor
+                    .as_ref()
+                    .and_then(|constructor| match &constructor.variant {
+                        ValueConstructorVariant::LocalVariable { location, origin } => match origin
+                        {
+                            VariableOrigin::Variable(_) | VariableOrigin::AssignmentPattern => {
+                                rename_local_variable(
+                                    module,
+                                    &lines,
+                                    &params,
+                                    *location,
+                                    VariableRenameKind::Variable,
+                                )
+                            }
+                            VariableOrigin::LabelShorthand(_) => rename_local_variable(
+                                module,
+                                &lines,
+                                &params,
+                                *location,
+                                VariableRenameKind::LabelShorthand,
+                            ),
+                            VariableOrigin::Generated => None,
+                        },
+                        _ => None,
+                    }),
+                Located::Pattern(Pattern::Assign { location, .. }) => rename_local_variable(
+                    module,
+                    &lines,
+                    &params,
+                    *location,
+                    VariableRenameKind::Variable,
+                ),
+                Located::Arg(arg) => match &arg.names {
+                    ArgNames::Named { location, .. }
+                    | ArgNames::NamedLabelled {
+                        name_location: location,
+                        ..
+                    } => rename_local_variable(
+                        module,
+                        &lines,
+                        &params,
+                        *location,
+                        VariableRenameKind::Variable,
+                    ),
+                    ArgNames::Discard { .. } | ArgNames::LabelledDiscard { .. } => None,
+                },
+                _ => None,
+            })
         })
     }
 
@@ -958,7 +1118,7 @@ fn hover_for_expression(
 }
 
 fn hover_for_imported_value(
-    value: &type_::ValueConstructor,
+    value: &ValueConstructor,
     location: &SrcSpan,
     line_numbers: LineNumbers,
     hex_module_imported_from: Option<&ModuleInterface>,
@@ -1003,6 +1163,8 @@ fn position_within(position: Position, range: Range) -> bool {
     position >= range.start && position <= range.end
 }
 
+/// Builds the code action to assign an unused value to `_`.
+///
 fn code_action_unused_values(
     module: &Module,
     line_numbers: &LineNumbers,
@@ -1062,6 +1224,8 @@ fn code_action_unused_values(
     }
 }
 
+/// Code action to remove unused imports.
+///
 fn code_action_unused_imports(
     module: &Module,
     line_numbers: &LineNumbers,

@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use crate::build::{Outcome, Runtime, Target};
 use crate::diagnostic::{Diagnostic, ExtraLabel, Label, Location};
+use crate::type_::collapse_links;
 use crate::type_::error::{
     MissingAnnotation, ModuleValueUsageContext, Named, UnknownField, UnknownTypeHint,
     UnsafeRecordUpdateReason,
@@ -21,6 +22,7 @@ use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use termcolor::Buffer;
 use thiserror::Error;
 use vec1::Vec1;
@@ -546,11 +548,58 @@ impl From<capnp::NotInSchema> for Error {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InvalidProjectNameReason {
     Format,
+    FormatNotLowercase,
     GleamPrefix,
     ErlangReservedWord,
     ErlangStandardLibraryModule,
     GleamReservedWord,
     GleamReservedModule,
+}
+
+pub fn format_invalid_project_name_error(
+    name: &str,
+    reason: &InvalidProjectNameReason,
+    with_suggestion: &Option<String>,
+) -> String {
+    let reason_message = match reason {
+        InvalidProjectNameReason::ErlangReservedWord => "is a reserved word in Erlang.",
+        InvalidProjectNameReason::ErlangStandardLibraryModule => {
+            "is a standard library module in Erlang."
+        }
+        InvalidProjectNameReason::GleamReservedWord => "is a reserved word in Gleam.",
+        InvalidProjectNameReason::GleamReservedModule => "is a reserved module name in Gleam.",
+        InvalidProjectNameReason::FormatNotLowercase => {
+            "does not have the correct format. Project names \
+may only contain lowercase letters."
+        }
+        InvalidProjectNameReason::Format => {
+            "does not have the correct format. Project names \
+must start with a lowercase letter and may only contain lowercase letters, \
+numbers and underscores."
+        }
+        InvalidProjectNameReason::GleamPrefix => {
+            "has the reserved prefix `gleam_`. \
+This prefix is intended for official Gleam packages only."
+        }
+    };
+
+    match with_suggestion {
+        Some(suggested_name) => wrap_format!(
+            "We were not able to create your project as `{}` {}
+
+Would you like to name your project '{}' instead?",
+            name,
+            reason_message,
+            suggested_name
+        ),
+        None => wrap_format!(
+            "We were not able to create your project as `{}` {}
+
+Please try again with a different project name.",
+            name,
+            reason_message
+        ),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -844,29 +893,7 @@ of the Gleam dependency modules."
             }
 
             Error::InvalidProjectName { name, reason } => {
-                let text = wrap_format!(
-                    "We were not able to create your project as `{}` {}
-
-Please try again with a different project name.",
-                    name,
-                    match reason {
-                        InvalidProjectNameReason::ErlangReservedWord =>
-                            "is a reserved word in Erlang.",
-                        InvalidProjectNameReason::ErlangStandardLibraryModule =>
-                            "is a standard library module in Erlang.",
-                        InvalidProjectNameReason::GleamReservedWord =>
-                            "is a reserved word in Gleam.",
-                        InvalidProjectNameReason::GleamReservedModule =>
-                            "is a reserved module name in Gleam.",
-                        InvalidProjectNameReason::Format =>
-                            "does not have the correct format. Project names \
-must start with a lowercase letter and may only contain lowercase letters, \
-numbers and underscores.",
-                        InvalidProjectNameReason::GleamPrefix =>
-                            "has the reserved prefix `gleam_`. \
-This prefix is intended for official Gleam packages only.",
-                    }
-                );
+                let text = format_invalid_project_name_error(name, reason, &None);
 
                 vec![Diagnostic {
                     title: "Invalid project name".into(),
@@ -1459,6 +1486,27 @@ The error from the encryption library was:
                 .iter()
                 .map(|error| {
                     match error {
+                TypeError::ErlangFloatUnsafe {
+                     location,  ..
+                } => Diagnostic {
+                        title: "Float is outside Erlang's floating point range".into(),
+                        text: wrap("This float value is too large to be represented by \
+Erlang's floating point type. To avoid this error float values must be in the range \
+-1.7976931348623157e308 - 1.7976931348623157e308."),
+                    hint: None,
+                    level: Level::Error,
+                    location: Some(Location {
+                        label: Label {
+                            text: None,
+                                span: *location,
+                            },
+                        path: path.clone(),
+                        src: src.clone(),
+                        extra_labels: vec![],
+                    }),
+                },
+
+
                 TypeError::SrcImportingTest {
                     location,
                     src_module,
@@ -1468,7 +1516,7 @@ The error from the encryption library was:
                         "The application module `{src_module}` \
 is importing the test module `{test_module}`.
 
-Test modules are not included in production builds so test \
+Test modules are not included in production builds so application \
 modules cannot import them. Perhaps move the `{test_module}` \
 module to the src directory.",
                         );
@@ -1983,6 +2031,20 @@ But function expects:
                     text.push_str(&printer.print_type(expected));
                     text.push_str("\n\nFound type:\n\n    ");
                     text.push_str(&printer.print_type(given));
+
+                    let (main_message_location, main_message_text, extra_labels) = match situation {
+                        // When the mismatch error comes from a case clause we want to highlight the
+                        // entire branch (pattern included) when reporting the error; in addition,
+                        // if the error could be resolved just by wrapping the value in an `Ok`
+                        // or `Error` we want to add an additional label with this hint below the
+                        // offending value.
+                        Some(UnifyErrorSituation::CaseClauseMismatch{ clause_location }) => (clause_location, None, vec![]),
+                        // In all other cases we just highlight the offending expression, optionally
+                        // adding the wrapping hint if it makes sense.
+                        Some(_) | None =>
+                            (location, hint_wrap_value_in_result(expected, given), vec![])
+                    };
+
                     Diagnostic {
                         title: "Type mismatch".into(),
                         text,
@@ -1990,12 +2052,12 @@ But function expects:
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
-                                text: None,
-                                span: *location,
+                                text: main_message_text,
+                                span: *main_message_location,
                             },
                             path: path.clone(),
                             src: src.clone(),
-                            extra_labels: vec![],
+                            extra_labels,
                         }),
                     }
                 }
@@ -2219,7 +2281,13 @@ but no type in scope with that name."
                     let text = if *type_with_name_in_scope {
                         wrap_format!("`{name}` is a type, it cannot be used as a value.")
                     } else {
-                        wrap_format!("The name `{name}` is not in scope here.")
+                        let is_first_char_uppercase = name.chars().next().is_some_and(char::is_uppercase);
+
+                        if is_first_char_uppercase {
+                            wrap_format!("The custom type variant constructor `{name}` is not in scope here.")
+                        } else {
+                            wrap_format!("The name `{name}` is not in scope here.")
+                        }
                     };
                     Diagnostic {
                         title: "Unknown variable".into(),
@@ -3083,6 +3151,27 @@ The missing patterns are:\n"
                     }
                     Diagnostic {
                         title: "Inexhaustive patterns".into(),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            src: src.clone(),
+                            path: path.to_path_buf(),
+                            label: Label {
+                                text: None,
+                                span: *location,
+                            },
+                            extra_labels: Vec::new(),
+                        }),
+                    }
+                }
+
+                TypeError::MissingCaseBody { location } => {
+                    let text = wrap(
+                        "This case expression is missing its body."
+                        );
+                    Diagnostic {
+                        title: "Missing case body".into(),
                         text,
                         hint: None,
                         level: Level::Error,
@@ -4017,7 +4106,7 @@ or you can publish it using a different version number"),
                 level: Level::Error,
                 location: None,
                 hint: Some("Please add the --replace flag if you want to replace the release.".into()),
-            }],
+            }]
         }
     }
 }
@@ -4107,6 +4196,19 @@ fn hint_alternative_operator(op: &BinOp, given: &Type) -> Option<String> {
         BinOp::AddFloat if given.is_string() => Some(hint_string_message()),
 
         _ => None,
+    }
+}
+
+fn hint_wrap_value_in_result(expected: &Arc<Type>, given: &Arc<Type>) -> Option<String> {
+    let expected = collapse_links(expected.clone());
+    let (expected_ok_type, expected_error_type) = expected.result_types()?;
+
+    if given.same_as(expected_ok_type.as_ref()) {
+        Some("Did you mean to wrap this in an `Ok`?".into())
+    } else if given.same_as(expected_error_type.as_ref()) {
+        Some("Did you mean to wrap this in an `Error`?".into())
+    } else {
+        None
     }
 }
 

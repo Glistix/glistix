@@ -9,7 +9,7 @@ expression: "compile(config, modules)"
   <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>app · test_project_name · v0.1.49</title>
+    <title>app · test_project_name · v0.1.0</title>
     <meta name="description" content=""/>
     <meta name="theme-color" content="#ffaff3" media="(prefers-color-scheme: light)"/>
     <meta name="theme-color" content="#33384d" media="(prefers-color-scheme: dark)"/>
@@ -151,13 +151,13 @@ expression: "compile(config, modules)"
       <h2>
         <a href="./">test_project_name</a>
         <span id="project-version">
-          <span> - v0.1.49 </span>
+          <span> - v0.1.0 </span>
         </span>
         <script>
           "use strict";
 
           if ("undefined" !== typeof versionNodes) {
-            const currentVersion = "v0.1.49";
+            const currentVersion = "v0.1.0";
             if (! versionNodes.find(element => element.version === currentVersion)) {
               versionNodes.unshift({ version: currentVersion, url: "#" });
             }

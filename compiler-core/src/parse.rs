@@ -706,20 +706,33 @@ where
                 self.advance();
                 let subjects =
                     Parser::series_of(self, &Parser::parse_expression, Some(&Token::Comma))?;
-                let _ = self.expect_one_following_series(&Token::LeftBrace, "an expression")?;
-                let clauses = Parser::series_of(self, &Parser::parse_case_clause, None)?;
-                let (_, end) =
-                    self.expect_one_following_series(&Token::RightBrace, "a case clause")?;
-                if subjects.is_empty() {
-                    return parse_error(
-                        ParseErrorType::ExpectedExpr,
-                        SrcSpan { start, end: case_e },
-                    );
+                if self.maybe_one(&Token::LeftBrace).is_some() {
+                    let clauses = Parser::series_of(self, &Parser::parse_case_clause, None)?;
+                    let (_, end) =
+                        self.expect_one_following_series(&Token::RightBrace, "a case clause")?;
+                    if subjects.is_empty() {
+                        return parse_error(
+                            ParseErrorType::ExpectedExpr,
+                            SrcSpan { start, end: case_e },
+                        );
+                    } else {
+                        UntypedExpr::Case {
+                            location: SrcSpan { start, end },
+                            subjects,
+                            clauses: Some(clauses),
+                        }
+                    }
                 } else {
                     UntypedExpr::Case {
-                        location: SrcSpan { start, end },
+                        location: SrcSpan::new(
+                            start,
+                            subjects
+                                .last()
+                                .map(|subject| subject.location().end)
+                                .unwrap_or(case_e),
+                        ),
                         subjects,
-                        clauses,
+                        clauses: None,
                     }
                 }
             }
@@ -1587,6 +1600,7 @@ where
                         location: SrcSpan { start, end },
                         type_: (),
                         name,
+                        definition_location: SrcSpan::default(),
                     }
                 };
 
@@ -1887,23 +1901,28 @@ where
         let return_annotation = self.parse_type_annotation(&Token::RArrow)?;
 
         let (body, end, end_position) = match self.maybe_one(&Token::LeftBrace) {
-            Some(_) => {
+            Some((left_brace_start, _)) => {
                 let some_body = self.parse_statement_seq()?;
-                let (_, rbr_e) = self.expect_one(&Token::RightBrace)?;
+                let (_, right_brace_end) = self.expect_one(&Token::RightBrace)?;
                 let end = return_annotation
                     .as_ref()
                     .map(|l| l.location().end)
                     .unwrap_or(rpar_e);
                 let body = match some_body {
                     None => vec1![Statement::Expression(UntypedExpr::Todo {
-                        kind: TodoKind::EmptyFunction,
-                        location: SrcSpan { start, end },
+                        kind: TodoKind::EmptyFunction {
+                            function_location: SrcSpan { start, end }
+                        },
+                        location: SrcSpan {
+                            start: left_brace_start + 1,
+                            end: right_brace_end
+                        },
                         message: None,
                     })],
                     Some((body, _)) => body,
                 };
 
-                (body, end, rbr_e)
+                (body, end, right_brace_end)
             }
 
             None if is_anon => {

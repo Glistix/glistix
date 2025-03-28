@@ -48,14 +48,16 @@ use crate::{
 use std::sync::Arc;
 
 use ecow::EcoString;
+use vec1::Vec1;
 
 use crate::type_::Type;
 
 use super::{
     untyped::FunctionLiteralKind, AssignName, BinOp, BitArrayOption, CallArg, Definition, Pattern,
-    SrcSpan, Statement, TodoKind, TypeAst, TypedArg, TypedAssignment, TypedClause, TypedCustomType,
-    TypedDefinition, TypedExpr, TypedExprBitArraySegment, TypedFunction, TypedModule,
-    TypedModuleConstant, TypedPattern, TypedPatternBitArraySegment, TypedStatement, TypedUse,
+    SrcSpan, Statement, TodoKind, TypeAst, TypedArg, TypedAssignment, TypedClause,
+    TypedClauseGuard, TypedConstant, TypedCustomType, TypedDefinition, TypedExpr,
+    TypedExprBitArraySegment, TypedFunction, TypedModule, TypedModuleConstant, TypedPattern,
+    TypedPatternBitArraySegment, TypedPipelineAssignment, TypedStatement, TypedUse,
 };
 
 pub trait Visit<'ast> {
@@ -121,7 +123,7 @@ pub trait Visit<'ast> {
     fn visit_typed_expr_pipeline(
         &mut self,
         location: &'ast SrcSpan,
-        assignments: &'ast [TypedAssignment],
+        assignments: &'ast [TypedPipelineAssignment],
         finally: &'ast TypedExpr,
     ) {
         visit_typed_expr_pipeline(self, location, assignments, finally);
@@ -142,7 +144,7 @@ pub trait Visit<'ast> {
         type_: &'ast Arc<Type>,
         kind: &'ast FunctionLiteralKind,
         args: &'ast [TypedArg],
-        body: &'ast [TypedStatement],
+        body: &'ast Vec1<TypedStatement>,
         return_annotation: &'ast Option<TypeAst>,
     ) {
         visit_typed_expr_fn(self, location, type_, kind, args, body, return_annotation);
@@ -302,12 +304,71 @@ pub trait Visit<'ast> {
         visit_typed_use(self, use_);
     }
 
+    fn visit_typed_pipeline_assignment(&mut self, assignment: &'ast TypedPipelineAssignment) {
+        visit_typed_pipeline_assignment(self, assignment);
+    }
+
     fn visit_typed_call_arg(&mut self, arg: &'ast TypedCallArg) {
         visit_typed_call_arg(self, arg);
     }
 
     fn visit_typed_clause(&mut self, clause: &'ast TypedClause) {
         visit_typed_clause(self, clause);
+    }
+
+    fn visit_typed_clause_guard(&mut self, guard: &'ast TypedClauseGuard) {
+        visit_typed_clause_guard(self, guard);
+    }
+
+    fn visit_typed_clause_guard_var(
+        &mut self,
+        location: &'ast SrcSpan,
+        name: &'ast EcoString,
+        type_: &'ast Arc<Type>,
+        definition_location: &'ast SrcSpan,
+    ) {
+        visit_typed_clause_guard_var(self, location, name, type_, definition_location);
+    }
+
+    fn visit_typed_clause_guard_tuple_index(
+        &mut self,
+        location: &'ast SrcSpan,
+        index: &'ast u64,
+        type_: &'ast Arc<Type>,
+        tuple: &'ast TypedClauseGuard,
+    ) {
+        visit_typed_clause_guard_tuple_index(self, location, index, type_, tuple)
+    }
+
+    fn visit_typed_clause_guard_field_access(
+        &mut self,
+        location: &'ast SrcSpan,
+        index: &'ast Option<u64>,
+        label: &'ast EcoString,
+        type_: &'ast Arc<Type>,
+        container: &'ast TypedClauseGuard,
+    ) {
+        visit_typed_clause_guard_field_access(self, location, index, label, type_, container)
+    }
+
+    fn visit_typed_clause_guard_module_select(
+        &mut self,
+        location: &'ast SrcSpan,
+        type_: &'ast Arc<Type>,
+        label: &'ast EcoString,
+        module_name: &'ast EcoString,
+        module_alias: &'ast EcoString,
+        literal: &'ast TypedConstant,
+    ) {
+        visit_typed_clause_guard_module_select(
+            self,
+            location,
+            type_,
+            label,
+            module_name,
+            module_alias,
+            literal,
+        )
     }
 
     fn visit_typed_expr_bit_array_segment(&mut self, segment: &'ast TypedExprBitArraySegment) {
@@ -423,6 +484,10 @@ pub trait Visit<'ast> {
         segments: &'ast Vec<TypedPatternBitArraySegment>,
     ) {
         visit_typed_pattern_bit_array(self, location, segments);
+    }
+
+    fn visit_typed_pattern_bit_array_option(&mut self, option: &'ast BitArrayOption<TypedPattern>) {
+        visit_typed_pattern_bit_array_option(self, option);
     }
 
     fn visit_typed_pattern_string_prefix(
@@ -783,16 +848,23 @@ pub fn visit_typed_expr_block<'a, V>(
 pub fn visit_typed_expr_pipeline<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    assignments: &'a [TypedAssignment],
+    assignments: &'a [TypedPipelineAssignment],
     finally: &'a TypedExpr,
 ) where
     V: Visit<'a> + ?Sized,
 {
     for assignment in assignments {
-        v.visit_typed_assignment(assignment);
+        v.visit_typed_pipeline_assignment(assignment);
     }
 
     v.visit_typed_expr(finally);
+}
+
+pub fn visit_typed_pipeline_assignment<'a, V>(v: &mut V, assignment: &'a TypedPipelineAssignment)
+where
+    V: Visit<'a> + ?Sized,
+{
+    v.visit_typed_expr(&assignment.value);
 }
 
 pub fn visit_typed_expr_var<'a, V>(
@@ -812,7 +884,7 @@ pub fn visit_typed_expr_fn<'a, V>(
     _typ: &'a Arc<Type>,
     _kind: &'a FunctionLiteralKind,
     _args: &'a [TypedArg],
-    body: &'a [TypedStatement],
+    body: &'a Vec1<TypedStatement>,
     _return_annotation: &'a Option<TypeAst>,
 ) where
     V: Visit<'a> + ?Sized,
@@ -1056,7 +1128,214 @@ where
             v.visit_typed_pattern(pattern);
         }
     }
+    if let Some(guard) = &clause.guard {
+        v.visit_typed_clause_guard(guard);
+    }
     v.visit_typed_expr(&clause.then);
+}
+
+pub fn visit_typed_clause_guard<'a, V>(v: &mut V, guard: &'a TypedClauseGuard)
+where
+    V: Visit<'a> + ?Sized,
+{
+    match guard {
+        super::ClauseGuard::Equals {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::NotEquals {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::GtInt {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::GtEqInt {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::LtInt {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::LtEqInt {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::GtFloat {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::GtEqFloat {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::LtFloat {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::LtEqFloat {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::AddInt {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::AddFloat {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::SubInt {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::SubFloat {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::MultInt {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::MultFloat {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::DivInt {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::DivFloat {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::RemainderInt {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::Or {
+            location: _,
+            left,
+            right,
+        }
+        | super::ClauseGuard::And {
+            location: _,
+            left,
+            right,
+        } => {
+            v.visit_typed_clause_guard(left);
+            v.visit_typed_clause_guard(right);
+        }
+        super::ClauseGuard::Not {
+            location: _,
+            expression,
+        } => v.visit_typed_clause_guard(expression),
+        super::ClauseGuard::Var {
+            location,
+            type_,
+            name,
+            definition_location,
+        } => v.visit_typed_clause_guard_var(location, name, type_, definition_location),
+        super::ClauseGuard::TupleIndex {
+            location,
+            index,
+            type_,
+            tuple,
+        } => v.visit_typed_clause_guard_tuple_index(location, index, type_, tuple),
+        super::ClauseGuard::FieldAccess {
+            location,
+            index,
+            label,
+            type_,
+            container,
+        } => v.visit_typed_clause_guard_field_access(location, index, label, type_, container),
+        super::ClauseGuard::ModuleSelect {
+            location,
+            type_,
+            label,
+            module_name,
+            module_alias,
+            literal,
+        } => v.visit_typed_clause_guard_module_select(
+            location,
+            type_,
+            label,
+            module_name,
+            module_alias,
+            literal,
+        ),
+        super::ClauseGuard::Constant(_constant) => {}
+    }
+}
+
+pub fn visit_typed_clause_guard_var<'a, V>(
+    _v: &mut V,
+    _location: &'a SrcSpan,
+    _name: &'a EcoString,
+    _type_: &'a Arc<Type>,
+    _definition_location: &'a SrcSpan,
+) where
+    V: Visit<'a> + ?Sized,
+{
+}
+
+pub fn visit_typed_clause_guard_tuple_index<'a, V>(
+    v: &mut V,
+    _location: &'a SrcSpan,
+    _index: &'a u64,
+    _type_: &'a Arc<Type>,
+    tuple: &'a TypedClauseGuard,
+) where
+    V: Visit<'a> + ?Sized,
+{
+    v.visit_typed_clause_guard(tuple);
+}
+
+pub fn visit_typed_clause_guard_field_access<'a, V>(
+    v: &mut V,
+    _location: &'a SrcSpan,
+    _index: &'a Option<u64>,
+    _label: &'a EcoString,
+    _type_: &'a Arc<Type>,
+    container: &'a TypedClauseGuard,
+) where
+    V: Visit<'a> + ?Sized,
+{
+    v.visit_typed_clause_guard(container);
+}
+
+pub fn visit_typed_clause_guard_module_select<'a, V>(
+    _v: &mut V,
+    _location: &'a SrcSpan,
+    _type_: &'a Arc<Type>,
+    _label: &'a EcoString,
+    _module_name: &'a EcoString,
+    _module_alias: &'a EcoString,
+    _literal: &'a TypedConstant,
+) where
+    V: Visit<'a> + ?Sized,
+{
 }
 
 pub fn visit_typed_expr_bit_array_segment<'a, V>(v: &mut V, segment: &'a TypedExprBitArraySegment)
@@ -1307,6 +1586,45 @@ pub fn visit_typed_pattern_bit_array<'a, V>(
 {
     for segment in segments {
         v.visit_typed_pattern(&segment.value);
+        for option in segment.options.iter() {
+            v.visit_typed_pattern_bit_array_option(option);
+        }
+    }
+}
+
+pub fn visit_typed_pattern_bit_array_option<'a, V>(
+    v: &mut V,
+    option: &'a BitArrayOption<TypedPattern>,
+) where
+    V: Visit<'a> + ?Sized,
+{
+    match option {
+        BitArrayOption::Bytes { location: _ } => { /* TODO */ }
+        BitArrayOption::Int { location: _ } => { /* TODO */ }
+        BitArrayOption::Float { location: _ } => { /* TODO */ }
+        BitArrayOption::Bits { location: _ } => { /* TODO */ }
+        BitArrayOption::Utf8 { location: _ } => { /* TODO */ }
+        BitArrayOption::Utf16 { location: _ } => { /* TODO */ }
+        BitArrayOption::Utf32 { location: _ } => { /* TODO */ }
+        BitArrayOption::Utf8Codepoint { location: _ } => { /* TODO */ }
+        BitArrayOption::Utf16Codepoint { location: _ } => { /* TODO */ }
+        BitArrayOption::Utf32Codepoint { location: _ } => { /* TODO */ }
+        BitArrayOption::Signed { location: _ } => { /* TODO */ }
+        BitArrayOption::Unsigned { location: _ } => { /* TODO */ }
+        BitArrayOption::Big { location: _ } => { /* TODO */ }
+        BitArrayOption::Little { location: _ } => { /* TODO */ }
+        BitArrayOption::Native { location: _ } => { /* TODO */ }
+        BitArrayOption::Size {
+            location: _,
+            value,
+            short_form: _,
+        } => {
+            v.visit_typed_pattern(value);
+        }
+        BitArrayOption::Unit {
+            location: _,
+            value: _,
+        } => { /* TODO */ }
     }
 }
 

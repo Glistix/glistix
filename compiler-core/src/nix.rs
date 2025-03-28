@@ -359,7 +359,7 @@ impl<'module> Generator<'module> {
 
         let returned_set = syntax::attr_set(docvec![tag_field, inherited_fields, other_fields]);
 
-        let constructor_fun = docvec!(args, break_("", " "), returned_set)
+        let constructor_fun = docvec![args, break_("", " "), returned_set]
             .nest(INDENT)
             .group();
 
@@ -680,7 +680,7 @@ pub fn module_var_name(name: &str) -> EcoString {
 
 /// Generates the variable name in Nix for the given module (as a document).
 pub fn module_var_name_doc(name: &str) -> Document<'_> {
-    docvec!(maybe_escape_identifier_doc(name), "'")
+    docvec![maybe_escape_identifier_doc(name), "'"]
 }
 
 pub fn is_usable_nix_identifier(word: &str) -> bool {

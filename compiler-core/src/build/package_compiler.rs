@@ -183,10 +183,14 @@ where
             incomplete_modules,
         );
 
-        let modules = match outcome {
+        let mut modules = match outcome {
             Outcome::Ok(modules) => modules,
             Outcome::PartialFailure(_, _) | Outcome::TotalFailure(_) => return outcome,
         };
+
+        for mut module in modules.iter_mut() {
+            module.attach_doc_and_module_comments();
+        }
 
         tracing::debug!("performing_code_generation");
 
@@ -354,7 +358,7 @@ where
         // we overwrite any precompiled Erlang that was included in the Hex
         // package. Otherwise we will build the potentially outdated precompiled
         // version and not the newly compiled version.
-        Erlang::new(&build_dir, &include_dir).render(io, modules)?;
+        Erlang::new(&build_dir, &include_dir).render(io, modules, self.root)?;
 
         if self.compile_beam_bytecode {
             written.extend(modules.iter().map(Module::compiled_erlang_path));

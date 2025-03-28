@@ -66,11 +66,14 @@ const ASSIGN_UNUSED_RESULT: &str = "Assign unused Result value to `_`";
 const ADD_MISSING_PATTERNS: &str = "Add missing patterns";
 const ADD_ANNOTATION: &str = "Add type annotation";
 const ADD_ANNOTATIONS: &str = "Add type annotations";
-const DESUGAR_USE_EXPRESSION: &str = "Convert from `use`";
+const CONVERT_FROM_USE: &str = "Convert from `use`";
 const CONVERT_TO_USE: &str = "Convert to `use`";
 const EXTRACT_VARIABLE: &str = "Extract variable";
 const EXPAND_FUNCTION_CAPTURE: &str = "Expand function capture";
 const GENERATE_DYNAMIC_DECODER: &str = "Generate dynamic decoder";
+const PATTERN_MATCH_ON_ARGUMENT: &str = "Pattern match on argument";
+const PATTERN_MATCH_ON_VARIABLE: &str = "Pattern match on variable";
+const GENERATE_FUNCTION: &str = "Generate function";
 
 macro_rules! assert_code_action {
     ($title:expr, $code:literal, $range:expr $(,)?) => {
@@ -936,8 +939,8 @@ pub type Wibble { Wibble(arg1: Int, arg2: Int) }
 }
 
 #[test]
-fn fill_in_labelled_args_only_works_if_function_has_no_explicit_arguments_yet() {
-    assert_no_code_actions!(
+fn fill_in_labelled_args_with_some_arguments_already_supplied() {
+    assert_code_action!(
         FILL_LABELS,
         r#"
 pub fn main() {
@@ -951,8 +954,8 @@ pub fn wibble(arg1 arg1, arg2 arg2) { Nil }
 }
 
 #[test]
-fn fill_in_labelled_args_only_works_if_function_has_no_explicit_arguments_yet_2() {
-    assert_no_code_actions!(
+fn fill_in_labelled_args_with_some_arguments_already_supplied_2() {
+    assert_code_action!(
         FILL_LABELS,
         r#"
 pub fn main() {
@@ -960,6 +963,21 @@ pub fn main() {
 }
 
 pub fn wibble(arg1 arg1, arg2 arg2) { Nil }
+ "#,
+        find_position_of("wibble(").to_selection(),
+    );
+}
+
+#[test]
+fn fill_in_labelled_args_with_some_arguments_already_supplied_3() {
+    assert_code_action!(
+        FILL_LABELS,
+        r#"
+pub fn main() {
+  wibble(1, arg3: 2)
+}
+
+pub fn wibble(arg1 arg1, arg2 arg2, arg3 arg3) { Nil }
  "#,
         find_position_of("wibble(").to_selection(),
     );
@@ -1036,11 +1054,44 @@ fn fill_in_labelled_args_works_with_use() {
         r#"
 pub fn main() {
   use <- wibble()
+  todo
 }
 
 pub fn wibble(arg1 arg1, arg2 arg2) { Nil }
  "#,
         find_position_of("wibble(").select_until(find_position_of("wibble()").under_last_char()),
+    );
+}
+
+#[test]
+fn fill_in_labelled_args_works_with_use_2() {
+    assert_code_action!(
+        FILL_LABELS,
+        r#"
+pub fn main() {
+  use <- wibble(arg1: 1)
+  todo
+}
+
+pub fn wibble(arg1 arg1, arg2 arg2, arg3 arg3) { Nil }
+ "#,
+        find_position_of("wibble(").select_until(find_position_of("1").under_last_char()),
+    );
+}
+
+#[test]
+fn fill_in_labelled_args_works_with_use_3() {
+    assert_code_action!(
+        FILL_LABELS,
+        r#"
+pub fn main() {
+  use <- wibble(arg2: 2)
+  todo
+}
+
+pub fn wibble(arg1 arg1, arg2 arg2, arg3 arg3) { Nil }
+ "#,
+        find_position_of("wibble(").select_until(find_position_of("2").under_last_char()),
     );
 }
 
@@ -2053,6 +2104,23 @@ pub fn identity(x: wobble.Wobble) -> wobble.Wobble {
         "Unqualify wobble.Wobble",
         TestProject::for_source(src).add_hex_module("wobble", "pub type Wobble { Wibble }"),
         find_position_of(".").select_until(find_position_of("Wobble"))
+    );
+}
+
+#[test]
+fn test_qualified_to_unqualified_record_value_constructor_module_name() {
+    let src = r#"
+import option
+
+pub fn main() {
+  option.Some(1)
+}
+"#;
+    assert_code_action!(
+        "Unqualify option.Some",
+        TestProject::for_source(src)
+            .add_hex_module("option", "pub type Option(v) { Some(v) None }"),
+        find_position_of("option").nth_occurrence(2).to_selection()
     );
 }
 
@@ -3239,7 +3307,7 @@ pub fn main() {
 */
 
 #[test]
-fn desugar_use_expression_with_no_parens() {
+fn convert_from_use_expression_with_no_parens() {
     let src = r#"
 pub fn main() {
   use <- wibble
@@ -3252,14 +3320,14 @@ fn wibble(f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("use").select_until(find_position_of("todo")),
     );
 }
 
 #[test]
-fn desugar_use_expression_with_empty_parens() {
+fn convert_from_use_expression_with_empty_parens() {
     let src = r#"
 pub fn main() {
   use <- wibble()
@@ -3272,14 +3340,14 @@ fn wibble(f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("use").to_selection(),
     );
 }
 
 #[test]
-fn desugar_use_expression_with_parens_and_other_args() {
+fn convert_from_use_expression_with_parens_and_other_args() {
     let src = r#"
 pub fn main() {
   use <- wibble(1, 2)
@@ -3292,14 +3360,14 @@ fn wibble(n, m, f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("wibble").select_until(find_position_of("1")),
     );
 }
 
 #[test]
-fn desugar_use_expression_with_single_pattern() {
+fn convert_from_use_expression_with_single_pattern() {
     let src = r#"
 pub fn main() {
   use a <- wibble(1, 2)
@@ -3312,14 +3380,14 @@ fn wibble(n, m, f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("todo").to_selection(),
     );
 }
 
 #[test]
-fn desugar_use_expression_with_multiple_patterns() {
+fn convert_from_use_expression_with_multiple_patterns() {
     let src = r#"
 pub fn main() {
   use a, b <- wibble(1, 2)
@@ -3332,7 +3400,7 @@ fn wibble(n, m, f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("todo").nth_occurrence(2).to_selection(),
     );
@@ -3352,7 +3420,7 @@ fn wibble(n, m, f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("todo").under_last_char().to_selection(),
     );
@@ -3372,14 +3440,14 @@ fn wibble(n, m, f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("<-").select_until(find_position_of("wibble")),
     );
 }
 
 #[test]
-fn desugar_use_expression_with_type_annotations() {
+fn convert_from_use_expression_with_type_annotations() {
     let src = r#"
 pub fn main() {
   use a: Int, b: Int <- wibble(1, 2)
@@ -3391,14 +3459,14 @@ fn wibble(n, m, f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("<-").select_until(find_position_of("wibble")),
     );
 }
 
 #[test]
-fn desugar_use_expression_doesnt_work_with_complex_patterns() {
+fn convert_from_use_expression_doesnt_work_with_complex_patterns() {
     let src = r#"
 pub fn main() {
   use #(a, b), 1 <- wibble(1, 2)
@@ -3410,14 +3478,14 @@ fn wibble(n, m, f) {
 }
 "#;
     assert_no_code_actions!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("<-").select_until(find_position_of("wibble")),
     );
 }
 
 #[test]
-fn desugar_use_with_labels() {
+fn convert_from_use_with_labels() {
     let src = r#"
 pub fn main() {
   use a <- wibble(one: 1, two: 2)
@@ -3429,14 +3497,14 @@ fn wibble(one _, two _, three f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("todo").to_selection(),
     );
 }
 
 #[test]
-fn desugar_use_with_labels_2() {
+fn convert_from_use_with_labels_2() {
     let src = r#"
 pub fn main() {
   use a <- wibble(1, two: 2)
@@ -3448,14 +3516,14 @@ fn wibble(one _, two _, three f) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("todo").to_selection(),
     );
 }
 
 #[test]
-fn desugar_use_with_labels_3() {
+fn convert_from_use_with_labels_3() {
     let src = r#"
 pub fn main() {
   use a <- wibble(1, three: 3)
@@ -3467,14 +3535,14 @@ fn wibble(one _, two f, three _) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("todo").to_selection(),
     );
 }
 
 #[test]
-fn desugar_use_with_labels_4() {
+fn convert_from_use_with_labels_4() {
     let src = r#"
 pub fn main() {
   use a <- wibble(two: 2, three: 3)
@@ -3486,9 +3554,95 @@ fn wibble(one f, two _, three _) {
 }
 "#;
     assert_code_action!(
-        DESUGAR_USE_EXPRESSION,
+        CONVERT_FROM_USE,
         TestProject::for_source(src),
         find_position_of("todo").to_selection(),
+    );
+}
+
+#[test]
+// https://github.com/gleam-lang/gleam/issues/4149
+fn convert_from_use_with_trailing_comma() {
+    let src = r#"
+pub fn main() {
+  use a, b <- wibble(1, 2,)
+  todo
+}
+
+fn wibble(n, m, f) {
+    f(todo, todo)
+}
+"#;
+    assert_code_action!(
+        CONVERT_FROM_USE,
+        TestProject::for_source(src),
+        find_position_of("<-").select_until(find_position_of("wibble")),
+    );
+}
+
+#[test]
+fn convert_from_use_with_trailing_comma_2() {
+    let src = r#"
+pub fn main() {
+  use a, b <- wibble(
+    1,
+    2,
+  )
+  todo
+}
+
+fn wibble(n, m, f) {
+    f(todo, todo)
+}
+"#;
+    assert_code_action!(
+        CONVERT_FROM_USE,
+        TestProject::for_source(src),
+        find_position_of("<-").select_until(find_position_of("wibble")),
+    );
+}
+
+#[test]
+fn convert_from_use_with_trailing_comma_and_label() {
+    let src = r#"
+pub fn main() {
+  use a, b <- wibble(
+    1,
+    wibble: 2,
+  )
+  todo
+}
+
+fn wibble(n, wibble m, wobble f) {
+    f(todo, todo)
+}
+"#;
+    assert_code_action!(
+        CONVERT_FROM_USE,
+        TestProject::for_source(src),
+        find_position_of("<-").select_until(find_position_of("wibble")),
+    );
+}
+
+#[test]
+fn convert_from_use_multiline_with_no_trailing_comma() {
+    let src = r#"
+pub fn main() {
+  use a, b <- wibble(
+    1,
+    2
+  )
+  todo
+}
+
+fn wibble(n, m, f) {
+    f(todo, todo)
+}
+"#;
+    assert_code_action!(
+        CONVERT_FROM_USE,
+        TestProject::for_source(src),
+        find_position_of("<-").select_until(find_position_of("wibble")),
     );
 }
 
@@ -3894,6 +4048,38 @@ fn extract_variable_does_not_extract_a_variable() {
 }
 
 #[test]
+fn extract_variable_does_not_extract_an_entire_pipeline_step() {
+    assert_no_code_actions!(
+        EXTRACT_VARIABLE,
+        r#"pub fn main() {
+    [1, 2, 3]
+    |> map(todo)
+    |> map(todo)
+}
+
+fn map(list, fun) { todo }
+"#,
+        find_position_of("map").to_selection()
+    );
+}
+
+#[test]
+fn extract_variable_does_not_extract_the_last_pipeline_step() {
+    assert_no_code_actions!(
+        EXTRACT_VARIABLE,
+        r#"pub fn main() {
+    [1, 2, 3]
+    |> map(todo)
+    |> map(todo)
+}
+
+fn map(list, fun) { todo }
+"#,
+        find_position_of("map").to_selection()
+    );
+}
+
+#[test]
 fn extract_variable_2() {
     assert_code_action!(
         EXTRACT_VARIABLE,
@@ -4105,10 +4291,26 @@ fn expand_function_capture_does_not_shadow_variables() {
         EXPAND_FUNCTION_CAPTURE,
         r#"pub fn main() {
   let value = 1
-  let value1 = 2
-  wibble(value, _, value1)
+  let value_2 = 2
+  wibble(value, _, value_2)
 }"#,
         find_position_of("wibble").to_selection()
+    );
+}
+
+#[test]
+fn expand_function_capture_picks_a_name_based_on_the_type_of_the_hole() {
+    assert_code_action!(
+        EXPAND_FUNCTION_CAPTURE,
+        r#"pub fn main() {
+  [1, 2, 3]
+  |> map(add(_, 1))
+}
+
+pub fn map(l: List(a), f: fn(a) -> b) -> List(b) { todo }
+pub fn add(n, m) { n + m }
+"#,
+        find_position_of("add").to_selection()
     );
 }
 
@@ -4223,5 +4425,449 @@ pub type Wibble {
 }
 ",
         find_position_of("type").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_empty_tuple() {
+    assert_no_code_actions!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub fn main(tuple: #()) {
+  todo
+}
+",
+        find_position_of("tuple").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_single_item_tuple() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub fn main(tuple: #(Int)) {
+  todo
+}
+",
+        find_position_of(":").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_multi_item_tuple() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub fn main(tuple: #(Int, String, Bool)) {
+  todo
+}
+",
+        find_position_of("tuple").select_until(find_position_of("Int"))
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_uses_case_with_multiple_constructors() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub type CannotBeDestructured {
+  One(one: String)
+  Two(two: Int)
+}
+
+pub fn main(arg: CannotBeDestructured) {
+  todo
+}
+",
+        find_position_of("arg").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_with_multiple_constructors_is_nicely_formatted_in_function_with_empty_body(
+) {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub type CannotBeDestructured {
+  One(one: String)
+  Two(two: Int)
+}
+
+pub fn main(arg: CannotBeDestructured) {}
+",
+        find_position_of("arg").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_uses_label_shorthand_syntax_for_labelled_arguments() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub type Wibble {
+  Wobble(Int, String, i_want_to_see_this: String, and_this: Bool)
+}
+
+pub fn main(arg: Wibble) {
+  todo
+}
+",
+        find_position_of("arg").select_until(find_position_of("Wibble").nth_occurrence(2))
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_will_use_qualified_name() {
+    let src = "
+import wibble
+
+pub fn main(arg: wibble.Wibble) {
+  todo
+}
+";
+
+    let dep = "
+pub type Wibble {
+  ThisShouldBeQualified(label: Int)
+}
+";
+
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        TestProject::for_source(src).add_module("wibble", dep),
+        find_position_of("wibble").nth_occurrence(2).to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_will_use_unqualified_name() {
+    let src = "
+import wibble.{ThisShouldBeUnqualified}
+
+pub fn main(arg: wibble.Wibble) {
+  todo
+}
+";
+
+    let dep = "
+pub type Wibble {
+  ThisShouldBeUnqualified(label: Int)
+}
+";
+
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        TestProject::for_source(src).add_module("wibble", dep),
+        find_position_of("Wibble").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_will_use_aliased_constructor_name() {
+    let src = "
+import wibble.{Wobble as IWantToSeeThisName}
+
+pub fn main(arg: wibble.Wibble) {
+  todo
+}
+";
+
+    let dep = "
+pub type Wibble {
+  Wobble(label: Int)
+}
+";
+
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        TestProject::for_source(src).add_module("wibble", dep),
+        find_position_of("arg").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_will_use_aliased_module_name() {
+    let src = "
+import wibble as i_want_to_see_this_name
+
+pub fn main(arg: i_want_to_see_this_name.Wibble) {
+  todo
+}
+";
+
+    let dep = "
+pub type Wibble {
+  Wobble(label: Int)
+}
+";
+
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        TestProject::for_source(src).add_dep_module("wibble", dep),
+        find_position_of("arg").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_not_available_for_internal_type() {
+    let src = "
+import wibble
+
+pub fn main(arg: wobble.Wibble) {
+  todo
+}
+";
+
+    let dep = "
+@internal
+pub type Wibble {
+  Wobble(label: Int)
+}
+";
+
+    assert_no_code_actions!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        TestProject::for_source(src).add_module("wibble", dep),
+        find_position_of("arg").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_available_for_internal_type_defined_in_current_module() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+@internal
+pub type Wibble {
+  Wobble(label: Int)
+}
+
+pub fn main(arg: Wibble) {
+  todo
+}
+",
+        find_position_of("arg").select_until(find_position_of("Wibble").nth_occurrence(2))
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_preserves_indentation_of_statement_following_inserted_let() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "pub fn main(arg: #(Int, String)) {
+  todo
+//^^^^ This should still have two spaces of indentation!
+}",
+        find_position_of("arg").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_nicely_formats_code_when_used_on_function_with_empty_body() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "pub fn main(arg: #(Int, String)) {}",
+        find_position_of("arg").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_single_unlabelled_field_is_not_numbered() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub type Wibble {
+  Wibble(Int)
+}
+
+pub fn main(arg: Wibble) {}
+",
+        find_position_of(":").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_let_assignment() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_VARIABLE,
+        "
+pub fn main() {
+  let var = #(1, 2)
+}
+",
+        find_position_of("var").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_let_assignment_with_multiple_constructors() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_VARIABLE,
+        "
+pub type Wibble {
+  Wobble
+  Woo
+}
+
+pub fn main() {
+  let var = Woo
+  todo
+}
+",
+        find_position_of("var").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_works_on_fn_arguments() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub fn main() {
+  [#(1, 2)]
+  |> map(fn(tuple) {})
+}
+
+fn map(list: List(a), fun: fn(a) -> b) { todo }
+",
+        find_position_of("tuple").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_works_on_nested_fn_arguments() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub fn main() {
+  map([[#(1, 2)]], fn(list) {
+    map(list, fn(tuple) {
+      todo
+    })
+  })
+}
+
+fn map(list: List(a), fun: fn(a) -> b) { todo }
+",
+        find_position_of("tuple").to_selection()
+    );
+}
+
+#[test]
+fn generate_function_works_with_invalid_call() {
+    assert_code_action!(
+        GENERATE_FUNCTION,
+        "
+pub fn main() -> Bool {
+  wibble(1, True, 2.3)
+}
+",
+        find_position_of("wibble").to_selection()
+    );
+}
+
+#[test]
+fn generate_function_works_with_pipeline_steps() {
+    assert_code_action!(
+        GENERATE_FUNCTION,
+        "
+pub fn main() {
+  [1, 2, 3]
+  |> sum
+  |> int_to_string
+}
+
+fn int_to_string(n: Int) -> String {
+  todo
+}
+",
+        find_position_of("sum").to_selection()
+    );
+}
+
+#[test]
+fn generate_function_works_with_pipeline_steps_1() {
+    assert_code_action!(
+        GENERATE_FUNCTION,
+        "
+pub fn main() {
+  [1, 2, 3]
+  |> map(int_to_string)
+  |> join
+}
+
+fn map(list: List(a), fun: fn(a) -> b) -> List(b) {
+  todo
+}
+
+fn join(n: List(String)) -> String {
+  todo
+}
+",
+        find_position_of("int_to_string").to_selection()
+    );
+}
+
+// https://github.com/gleam-lang/gleam/issues/4177#event-15968345230
+#[test]
+fn generate_function_picks_argument_name_based_on_type() {
+    assert_code_action!(
+        GENERATE_FUNCTION,
+        "
+pub fn main() {
+  wibble(\"Hello\", 1)
+}
+",
+        find_position_of("wibble").to_selection()
+    );
+}
+
+#[test]
+fn generate_function_wont_generate_two_arguments_with_the_same_name_if_they_have_the_same_type() {
+    assert_code_action!(
+        GENERATE_FUNCTION,
+        "
+pub fn main() {
+  wibble(2, 1)
+}
+",
+        find_position_of("wibble").to_selection()
+    );
+}
+
+#[test]
+fn pattern_match_on_argument_generates_unique_names_even_with_labels() {
+    assert_code_action!(
+        PATTERN_MATCH_ON_ARGUMENT,
+        "
+pub type Wibble {
+  Wibble(String, string: String)
+}
+
+pub fn main(wibble: Wibble) {
+  todo
+}
+",
+        find_position_of("wibble").to_selection()
+    );
+}
+
+#[test]
+fn extract_variable_with_list_with_plural_name_does_not_add_another_s() {
+    assert_code_action!(
+        EXTRACT_VARIABLE,
+        "
+pub fn main() {
+  wibble([Names, Names])
+}
+
+pub type Names {
+  Names
+}
+",
+        find_position_of("[").to_selection()
     );
 }

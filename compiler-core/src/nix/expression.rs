@@ -1,7 +1,7 @@
 use crate::ast::{
     Arg, AssignmentKind, BinOp, BitArrayOption, CallArg, Constant, SrcSpan, Statement, TypedArg,
     TypedAssignment, TypedClause, TypedConstant, TypedConstantBitArraySegment, TypedExpr,
-    TypedExprBitArraySegment, TypedModule, TypedPattern, TypedStatement,
+    TypedExprBitArraySegment, TypedModule, TypedPattern, TypedPipelineAssignment, TypedStatement,
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
@@ -183,6 +183,35 @@ impl<'module> Generator<'module> {
         }
     }
 
+    /// Generates an assignment without a pattern or assertion:
+    ///
+    /// ```nix
+    /// name = value;
+    /// ```
+    fn simple_assignment<'a>(
+        &mut self,
+        name: &'a EcoString,
+        value: &'a TypedExpr,
+        in_trailing_position: bool,
+    ) -> Output<'a> {
+        // Subject must be rendered before the variable for variable numbering
+        if in_trailing_position {
+            // No need to assign, we are being returned.
+            return if self.strict_eval_vars.is_empty() {
+                self.expression(value)
+            } else {
+                // If there are variables to evaluate strictly,
+                // we will be an argument to 'builtins.seq' or
+                // 'seqAll', so wrap accordingly.
+                self.wrap_child_expression(value)
+            };
+        }
+        let subject = self.expression(value)?;
+        let nix_name = self.next_local_var(name, false);
+
+        Ok(syntax::assignment_line(nix_name, subject))
+    }
+
     /// Renders an assignment, or just the value being assigned if we're in trailing position
     /// (that is, this assignment is the last statement in a function or block, so it is returned).
     ///
@@ -215,21 +244,7 @@ impl<'module> Generator<'module> {
         // If it is a simple assignment to a variable we can generate a normal
         // Nix assignment
         if let TypedPattern::Variable { name, .. } = pattern {
-            // Subject must be rendered before the variable for variable numbering
-            if in_trailing_position {
-                // No need to assign, we are being returned.
-                return if self.strict_eval_vars.is_empty() {
-                    self.expression(value)
-                } else {
-                    // If there are variables to evaluate strictly,
-                    // we will be an argument to 'builtins.seq' or
-                    // 'seqAll', so wrap accordingly.
-                    self.wrap_child_expression(value)
-                };
-            }
-            let subject = self.expression(value)?;
-            let nix_name = self.next_local_var(name, false);
-            return Ok(syntax::assignment_line(nix_name, subject));
+            return self.simple_assignment(name, value, in_trailing_position);
         }
 
         // Otherwise we need to compile the patterns
@@ -429,7 +444,7 @@ impl<'module> Generator<'module> {
 
     fn pipeline<'a>(
         &mut self,
-        assignments: &'a [TypedAssignment],
+        assignments: &'a [TypedPipelineAssignment],
         finally: &'a TypedExpr,
     ) -> Output<'a> {
         if assignments.is_empty() {
@@ -441,7 +456,7 @@ impl<'module> Generator<'module> {
         let strict_vars = std::mem::take(&mut self.strict_eval_vars);
         let assignments = assignments
             .iter()
-            .map(|assignment| self.assignment(assignment, false))
+            .map(|assignment| self.simple_assignment(&assignment.name, &assignment.value, false))
             .collect::<Result<Vec<_>, _>>()?;
 
         let body = self.expression(finally)?;
@@ -537,7 +552,7 @@ impl<'module> Generator<'module> {
                 } else if is_final_clause {
                     doc.append(break_("", " "))
                         .append("else")
-                        .append(docvec!(break_("", " "), body).nest(INDENT).group())
+                        .append(docvec![break_("", " "), body].nest(INDENT).group())
                 } else {
                     let condition = gen
                         .expression_generator
@@ -546,17 +561,17 @@ impl<'module> Generator<'module> {
                     doc.append(if is_first_clause {
                         "if".to_doc()
                     } else {
-                        docvec!(break_("", " "), "else if")
+                        docvec![break_("", " "), "else if"]
                     })
                     .append(
                         docvec!(
-                            docvec!(break_("", " "), condition).nest(INDENT),
+                            docvec![break_("", " "), condition].nest(INDENT),
                             break_("", " "),
                             "then"
                         )
                         .group(),
                     )
-                    .append(docvec!(break_("", " "), body).nest(INDENT).group())
+                    .append(docvec![break_("", " "), body].nest(INDENT).group())
                 };
             }
         }
@@ -824,7 +839,7 @@ impl Generator<'_> {
             fun_args(arguments)
         };
 
-        Ok(arguments.append(docvec!(break_("", " "), result?).group()))
+        Ok(arguments.append(docvec![break_("", " "), result?].group()))
     }
 
     fn todo<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
@@ -956,7 +971,7 @@ impl Generator<'_> {
     ) -> Output<'a> {
         let left = self.wrap_child_expression(left)?;
         let right = self.wrap_child_expression(right)?;
-        Ok(docvec!(left, " ", op, " ", right))
+        Ok(docvec![left, " ", op, " ", right])
     }
 
     fn equal<'a>(
@@ -975,7 +990,7 @@ impl Generator<'_> {
     }
 
     fn negate_with<'a>(&mut self, with: &'static str, value: &'a TypedExpr) -> Output<'a> {
-        Ok(docvec!(with, self.wrap_child_expression(value)?))
+        Ok(docvec![with, self.wrap_child_expression(value)?])
     }
 }
 
@@ -1415,7 +1430,7 @@ pub(crate) fn constant_expression<'a>(
         Constant::StringConcatenation { left, right, .. } => {
             let left = wrap_child_constant_expression(tracker, left)?;
             let right = wrap_child_constant_expression(tracker, right)?;
-            Ok(docvec!(left, " + ", right))
+            Ok(docvec![left, " + ", right])
         }
 
         Constant::Invalid { .. } => panic!("invalid constants should not reach code generation"),
@@ -1430,18 +1445,18 @@ fn wrap_child_constant_expression<'a>(
     match expression {
         Constant::Int { value, .. } if int_requires_parsing(value) => {
             // Will call 'parseNumber'
-            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+            Ok(docvec!["(", constant_expression(tracker, expression)?, ")"])
         }
         Constant::Int { value, .. } | Constant::Float { value, .. } if value.starts_with('-') => {
-            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+            Ok(docvec!["(", constant_expression(tracker, expression)?, ")"])
         }
         Constant::List { .. }
         | Constant::BitArray { .. }
         | Constant::StringConcatenation { .. } => {
-            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+            Ok(docvec!["(", constant_expression(tracker, expression)?, ")"])
         }
         Constant::Record { args, .. } if !args.is_empty() => {
-            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+            Ok(docvec!["(", constant_expression(tracker, expression)?, ")"])
         }
         _ => constant_expression(tracker, expression),
     }

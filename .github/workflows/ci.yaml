@@ -41,45 +41,45 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: x86-64
-            use-cross: false
+            cargo-tool: cargo
             run-integration-tests: true
             supports-nix: true
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             binary: x86-64
-            use-cross: true
+            cargo-tool: cross
             run-integration-tests: true
             supports-nix: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             binary: aarch64
-            use-cross: true
+            cargo-tool: cross
             run-integration-tests: false # Cannot run aarch64 binaries on x86_64
             supports-nix: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             binary: aarch64
-            use-cross: true
+            cargo-tool: cross
             run-integration-tests: false # Cannot run aarch64 binaries on x86_64
             supports-nix: true
           # macos>=14 runs exclusively on aarch64 and will thus fail to execute properly for x64
           - os: macos-13 # intel
             target: x86_64-apple-darwin
             binary: x86_64
-            use-cross: false
+            cargo-tool: cargo
             run-integration-tests: true
             supports-nix: true
           - os: macos-latest # aarch64
             toolchain: stable
             target: aarch64-apple-darwin
             binary: arm64
-            use-cross: false
+            cargo-tool: cargo
             run-integration-tests: true
             supports-nix: true
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: x86-64
-            use-cross: false
+            cargo-tool: cargo
             run-integration-tests: true
             supports-nix: false
     steps:
@@ -87,7 +87,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install musl-tools incl. musl-gcc
-        uses: awalsh128/cache-apt-pkgs-action@v1
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
           # musl-tools provide `musl-gcc` which is required for `ring` which is required for `rustls` et al.
           packages: musl-tools
@@ -128,11 +128,11 @@ jobs:
           key: v1-${{ matrix.target }}
 
       - name: Install Glistix
-        uses: clechasseur/rs-cargo@v2
+        uses: clechasseur/rs-cargo@v3
         with:
           command: install
           args: "--path compiler-cli --target ${{ matrix.target }} --debug --locked --force"
-          use-cross: ${{ matrix.use-cross }}
+          tool: ${{ matrix.cargo-tool }}
         if: ${{ matrix.run-integration-tests }}
 
       - name: Verify binary architecture
@@ -153,11 +153,11 @@ jobs:
         if: ${{ matrix.run-integration-tests }}
 
       - name: Run tests
-        uses: clechasseur/rs-cargo@v2
+        uses: clechasseur/rs-cargo@v3
         with:
           command: test
           args: "--workspace --target ${{ matrix.target }}"
-          use-cross: ${{ matrix.use-cross }}
+          tool: ${{ matrix.cargo-tool }}
 
       - name: test/project_erlang (non-windows)
         run: |

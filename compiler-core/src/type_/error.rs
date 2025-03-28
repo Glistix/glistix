@@ -459,6 +459,11 @@ pub enum Error {
         missing: Vec<EcoString>,
     },
 
+    /// A case expression is missing its body.
+    MissingCaseBody {
+        location: SrcSpan,
+    },
+
     /// Let assignment's pattern does not match all possible values of the type.
     InexhaustiveLetAssignment {
         location: SrcSpan,
@@ -596,6 +601,10 @@ pub enum Error {
     /// Occers when any varient of a custom type is deprecated while
     /// the custom type itself is deprecated
     DeprecatedVariantOnDeprecatedType {
+        location: SrcSpan,
+    },
+
+    ErlangFloatUnsafe {
         location: SrcSpan,
     },
 }
@@ -1045,6 +1054,7 @@ impl Error {
             | Error::InvalidExternalNixModule { location, .. }
             | Error::InvalidExternalNixFunction { location, .. }
             | Error::InexhaustiveCaseExpression { location, .. }
+            | Error::MissingCaseBody { location }
             | Error::InexhaustiveLetAssignment { location, .. }
             | Error::UnusedTypeAliasParameter { location, .. }
             | Error::DuplicateTypeParameter { location, .. }
@@ -1058,7 +1068,8 @@ impl Error {
             | Error::UseFnIncorrectArity { location, .. }
             | Error::BadName { location, .. }
             | Error::AllVariantsDeprecated { location }
-            | Error::DeprecatedVariantOnDeprecatedType { location } => location.start,
+            | Error::DeprecatedVariantOnDeprecatedType { location }
+            | Error::ErlangFloatUnsafe { location } => location.start,
             Error::UnknownLabels { unknown, .. } => {
                 unknown.iter().map(|(_, s)| s.start).min().unwrap_or(0)
             }
@@ -1347,12 +1358,16 @@ fn flip_unify_error_test() {
         UnifyError::CouldNotUnify {
             expected: crate::type_::int(),
             given: crate::type_::float(),
-            situation: Some(UnifyErrorSituation::CaseClauseMismatch),
+            situation: Some(UnifyErrorSituation::CaseClauseMismatch {
+                clause_location: SrcSpan::default()
+            }),
         },
         flip_unify_error(UnifyError::CouldNotUnify {
             expected: crate::type_::float(),
             given: crate::type_::int(),
-            situation: Some(UnifyErrorSituation::CaseClauseMismatch),
+            situation: Some(UnifyErrorSituation::CaseClauseMismatch {
+                clause_location: SrcSpan::default()
+            }),
         })
     );
 }
@@ -1382,7 +1397,9 @@ fn unify_enclosed_type_test() {
         Err(UnifyError::CouldNotUnify {
             expected: crate::type_::int(),
             given: crate::type_::float(),
-            situation: Some(UnifyErrorSituation::CaseClauseMismatch)
+            situation: Some(UnifyErrorSituation::CaseClauseMismatch {
+                clause_location: SrcSpan::default()
+            })
         }),
         unify_enclosed_type(
             crate::type_::int(),
@@ -1390,7 +1407,9 @@ fn unify_enclosed_type_test() {
             Err(UnifyError::CouldNotUnify {
                 expected: crate::type_::string(),
                 given: crate::type_::bits(),
-                situation: Some(UnifyErrorSituation::CaseClauseMismatch)
+                situation: Some(UnifyErrorSituation::CaseClauseMismatch {
+                    clause_location: SrcSpan::default()
+                })
             })
         )
     );
@@ -1455,7 +1474,9 @@ pub fn unify_wrong_returns(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnifyErrorSituation {
     /// Clauses in a case expression were found to return different types.
-    CaseClauseMismatch,
+    CaseClauseMismatch {
+        clause_location: SrcSpan,
+    },
 
     /// A function was found to return a value that did not match its return
     /// annotation.
@@ -1498,7 +1519,7 @@ pub enum FunctionsMismatchReason {
 impl UnifyErrorSituation {
     pub fn description(&self) -> Option<&'static str> {
         match self {
-            Self::CaseClauseMismatch => Some(
+            Self::CaseClauseMismatch { clause_location: _ } => Some(
                 "This case clause was found to return a different type than the previous
 one, but all case clauses must return the same type.",
             ),
@@ -1563,8 +1584,8 @@ impl UnifyError {
         }
     }
 
-    pub fn case_clause_mismatch(self) -> Self {
-        self.with_unify_error_situation(UnifyErrorSituation::CaseClauseMismatch)
+    pub fn case_clause_mismatch(self, clause_location: SrcSpan) -> Self {
+        self.with_unify_error_situation(UnifyErrorSituation::CaseClauseMismatch { clause_location })
     }
 
     pub fn list_element_mismatch(self) -> Self {
@@ -1697,5 +1718,27 @@ pub fn check_javascript_int_safety(int_value: &BigInt, location: SrcSpan, proble
 
     if *int_value < js_min_safe_integer.into() || *int_value > js_max_safe_integer.into() {
         problems.warning(Warning::JavaScriptIntUnsafe { location });
+    }
+}
+
+/// When targeting Erlang, adds an error if the given Float value is outside the range
+/// -1.7976931348623157e308 to 1.7976931348623157e308 which is the allowed range for
+/// Erlang's floating point numbers
+///
+pub fn check_erlang_float_safety(
+    string_value: &EcoString,
+    location: SrcSpan,
+    problems: &mut Problems,
+) {
+    let erl_min_float = -1.7976931348623157e308f64;
+    let erl_max_float = 1.7976931348623157e308f64;
+
+    let float_value: f64 = string_value
+        .replace("_", "")
+        .parse()
+        .expect("Unable to parse string to floating point value");
+
+    if float_value < erl_min_float || float_value > erl_max_float {
+        problems.error(Error::ErlangFloatUnsafe { location });
     }
 }

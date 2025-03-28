@@ -1680,6 +1680,11 @@ fn nested_tuple_access_after_function() {
 }
 
 #[test]
+fn case_expression_without_body() {
+    assert_parse!("case a");
+}
+
+#[test]
 fn glistix_external_nix_attribute_on_type_variant() {
     assert_module_error!(
         r#"
