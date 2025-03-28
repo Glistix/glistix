@@ -1,7 +1,7 @@
 use crate::ast::{
     Arg, AssignmentKind, BinOp, BitArrayOption, CallArg, Constant, SrcSpan, Statement, TypedArg,
     TypedAssignment, TypedClause, TypedConstant, TypedConstantBitArraySegment, TypedExpr,
-    TypedExprBitArraySegment, TypedModule, TypedPattern, TypedStatement,
+    TypedExprBitArraySegment, TypedModule, TypedPattern, TypedPipelineAssignment, TypedStatement,
 };
 use crate::docvec;
 use crate::line_numbers::LineNumbers;
@@ -183,6 +183,35 @@ impl<'module> Generator<'module> {
         }
     }
 
+    /// Generates an assignment without a pattern or assertion:
+    ///
+    /// ```nix
+    /// name = value;
+    /// ```
+    fn simple_assignment<'a>(
+        &mut self,
+        name: &'a EcoString,
+        value: &'a TypedExpr,
+        in_trailing_position: bool,
+    ) -> Output<'a> {
+        // Subject must be rendered before the variable for variable numbering
+        if in_trailing_position {
+            // No need to assign, we are being returned.
+            return if self.strict_eval_vars.is_empty() {
+                self.expression(value)
+            } else {
+                // If there are variables to evaluate strictly,
+                // we will be an argument to 'builtins.seq' or
+                // 'seqAll', so wrap accordingly.
+                self.wrap_child_expression(value)
+            };
+        }
+        let subject = self.expression(value)?;
+        let nix_name = self.next_local_var(name, false);
+
+        Ok(syntax::assignment_line(nix_name, subject))
+    }
+
     /// Renders an assignment, or just the value being assigned if we're in trailing position
     /// (that is, this assignment is the last statement in a function or block, so it is returned).
     ///
@@ -215,21 +244,7 @@ impl<'module> Generator<'module> {
         // If it is a simple assignment to a variable we can generate a normal
         // Nix assignment
         if let TypedPattern::Variable { name, .. } = pattern {
-            // Subject must be rendered before the variable for variable numbering
-            if in_trailing_position {
-                // No need to assign, we are being returned.
-                return if self.strict_eval_vars.is_empty() {
-                    self.expression(value)
-                } else {
-                    // If there are variables to evaluate strictly,
-                    // we will be an argument to 'builtins.seq' or
-                    // 'seqAll', so wrap accordingly.
-                    self.wrap_child_expression(value)
-                };
-            }
-            let subject = self.expression(value)?;
-            let nix_name = self.next_local_var(name, false);
-            return Ok(syntax::assignment_line(nix_name, subject));
+            return self.simple_assignment(name, value, in_trailing_position);
         }
 
         // Otherwise we need to compile the patterns
@@ -429,7 +444,7 @@ impl<'module> Generator<'module> {
 
     fn pipeline<'a>(
         &mut self,
-        assignments: &'a [TypedAssignment],
+        assignments: &'a [TypedPipelineAssignment],
         finally: &'a TypedExpr,
     ) -> Output<'a> {
         if assignments.is_empty() {
@@ -441,7 +456,7 @@ impl<'module> Generator<'module> {
         let strict_vars = std::mem::take(&mut self.strict_eval_vars);
         let assignments = assignments
             .iter()
-            .map(|assignment| self.assignment(assignment, false))
+            .map(|assignment| self.simple_assignment(&assignment.name, &assignment.value, false))
             .collect::<Result<Vec<_>, _>>()?;
 
         let body = self.expression(finally)?;
