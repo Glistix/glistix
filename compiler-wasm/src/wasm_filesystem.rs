@@ -1,5 +1,5 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use glistix_core::{
+use gleam_core::{
     io::{
         memory::InMemoryFileSystem, BeamCompiler, CommandExecutor, FileSystemReader,
         FileSystemWriter, ReadDir, Stdio, WrappedReader,

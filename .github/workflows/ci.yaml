@@ -41,53 +41,46 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: x86-64
-            use-cross: false
+            cargo-tool: cargo
             run-integration-tests: true
-            supports-nix: true
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             binary: x86-64
-            use-cross: true
+            cargo-tool: cross
             run-integration-tests: true
-            supports-nix: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             binary: aarch64
-            use-cross: true
+            cargo-tool: cross
             run-integration-tests: false # Cannot run aarch64 binaries on x86_64
-            supports-nix: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             binary: aarch64
-            use-cross: true
+            cargo-tool: cross
             run-integration-tests: false # Cannot run aarch64 binaries on x86_64
-            supports-nix: true
           # macos>=14 runs exclusively on aarch64 and will thus fail to execute properly for x64
           - os: macos-13 # intel
             target: x86_64-apple-darwin
             binary: x86_64
-            use-cross: false
+            cargo-tool: cargo
             run-integration-tests: true
-            supports-nix: true
           - os: macos-latest # aarch64
             toolchain: stable
             target: aarch64-apple-darwin
             binary: arm64
-            use-cross: false
+            cargo-tool: cargo
             run-integration-tests: true
-            supports-nix: true
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: x86-64
-            use-cross: false
+            cargo-tool: cargo
             run-integration-tests: true
-            supports-nix: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install musl-tools incl. musl-gcc
-        uses: awalsh128/cache-apt-pkgs-action@v1
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
           # musl-tools provide `musl-gcc` which is required for `ring` which is required for `rustls` et al.
           packages: musl-tools
@@ -114,31 +107,23 @@ jobs:
           mix local.hex --force
         if: ${{ runner.os == 'macOS' }} # setup-beam does not support macOS
 
-      - name: Install Nix (not ARM MacOS)
-        uses: nixbuild/nix-quick-install-action@v27
-        if: ${{ matrix.supports-nix && matrix.target != 'aarch64-apple-darwin' }}
-
-      - name: Install Nix (ARM MacOS)
-        uses: cachix/install-nix-action@v25
-        if: ${{ matrix.supports-nix && matrix.target == 'aarch64-apple-darwin' }}
-
       - name: Handle Rust dependencies caching
         uses: Swatinem/rust-cache@v2
         with:
           key: v1-${{ matrix.target }}
 
-      - name: Install Glistix
-        uses: clechasseur/rs-cargo@v2
+      - name: Install Gleam
+        uses: clechasseur/rs-cargo@v3
         with:
           command: install
           args: "--path compiler-cli --target ${{ matrix.target }} --debug --locked --force"
-          use-cross: ${{ matrix.use-cross }}
+          tool: ${{ matrix.cargo-tool }}
         if: ${{ matrix.run-integration-tests }}
 
       - name: Verify binary architecture
         shell: bash
         run: |
-          BINARY_PATH="${CARGO_HOME}/bin/glistix"
+          BINARY_PATH="${CARGO_HOME}/bin/gleam"
           if [[ "${{ matrix.target }}" == *"windows"* ]]; then
             BINARY_PATH="${BINARY_PATH}.exe"
           fi
@@ -153,54 +138,54 @@ jobs:
         if: ${{ matrix.run-integration-tests }}
 
       - name: Run tests
-        uses: clechasseur/rs-cargo@v2
+        uses: clechasseur/rs-cargo@v3
         with:
           command: test
           args: "--workspace --target ${{ matrix.target }}"
-          use-cross: ${{ matrix.use-cross }}
+          tool: ${{ matrix.cargo-tool }}
 
       - name: test/project_erlang (non-windows)
         run: |
-          glistix run && cd src && glistix run && cd ..
-          glistix check
-          glistix test && cd src && glistix test && cd ..
-          glistix docs build
+          gleam run && cd src && gleam run && cd ..
+          gleam check
+          gleam test && cd src && gleam test && cd ..
+          gleam docs build
         working-directory: ./test/project_erlang
         if: ${{ runner.os != 'Windows' && matrix.run-integration-tests }}
 
       - name: test/project_erlang (windows)
         run: |
-          glistix run && cd src && glistix run && cd ..
-          glistix check
-          glistix test && cd src && glistix test && cd ..
-          glistix docs build
+          gleam run && cd src && gleam run && cd ..
+          gleam check
+          gleam test && cd src && gleam test && cd ..
+          gleam docs build
         working-directory: ./test/project_erlang_windows
         if: ${{ runner.os == 'Windows' && matrix.run-integration-tests }}
 
       - name: test/project_erlang export erlang-shipment (non-windows)
         run: |
-          glistix export erlang-shipment
+          gleam export erlang-shipment
           ./build/erlang-shipment/entrypoint.sh run
         working-directory: ./test/project_erlang
         if: ${{ runner.os != 'Windows' && matrix.run-integration-tests }}
 
       - name: test/project_erlang export erlang-shipment (windows)
         run: |
-          glistix export erlang-shipment
+          gleam export erlang-shipment
           .\build\erlang-shipment\entrypoint.ps1 run
         working-directory: ./test/project_erlang_windows
         if: ${{ runner.os == 'Windows' && matrix.run-integration-tests }}
 
       - name: test/project_erlang export package-interface (non-windows)
         run: |
-          glistix export package-interface --out="interface.json"
+          gleam export package-interface --out="interface.json"
           cat interface.json
         working-directory: ./test/project_erlang
         if: ${{ runner.os != 'Windows' && matrix.run-integration-tests }}
 
       - name: test/project_erlang export package-interface (windows)
         run: |
-          glistix export package-interface --out="interface.json"
+          gleam export package-interface --out="interface.json"
           cat interface.json
         working-directory: ./test/project_erlang_windows
         if: ${{ runner.os == 'Windows' && matrix.run-integration-tests }}
@@ -210,87 +195,52 @@ jobs:
         working-directory: ./test/external_only_javascript
         if: ${{ matrix.run-integration-tests }}
         env:
-          GLEAM_COMMAND: glistix
+          GLEAM_COMMAND: gleam
 
       - name: test/external_only_erlang
         run: ./test.sh
         working-directory: ./test/external_only_erlang
         if: ${{ matrix.run-integration-tests }}
         env:
-          GLEAM_COMMAND: glistix
+          GLEAM_COMMAND: gleam
 
       - name: test/root_package_not_compiled_when_running_dep
         run: ./test.sh
         working-directory: ./test/root_package_not_compiled_when_running_dep
         if: ${{ matrix.run-integration-tests }}
         env:
-          GLEAM_COMMAND: glistix
+          GLEAM_COMMAND: gleam
 
       - name: test/project_javascript
         run: |
-          glistix run
-          glistix check
-          glistix test
-          glistix docs build
+          gleam run
+          gleam check
+          gleam test
+          gleam docs build
         working-directory: ./test/project_javascript
-        if: ${{ matrix.run-integration-tests }}
-
-      - name: test/glistix_project_nix
-        run: |
-          glistix run
-          glistix check
-          glistix test
-          glistix docs build
-        working-directory: ./test/glistix_project_nix
-        if: ${{ matrix.run-integration-tests }}
-
-      - name: test/glistix_local_patching
-        run: |
-          glistix run
-          glistix check
-          glistix test
-          glistix docs build
-        working-directory: ./test/glistix_local_patching
-        if: ${{ matrix.run-integration-tests }}
-
-      - name: test/glistix_hex_patching
-        run: |
-          glistix run
-          glistix check
-          glistix test
-          glistix docs build
-        working-directory: ./test/glistix_hex_patching
         if: ${{ matrix.run-integration-tests }}
 
       - name: test/project_path_deps
         run: |
-          glistix update
-          glistix check
+          gleam update
+          gleam check
         working-directory: ./test/project_path_deps/project_a
         if: ${{ matrix.run-integration-tests }}
 
-      - name: Test project generation (Erlang)
-        env:
-          TEMP_PROJECT_DIR: ${{ runner.temp }}
+      - name: Test project generation
         run: |
-          # Create project in temp dir to avoid Git interference
-          cd "${TEMP_PROJECT_DIR}"
-          glistix new lib_project
+          gleam new lib_project
           cd lib_project
-          glistix run --target erlang
-          glistix test --target erlang
+          gleam run
+          gleam test
 
           # Test adding of deps
-          glistix add exception    # No specifier
-          glistix add gleam_http@3 # Version specifier
-          glistix test --target erlang
+          gleam add exception    # No specifier
+          gleam add gleam_http@3 # Version specifier
+          gleam test
 
           # Test documentation generation
-          # Workaround for lack of --target option for docs build
-          # TODO: Remove this workaround after Gleam 1.4
-          # (See https://github.com/gleam-lang/gleam/pull/3333)
-          sed -i -e 's/target = "nix"/target = "erlang"/' gleam.toml
-          glistix docs build
+          gleam docs build
 
           # Assert that module metadata has been written
           ls build/dev/erlang/lib_project/_gleam_artefacts/lib_project.cache
@@ -307,7 +257,6 @@ jobs:
           ls build/dev/docs/lib_project/js/highlightjs-elixir.min.js
           ls build/dev/docs/lib_project/js/highlightjs-javascript.min.js
           ls build/dev/docs/lib_project/js/highlightjs-typescript.min.js
-          ls build/dev/docs/lib_project/js/highlightjs-nix.min.js
           ls build/dev/docs/lib_project/js/lunr.min.js
           ls build/dev/docs/lib_project/js/index.js
           ls build/dev/docs/lib_project/fonts/karla-v23-bold-latin-ext.woff2
@@ -321,170 +270,6 @@ jobs:
           ls build/dev/docs/lib_project/fonts/ubuntu-mono-v15-regular-latin-ext.woff2
           ls build/dev/docs/lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
         if: ${{ matrix.run-integration-tests }}
-
-      - name: Test project generation (Nix - not Windows)
-        env:
-          TEMP_PROJECT_DIR: ${{ runner.temp }}
-        run: |
-          # Create project in temp dir to avoid Git interference
-          cd "${TEMP_PROJECT_DIR}"
-          glistix new nix_lib_project
-          cd nix_lib_project
-          glistix run
-          glistix test
-          glistix run --target nix
-          glistix test --target nix
-          glistix docs build
-
-          # Assert that module metadata has been written
-          ls build/dev/nix/nix_lib_project/_gleam_artefacts/nix_lib_project.cache
-
-          # Assert that HTML docs and their assets have been written
-          ls build/dev/docs/nix_lib_project/index.html
-          ls build/dev/docs/nix_lib_project/nix_lib_project.html
-          ls build/dev/docs/nix_lib_project/css/atom-one-light.min.css
-          ls build/dev/docs/nix_lib_project/css/atom-one-dark.min.css
-          ls build/dev/docs/nix_lib_project/css/index.css
-          ls build/dev/docs/nix_lib_project/js/highlight.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-gleam.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-erlang.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-elixir.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-javascript.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-typescript.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-nix.min.js
-          ls build/dev/docs/nix_lib_project/js/lunr.min.js
-          ls build/dev/docs/nix_lib_project/js/index.js
-          ls build/dev/docs/nix_lib_project/fonts/karla-v23-bold-latin-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/karla-v23-bold-latin.woff2
-          ls build/dev/docs/nix_lib_project/fonts/karla-v23-regular-latin-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/karla-v23-regular-latin.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-cyrillic-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-cyrillic.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-greek-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-greek.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
-        if: ${{ matrix.run-integration-tests && matrix.supports-nix }}
-
-      - name: Test project generation (Nix - Windows)
-        env:
-          TEMP_PROJECT_DIR: ${{ runner.temp }}
-        run: |
-          # Create project in temp dir to avoid Git interference
-          cd "${TEMP_PROJECT_DIR}"
-          glistix new nix_lib_project
-          cd nix_lib_project
-          glistix build
-          glistix build --target nix
-          glistix docs build
-
-          # Assert that module metadata has been written
-          ls build/dev/nix/nix_lib_project/_gleam_artefacts/nix_lib_project.cache
-
-          # Assert that HTML docs and their assets have been written
-          ls build/dev/docs/nix_lib_project/index.html
-          ls build/dev/docs/nix_lib_project/nix_lib_project.html
-          ls build/dev/docs/nix_lib_project/css/atom-one-light.min.css
-          ls build/dev/docs/nix_lib_project/css/atom-one-dark.min.css
-          ls build/dev/docs/nix_lib_project/css/index.css
-          ls build/dev/docs/nix_lib_project/js/highlight.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-gleam.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-erlang.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-elixir.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-javascript.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-typescript.min.js
-          ls build/dev/docs/nix_lib_project/js/highlightjs-nix.min.js
-          ls build/dev/docs/nix_lib_project/js/lunr.min.js
-          ls build/dev/docs/nix_lib_project/js/index.js
-          ls build/dev/docs/nix_lib_project/fonts/karla-v23-bold-latin-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/karla-v23-bold-latin.woff2
-          ls build/dev/docs/nix_lib_project/fonts/karla-v23-regular-latin-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/karla-v23-regular-latin.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-cyrillic-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-cyrillic.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-greek-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-greek.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin-ext.woff2
-          ls build/dev/docs/nix_lib_project/fonts/ubuntu-mono-v15-regular-latin.woff2
-        if: ${{ matrix.run-integration-tests && !matrix.supports-nix }}
-
-  test-flake:
-    name: test-flake
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-gnu
-          - aarch64-unknown-linux-musl
-          - x86_64-apple-darwin
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-          - os: macos-13 # intel (macos-14 only supports aarch64)
-            target: x86_64-apple-darwin
-          - os: macos-14 # aarch64
-            target: aarch64-apple-darwin
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Nix (not ARM MacOS)
-        uses: nixbuild/nix-quick-install-action@v27
-        if: ${{ matrix.target != 'aarch64-apple-darwin' }}
-
-      - name: Install Nix (ARM MacOS)
-        uses: cachix/install-nix-action@v25
-        if: ${{ matrix.target == 'aarch64-apple-darwin' }}
-
-      - uses: DeterminateSystems/magic-nix-cache-action@v4
-
-      - name: Check Flake
-        run: nix flake check
-
-      - name: Build Flake
-        run: nix build -L .
-
-      - name: Run Flake
-        run: nix run -L . -- --help
-
-      - name: Generate test project
-        run: |
-          mkdir .test-flake
-          cd .test-flake
-          nix run -L .. -- new newpkg
-
-      - name: Build generated project without flake
-        run: |
-          # Build to generate manifest.toml
-          nix run -L ../.. -- build
-          git add .
-        working-directory: ./.test-flake/newpkg
-
-      - name: Check generated project's flake
-        run: nix flake check --override-input glistix ../..
-        working-directory: ./.test-flake/newpkg
-
-      - name: Build generated project's flake
-        run: |
-          nix build -L --override-input glistix ../.. .
-
-          # Ensure build artifacts at 'result'
-          ls -ltah result/dev/nix
-        working-directory: ./.test-flake/newpkg
-
-      - name: Test 'loadGlistixPackage' on generated project
-        run: "nix eval -L --override-input glistix ../.. .#lib --apply '(lib: (lib.loadGlistixPackage { }).main { })' --impure"
-        working-directory: ./.test-flake/newpkg
 
   test-wasm:
     runs-on: ubuntu-latest
@@ -526,28 +311,34 @@ jobs:
 
       - run: cargo fmt --all -- --check
 
-  #  validate:
-  #    name: validate
-  #    runs-on: ubuntu-latest
-  #    timeout-minutes: 10
-  #    steps:
-  #      - name: Checkout repository
-  #        uses: actions/checkout@v4
-  #
-  #      - name: Install Rust toolchain
-  #        uses: dtolnay/rust-toolchain@stable
-  #        with:
-  #          toolchain: stable
-  #
-  #      - name: Install cargo-deny
-  #        run: |
-  #          set -e
-  #          curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.18/cargo-deny-0.14.18-x86_64-unknown-linux-musl.tar.gz | tar xzf -
-  #          mv cargo-deny-*-x86_64-unknown-linux-musl/cargo-deny cargo-deny
-  #          echo `pwd` >> $GITHUB_PATH
-  #
-  #      - name: Validate deps
-  #        run: cargo deny check
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure no merge commits
+        uses: NexusPHP/no-merge-commits@v2.2.1
+        if: github.event_name == 'pull_request'
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-deny
+        run: |
+          set -e
+          curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.18/cargo-deny-0.14.18-x86_64-unknown-linux-musl.tar.gz | tar xzf -
+          mv cargo-deny-*-x86_64-unknown-linux-musl/cargo-deny cargo-deny
+          echo `pwd` >> $GITHUB_PATH
+
+      - name: Validate deps
+        run: cargo deny check
 
   lint-build:
     name: lint-build
@@ -576,8 +367,8 @@ jobs:
       - name: Upload artifact (Ubuntu)
         uses: actions/upload-artifact@v4
         with:
-          name: glistix
-          path: target/debug/glistix
+          name: gleam
+          path: target/debug/gleam
 
   test-projects:
     name: test-projects
@@ -603,21 +394,18 @@ jobs:
           elixir-version: "1.16.1"
           rebar3-version: "3"
 
-      - name: Install Nix
-        uses: nixbuild/nix-quick-install-action@v27
-
-      - name: Download Glistix binary from previous job
+      - name: Download Gleam binary from previous job
         uses: actions/download-artifact@v4
         with:
-          name: glistix
+          name: gleam
           path: ./test
 
-      - name: Configure test projects to use Glistix binary
+      - name: Configure test projects to use Gleam binary
         run: |
           echo $PWD/ >> $GITHUB_PATH
-          chmod +x ./glistix
-          sed -i 's/cargo run --quiet --/glistix/' */Makefile
-          sed -i 's/cargo run --/glistix/' */Makefile
+          chmod +x ./gleam
+          sed -i 's/cargo run --quiet --/gleam/' */Makefile
+          sed -i 's/cargo run --/gleam/' */Makefile
         working-directory: ./test
 
       - name: test/language Erlang
@@ -634,10 +422,6 @@ jobs:
 
       - name: test/language JavaScript with Bun
         run: make clean bun
-        working-directory: ./test/language
-
-      - name: test/language Nix
-        run: make clean nix
         working-directory: ./test/language
 
       - name: test/compile_package0

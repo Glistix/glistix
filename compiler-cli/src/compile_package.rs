@@ -5,7 +5,7 @@ use crate::{
 };
 use camino::Utf8Path;
 use ecow::EcoString;
-use glistix_core::{
+use gleam_core::{
     build::{
         Mode, NullTelemetry, PackageCompiler, StaleTracker, Target, TargetCodegenConfiguration,
     },
@@ -33,11 +33,6 @@ pub fn command(options: CompilePackage) -> Result<()> {
             prelude_location: options
                 .javascript_prelude
                 .ok_or_else(|| Error::JavaScriptPreludeRequired)?,
-        },
-        Target::Nix => TargetCodegenConfiguration::Nix {
-            prelude_location: options
-                .nix_prelude
-                .ok_or_else(|| Error::NixPreludeRequired)?,
         },
     };
 

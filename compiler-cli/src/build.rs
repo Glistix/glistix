@@ -1,6 +1,6 @@
 use std::{rc::Rc, time::Instant};
 
-use glistix_core::{
+use gleam_core::{
     build::{Built, Codegen, NullTelemetry, Options, ProjectCompiler, Telemetry},
     manifest::Manifest,
     paths::ProjectPaths,

@@ -333,7 +333,6 @@ To match on all possible lists, use the `_` catch-all pattern instead.",
                 let full_name = match target {
                     Target::Erlang => "erlang",
                     Target::JavaScript => "javascript",
-                    Target::Nix => "nix",
                 };
 
                 Diagnostic {
@@ -376,7 +375,7 @@ A block must always contain at least one expression.",
                             );
                             "Incomplete block"
                         }
-                        TodoKind::EmptyFunction => "Unimplemented function",
+                        TodoKind::EmptyFunction { .. } => "Unimplemented function",
                         TodoKind::IncompleteUse => {
                             text.push_str(
                                 "

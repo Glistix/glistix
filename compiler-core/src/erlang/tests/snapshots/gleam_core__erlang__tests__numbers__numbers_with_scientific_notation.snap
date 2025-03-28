@@ -1,0 +1,26 @@
+---
+source: compiler-core/src/erlang/tests/numbers.rs
+expression: "\nconst i = 100.001e223\nconst j = -100.001e-223\n\npub fn main() {\n  i\n  j\n}\n"
+---
+----- SOURCE CODE
+
+const i = 100.001e223
+const j = -100.001e-223
+
+pub fn main() {
+  i
+  j
+}
+
+
+----- COMPILED ERLANG
+-module(my@mod).
+-compile([no_auto_import, nowarn_unused_vars, nowarn_unused_function, nowarn_nomatch]).
+
+-export([main/0]).
+
+-file("project/test/my/mod.gleam", 5).
+-spec main() -> float().
+main() ->
+    100.001e223,
+    -100.001e-223.

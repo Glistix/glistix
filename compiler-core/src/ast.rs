@@ -652,7 +652,6 @@ pub struct Function<T, Expr> {
     pub documentation: Option<(u32, EcoString)>,
     pub external_erlang: Option<(EcoString, EcoString, SrcSpan)>,
     pub external_javascript: Option<(EcoString, EcoString, SrcSpan)>,
-    pub external_nix: Option<(EcoString, EcoString, SrcSpan)>,
     pub implementations: Implementations,
 }
 
@@ -1525,6 +1524,7 @@ pub enum ClauseGuard<Type, RecordTag> {
         location: SrcSpan,
         type_: Type,
         name: EcoString,
+        definition_location: SrcSpan,
     },
 
     TupleIndex {
@@ -1951,7 +1951,6 @@ impl TypedPattern {
             | Pattern::VarUsage { .. }
             | Pattern::Assign { .. }
             | Pattern::Discard { .. }
-            | Pattern::BitArray { .. }
             | Pattern::StringPrefix { .. }
             | Pattern::Invalid { .. } => Some(Located::Pattern(self)),
 
@@ -1973,6 +1972,11 @@ impl TypedPattern {
                 .or_else(|| tail.as_ref().and_then(|p| p.find_node(byte_index))),
 
             Pattern::Tuple { elems, .. } => elems.iter().find_map(|p| p.find_node(byte_index)),
+
+            Pattern::BitArray { segments, .. } => segments
+                .iter()
+                .find_map(|segment| segment.find_node(byte_index))
+                .or(Some(Located::Pattern(self))),
         }
         .or(Some(Located::Pattern(self)))
     }
@@ -2046,6 +2050,16 @@ pub struct BitArraySegment<Value, Type> {
 impl TypedExprBitArraySegment {
     pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
         self.value.find_node(byte_index)
+    }
+}
+
+impl TypedPatternBitArraySegment {
+    pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
+        self.value.find_node(byte_index).or_else(|| {
+            self.options
+                .iter()
+                .find_map(|option| option.find_node(byte_index))
+        })
     }
 }
 
@@ -2178,10 +2192,34 @@ impl<A> BitArrayOption<A> {
     }
 }
 
+impl BitArrayOption<TypedPattern> {
+    pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
+        match self {
+            BitArrayOption::Bytes { .. }
+            | BitArrayOption::Int { .. }
+            | BitArrayOption::Float { .. }
+            | BitArrayOption::Bits { .. }
+            | BitArrayOption::Utf8 { .. }
+            | BitArrayOption::Utf16 { .. }
+            | BitArrayOption::Utf32 { .. }
+            | BitArrayOption::Utf8Codepoint { .. }
+            | BitArrayOption::Utf16Codepoint { .. }
+            | BitArrayOption::Utf32Codepoint { .. }
+            | BitArrayOption::Signed { .. }
+            | BitArrayOption::Unsigned { .. }
+            | BitArrayOption::Big { .. }
+            | BitArrayOption::Little { .. }
+            | BitArrayOption::Native { .. }
+            | BitArrayOption::Unit { .. } => None,
+            BitArrayOption::Size { value, .. } => value.find_node(byte_index),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TodoKind {
     Keyword,
-    EmptyFunction,
+    EmptyFunction { function_location: SrcSpan },
     IncompleteUse,
     EmptyBlock,
 }
@@ -2378,13 +2416,6 @@ impl TypedStatement {
         }
     }
 
-    pub fn is_non_pipe_expression(&self) -> bool {
-        match self {
-            Statement::Expression(expression) => !expression.is_pipeline(),
-            _ => false,
-        }
-    }
-
     pub fn location(&self) -> SrcSpan {
         match self {
             Statement::Expression(expression) => expression.location(),
@@ -2475,6 +2506,48 @@ impl TypedAssignment {
             }
         }
         self.pattern
+            .find_node(byte_index)
+            .or_else(|| self.value.find_node(byte_index))
+    }
+
+    pub fn type_(&self) -> Arc<Type> {
+        self.value.type_()
+    }
+}
+
+/// A pipeline is desugared to a series of assignments:
+///
+/// ```gleam
+/// wibble |> wobble |> woo
+/// ```
+///
+/// Becomes:
+///
+/// ```erl
+/// Pipe1 = wibble
+/// Pipe2 = wobble(Pipe1)
+/// woo(Pipe2)
+/// ```
+///
+/// This represents one of such assignments once the pipeline has been desugared
+/// and each step has been typed.
+///
+/// > We're not using a more general `TypedAssignment` node since that has much
+/// > more informations to carry around. This one is limited since we know it
+/// > will always be in the form `VarName = <Expr>`, with no patterns on the
+/// > left hand side of the assignment.
+/// > Being more constrained simplifies code generation for pipelines!
+///
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedPipelineAssignment {
+    pub location: SrcSpan,
+    pub name: EcoString,
+    pub value: Box<TypedExpr>,
+}
+
+impl TypedPipelineAssignment {
+    pub fn find_node(&self, byte_index: u32) -> Option<Located<'_>> {
+        self.value
             .find_node(byte_index)
             .or_else(|| self.value.find_node(byte_index))
     }

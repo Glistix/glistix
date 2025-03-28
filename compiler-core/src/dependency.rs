@@ -22,7 +22,6 @@ pub fn resolve_versions<Requirements>(
     root_name: EcoString,
     dependencies: Requirements,
     locked: &HashMap<EcoString, Version>,
-    glistix_patches: &crate::config::GlistixPatches,
 ) -> Result<PackageVersions>
 where
     Requirements: Iterator<Item = (EcoString, Range)>,
@@ -52,14 +51,7 @@ where
     };
 
     let packages = pubgrub::solver::resolve(
-        &DependencyProvider::new(
-            package_fetcher,
-            provided_packages,
-            root,
-            locked,
-            exact_deps,
-            glistix_patches,
-        ),
+        &DependencyProvider::new(package_fetcher, provided_packages, root, locked, exact_deps),
         root_name.as_str().into(),
         root_version,
     )
@@ -162,7 +154,6 @@ struct DependencyProvider<'a> {
     // and the version 1 bump ahead. That default breaks on prerelease builds since a bump includes the whole patch
     exact_only: &'a HashMap<String, Version>,
     optional_dependencies: RefCell<HashMap<EcoString, pubgrub::range::Range<Version>>>,
-    glistix_patches: &'a crate::config::GlistixPatches,
 }
 
 impl<'a> DependencyProvider<'a> {
@@ -172,7 +163,6 @@ impl<'a> DependencyProvider<'a> {
         root: hexpm::Package,
         locked: &'a HashMap<EcoString, Version>,
         exact_only: &'a HashMap<String, Version>,
-        glistix_patches: &'a crate::config::GlistixPatches,
     ) -> Self {
         let _ = packages.insert(root.name.as_str().into(), root);
         Self {
@@ -181,7 +171,6 @@ impl<'a> DependencyProvider<'a> {
             remote,
             exact_only,
             optional_dependencies: RefCell::new(Default::default()),
-            glistix_patches,
         }
     }
 
@@ -201,10 +190,6 @@ impl<'a> DependencyProvider<'a> {
         let mut packages = self.packages.borrow_mut();
         if packages.get(name).is_none() {
             let mut package = self.remote.get_dependencies(name)?;
-
-            // Glistix: Update dependencies.
-            self.glistix_patches.patch_hex_package(&mut package);
-
             // Sort the packages from newest to oldest, pres after all others
             package.releases.sort_by(|a, b| a.version.cmp(&b.version));
             package.releases.reverse();
@@ -498,7 +483,6 @@ mod tests {
             "app".into(),
             vec![("gleam_stdlib".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![locked_stdlib].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -517,7 +501,6 @@ mod tests {
             "app".into(),
             vec![].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(result, vec![].into_iter().collect())
@@ -531,7 +514,6 @@ mod tests {
             "app".into(),
             vec![("gleam_stdlib".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -550,7 +532,6 @@ mod tests {
             "app".into(),
             vec![("gleam_otp".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -572,7 +553,6 @@ mod tests {
             "app".into(),
             vec![("package_with_optional".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -598,7 +578,6 @@ mod tests {
             ]
             .into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -627,7 +606,6 @@ mod tests {
             ]
             .into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         );
         assert!(result.is_err());
     }
@@ -644,7 +622,6 @@ mod tests {
             ]
             .into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -673,7 +650,6 @@ mod tests {
             "app".into(),
             vec![("gleam_otp".into(), Range::new("~> 0.1.0".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -695,7 +671,6 @@ mod tests {
             "app".into(),
             vec![("package_with_retired".into(), Range::new("> 0.0.0".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -720,7 +695,6 @@ mod tests {
             &vec![("package_with_retired".into(), Version::new(0, 2, 0))]
                 .into_iter()
                 .collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -743,7 +717,6 @@ mod tests {
             "app".into(),
             vec![("gleam_otp".into(), Range::new("~> 0.3.0-rc1".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -765,7 +738,6 @@ mod tests {
             "app".into(),
             vec![("gleam_otp".into(), Range::new("0.3.0-rc1".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -787,7 +759,6 @@ mod tests {
             "app".into(),
             vec![("unknown".into(), Range::new("~> 0.1".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap_err();
     }
@@ -800,7 +771,6 @@ mod tests {
             "app".into(),
             vec![("gleam_stdlib".into(), Range::new("~> 99.0".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap_err();
     }
@@ -815,7 +785,6 @@ mod tests {
             &vec![("gleam_stdlib".into(), Version::new(0, 2, 0))]
                 .into_iter()
                 .collect(),
-            &Default::default(),
         )
         .unwrap_err();
 
@@ -836,7 +805,6 @@ mod tests {
             "app".into(),
             vec![("gleam_stdlib".into(), Range::new("0.1.0".into()))].into_iter(),
             &vec![].into_iter().collect(),
-            &Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -863,139 +831,5 @@ mod tests {
         );
         assert_eq!(parse_exact_version("~> 1.0.0"), None);
         assert_eq!(parse_exact_version(">= 1.0.0"), None);
-    }
-
-    mod glistix_patches {
-        use std::collections::HashMap;
-
-        use ecow::{eco_format, EcoString};
-        use hexpm::version::{Range, Version};
-        use hexpm::Release;
-
-        use crate::config::{GlistixPatch, GlistixPatches};
-        use crate::requirement::Requirement;
-
-        use super::resolve_versions;
-
-        fn glistix_remote() -> Box<super::Remote> {
-            let mut remote = super::make_remote();
-            let _ = remote.deps.insert(
-                "glistix_stdlib".into(),
-                hexpm::Package {
-                    name: "glistix_stdlib".into(),
-                    repository: "hexpm".into(),
-                    releases: vec![
-                        Release {
-                            version: Version::try_from("0.1.0").unwrap(),
-                            requirements: [].into(),
-                            retirement_status: None,
-                            outer_checksum: vec![1, 2, 3],
-                            meta: (),
-                        },
-                        Release {
-                            version: Version::try_from("0.2.0").unwrap(),
-                            requirements: [].into(),
-                            retirement_status: None,
-                            outer_checksum: vec![1, 2, 3],
-                            meta: (),
-                        },
-                        Release {
-                            version: Version::try_from("0.2.2").unwrap(),
-                            requirements: [].into(),
-                            retirement_status: None,
-                            outer_checksum: vec![1, 2, 3],
-                            meta: (),
-                        },
-                        Release {
-                            version: Version::try_from("0.3.0").unwrap(),
-                            requirements: [].into(),
-                            retirement_status: None,
-                            outer_checksum: vec![1, 2, 3],
-                            meta: (),
-                        },
-                    ],
-                },
-            );
-
-            remote
-        }
-
-        fn glistix_stdlib_patch() -> (EcoString, GlistixPatch) {
-            (
-                eco_format!("gleam_stdlib"),
-                GlistixPatch {
-                    name: Some(eco_format!("glistix_stdlib")),
-                    source: Requirement::Hex {
-                        version: Range::new(">= 0.2.0".into()),
-                    },
-                },
-            )
-        }
-
-        fn gleam_stdlib_version_patch() -> (EcoString, GlistixPatch) {
-            (
-                eco_format!("gleam_stdlib"),
-                GlistixPatch {
-                    // Don't rename it
-                    name: None,
-                    source: Requirement::Hex {
-                        version: Range::new("== 0.1.0".into()),
-                    },
-                },
-            )
-        }
-
-        fn make_patches<const N: usize>(patches: [(EcoString, GlistixPatch); N]) -> GlistixPatches {
-            GlistixPatches(patches.into_iter().collect())
-        }
-
-        // Note: only nested dependencies are patched, top-level requirements are
-        // kept to avoid confusion. Requirements should be patched before they are
-        // given to the 'resolve_versions' function.
-        #[test]
-        fn glistix_patch_nested_deps_rename() {
-            let patches = make_patches([glistix_stdlib_patch()]);
-            let result = resolve_versions(
-                glistix_remote(),
-                HashMap::new(),
-                "app".into(),
-                vec![("gleam_otp".into(), Range::new("~> 0.1".into()))].into_iter(),
-                &vec![].into_iter().collect(),
-                &patches,
-            )
-            .unwrap();
-            assert_eq!(
-                result,
-                vec![
-                    ("gleam_otp".into(), Version::try_from("0.2.0").unwrap()),
-                    ("glistix_stdlib".into(), Version::try_from("0.3.0").unwrap())
-                ]
-                .into_iter()
-                .collect()
-            );
-        }
-
-        #[test]
-        fn glistix_patch_nested_deps_just_change_version() {
-            let patches = make_patches([gleam_stdlib_version_patch()]);
-            let result = resolve_versions(
-                glistix_remote(),
-                HashMap::new(),
-                "app".into(),
-                vec![("gleam_otp".into(), Range::new("~> 0.1".into()))].into_iter(),
-                &vec![].into_iter().collect(),
-                &patches,
-            )
-            .unwrap();
-            assert_eq!(
-                result,
-                vec![
-                    ("gleam_otp".into(), Version::try_from("0.2.0").unwrap()),
-                    ("gleam_stdlib".into(), Version::try_from("0.1.0").unwrap())
-                ]
-                .into_iter()
-                .collect()
-            );
-        }
     }
 }

@@ -62,9 +62,6 @@ pub enum Target {
     #[strum(serialize = "javascript", serialize = "js")]
     #[serde(rename = "javascript", alias = "js")]
     JavaScript,
-    #[strum(serialize = "nix")]
-    #[serde(rename = "nix")]
-    Nix,
 }
 
 impl Target {
@@ -78,14 +75,6 @@ impl Target {
     #[must_use]
     pub fn is_javascript(&self) -> bool {
         matches!(self, Self::JavaScript)
-    }
-
-    /// Returns `true` if the target is [`Nix`].
-    ///
-    /// [`Nix`]: Target::Nix
-    #[must_use]
-    pub fn is_nix(&self) -> bool {
-        matches!(self, Self::Nix)
     }
 
     /// Returns `true` if the target is [`Erlang`].
@@ -151,9 +140,6 @@ impl Default for Runtime {
 
 #[derive(Debug)]
 pub enum TargetCodegenConfiguration {
-    Nix {
-        prelude_location: Utf8PathBuf,
-    },
     JavaScript {
         emit_typescript_definitions: bool,
         prelude_location: Utf8PathBuf,
@@ -166,7 +152,6 @@ pub enum TargetCodegenConfiguration {
 impl TargetCodegenConfiguration {
     pub fn target(&self) -> Target {
         match self {
-            Self::Nix { .. } => Target::Nix,
             Self::JavaScript { .. } => Target::JavaScript,
             Self::Erlang { .. } => Target::Erlang,
         }

@@ -1680,13 +1680,6 @@ fn nested_tuple_access_after_function() {
 }
 
 #[test]
-fn glistix_external_nix_attribute_on_type_variant() {
-    assert_module_error!(
-        r#"
-type Wibble {
-    @external(nix, "one.nix", "two")
-    Wibble1
-}
-"#
-    );
+fn case_expression_without_body() {
+    assert_parse!("case a");
 }

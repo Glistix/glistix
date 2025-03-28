@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
-use glistix_core::Error;
+use gleam_core::Error;
 
 #[test]
 fn new() {
@@ -11,7 +11,7 @@ fn new() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: false,
             skip_github: false,
@@ -29,10 +29,6 @@ fn new() {
     assert!(path.join("test/my_project_test.gleam").exists());
     assert!(path.join(".github/workflows/test.yml").exists());
 
-    assert!(path.join("flake.nix").exists());
-    assert!(path.join("default.nix").exists());
-    assert!(path.join("shell.nix").exists());
-
     let toml = crate::fs::read(path.join("gleam.toml")).unwrap();
     assert!(toml.contains("name = \"my_project\""));
 }
@@ -45,7 +41,7 @@ fn new_with_default_template() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.join("my_project").to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: false,
             skip_github: true,
@@ -101,7 +97,7 @@ fn new_with_skip_git() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: true,
             skip_github: false,
@@ -122,7 +118,7 @@ fn new_with_skip_github() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: false,
             skip_github: true,
@@ -146,7 +142,7 @@ fn new_with_skip_git_and_github() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -170,7 +166,7 @@ fn invalid_path() {
     assert!(super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: false,
             skip_github: false,
@@ -188,7 +184,7 @@ fn invalid_name() {
     assert!(super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: Some("-".into()),
             skip_git: false,
             skip_github: false,
@@ -208,7 +204,7 @@ fn existing_directory_no_files() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -235,7 +231,7 @@ fn existing_directory_with_one_existing_file() {
     assert!(super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -258,7 +254,7 @@ fn existing_directory_with_non_generated_file() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -288,7 +284,7 @@ fn conflict_with_existing_files() {
         super::Creator::new(
             super::NewOptions {
                 project_root: path.to_string(),
-                template: super::Template::Nix,
+                template: super::Template::Erlang,
                 name: None,
                 skip_git: true,
                 skip_github: true,
@@ -328,4 +324,115 @@ fn skip_existing_git_files_when_skip_git_is_true() {
 
     assert!(path.join("README.md").exists());
     assert!(path.join(".gitignore").exists());
+}
+
+#[test]
+fn validate_name_format() {
+    assert!(crate::new::validate_name("project").is_ok());
+    assert!(crate::new::validate_name("project_name").is_ok());
+    assert!(crate::new::validate_name("project2").is_ok());
+
+    let invalid = ["Project", "PROJECT", "Project_Name"];
+    for name in invalid {
+        assert!(matches!(
+            crate::new::validate_name(name),
+            Err(Error::InvalidProjectName {
+                name: _,
+                reason: crate::new::InvalidProjectNameReason::FormatNotLowercase
+            })
+        ));
+    }
+
+    let invalid = ["0project", "_project", "project-name"];
+    for name in invalid {
+        assert!(matches!(
+            crate::new::validate_name(name),
+            Err(Error::InvalidProjectName {
+                name: _,
+                reason: crate::new::InvalidProjectNameReason::Format
+            })
+        ));
+    }
+}
+
+#[test]
+fn suggest_valid_names() {
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "gleam_",
+            &crate::new::InvalidProjectNameReason::GleamPrefix
+        ),
+        None
+    );
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "gleam_project",
+            &crate::new::InvalidProjectNameReason::GleamPrefix
+        ),
+        Some("project".to_string())
+    );
+
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "try",
+            &crate::new::InvalidProjectNameReason::ErlangReservedWord
+        ),
+        Some("try_app".to_string())
+    );
+
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "erl_eval",
+            &crate::new::InvalidProjectNameReason::ErlangStandardLibraryModule
+        ),
+        Some("erl_eval_app".to_string())
+    );
+
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "assert",
+            &crate::new::InvalidProjectNameReason::GleamReservedWord
+        ),
+        Some("assert_app".to_string())
+    );
+
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "gleam",
+            &crate::new::InvalidProjectNameReason::GleamReservedModule
+        ),
+        Some("gleam_app".to_string())
+    );
+
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "Project_Name",
+            &crate::new::InvalidProjectNameReason::FormatNotLowercase
+        ),
+        Some("project_name".to_string())
+    );
+
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "Pr0ject-n4me!",
+            &crate::new::InvalidProjectNameReason::Format
+        ),
+        Some("pr0ject_n4me_".to_string())
+    );
+
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "Pr0ject--n4me!",
+            &crate::new::InvalidProjectNameReason::Format
+        ),
+        Some("pr0ject_n4me_".to_string())
+    );
+
+    assert_eq!(
+        crate::new::suggest_valid_name(
+            "_pr0ject-name",
+            &crate::new::InvalidProjectNameReason::Format
+        ),
+        None
+    );
 }

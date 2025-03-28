@@ -78,7 +78,6 @@ pub mod language_server;
 pub mod line_numbers;
 pub mod manifest;
 pub mod metadata;
-pub mod nix;
 pub mod package_interface;
 pub mod parse;
 pub mod paths;

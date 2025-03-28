@@ -8,6 +8,7 @@ use lsp_types::{
     TextEdit,
 };
 use strum::IntoEnumIterator;
+use vec1::Vec1;
 
 use crate::{
     ast::{
@@ -321,7 +322,7 @@ where
     }
 
     // Get all the modules that can be imported that have not already been imported.
-    fn completable_modules_for_import(&'a self) -> Vec<(&'a EcoString, &'a ModuleInterface)> {
+    fn completable_modules_for_import(&self) -> Vec<(&EcoString, &ModuleInterface)> {
         let mut direct_dep_packages: std::collections::HashSet<&EcoString> =
             std::collections::HashSet::from_iter(
                 self.compiler.project_compiler.config.dependencies.keys(),
@@ -1070,7 +1071,7 @@ impl<'ast> ast::visit::Visit<'ast> for LocalCompletion<'_> {
         _: &'ast Arc<Type>,
         _: &'ast FunctionLiteralKind,
         args: &'ast [ast::TypedArg],
-        body: &'ast [ast::TypedStatement],
+        body: &'ast Vec1<ast::TypedStatement>,
         _: &'ast Option<ast::TypeAst>,
     ) {
         self.visit_fn_args(args);

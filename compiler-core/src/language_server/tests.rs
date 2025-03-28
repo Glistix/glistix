@@ -4,6 +4,7 @@ mod completion;
 mod definition;
 mod document_symbols;
 mod hover;
+mod rename;
 mod signature_help;
 
 use std::{
@@ -66,7 +67,6 @@ impl LanguageServerTestIO {
             manifest: Manifest {
                 requirements: HashMap::new(),
                 packages: vec![],
-                glistix: Default::default(),
             },
         }
     }

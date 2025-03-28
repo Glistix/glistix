@@ -256,7 +256,7 @@ macro_rules! assert_warnings_with_imports {
             vec![
                 $(("thepackage", $name, $module_src)),*
             ],
-            $crate::build::Target::Erlang,
+            crate::build::Target::Erlang,
             None
         );
 
@@ -272,7 +272,7 @@ macro_rules! assert_warnings_with_imports {
 #[macro_export]
 macro_rules! assert_warning {
     ($src:expr) => {
-        let warning = $crate::type_::tests::get_printed_warnings($src, vec![], $crate::build::Target::Erlang, None);
+        let warning = $crate::type_::tests::get_printed_warnings($src, vec![], crate::build::Target::Erlang, None);
         assert!(!warning.is_empty());
         let output = format!("----- SOURCE CODE\n{}\n\n----- WARNING\n{}", $src, warning);
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
@@ -309,7 +309,7 @@ macro_rules! assert_js_warning {
         let warning = $crate::type_::tests::get_printed_warnings(
             $src,
             vec![],
-            $crate::build::Target::JavaScript,
+            crate::build::Target::JavaScript,
             None,
         );
         assert!(!warning.is_empty());
@@ -324,7 +324,7 @@ macro_rules! assert_js_no_warnings {
         let warning = $crate::type_::tests::get_printed_warnings(
             $src,
             vec![],
-            $crate::build::Target::JavaScript,
+            crate::build::Target::JavaScript,
             None,
         );
         assert!(warning.is_empty());
@@ -337,7 +337,7 @@ macro_rules! assert_warnings_with_gleam_version {
         let warning = $crate::type_::tests::get_printed_warnings(
             $src,
             vec![],
-            $crate::build::Target::Erlang,
+            crate::build::Target::Erlang,
             Some($gleam_version),
         );
         assert!(!warning.is_empty());
@@ -349,7 +349,7 @@ macro_rules! assert_warnings_with_gleam_version {
 #[macro_export]
 macro_rules! assert_no_warnings {
     ($src:expr $(,)?) => {
-        let warnings = $crate::type_::tests::get_warnings($src, vec![], $crate::build::Target::Erlang, None);
+        let warnings = $crate::type_::tests::get_warnings($src, vec![], crate::build::Target::Erlang, None);
         assert_eq!(warnings, vec![]);
     };
     ($(($package:expr, $name:expr, $module_src:literal)),+, $src:expr $(,)?) => {
@@ -390,7 +390,6 @@ fn compile_statement_sequence(
             has_body: true,
             has_erlang_external: false,
             has_javascript_external: false,
-            has_nix_external: false,
         },
         &mut problems,
     )
@@ -2698,10 +2697,8 @@ fn assert_suitable_main_function_not_module_function() {
                 gleam: true,
                 uses_erlang_externals: false,
                 uses_javascript_externals: false,
-                uses_nix_externals: false,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
-                can_run_on_nix: true,
             },
         },
     };
@@ -2723,15 +2720,12 @@ fn assert_suitable_main_function_wrong_arity() {
             module: "module".into(),
             external_erlang: None,
             external_javascript: None,
-            external_nix: None,
             implementations: Implementations {
                 gleam: true,
                 uses_erlang_externals: false,
                 uses_javascript_externals: false,
-                uses_nix_externals: false,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
-                can_run_on_nix: true,
             },
         },
     };
@@ -2753,15 +2747,12 @@ fn assert_suitable_main_function_ok() {
             module: "module".into(),
             external_erlang: None,
             external_javascript: None,
-            external_nix: None,
             implementations: Implementations {
                 gleam: true,
                 uses_erlang_externals: false,
                 uses_javascript_externals: false,
-                uses_nix_externals: false,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
-                can_run_on_nix: true,
             },
         },
     };
@@ -2783,15 +2774,12 @@ fn assert_suitable_main_function_erlang_not_supported() {
             module: "module".into(),
             external_erlang: Some(("wibble".into(), "wobble".into())),
             external_javascript: Some(("wobble".into(), "wibble".into())),
-            external_nix: None,
             implementations: Implementations {
                 gleam: false,
                 uses_erlang_externals: true,
                 uses_javascript_externals: true,
-                uses_nix_externals: false,
                 can_run_on_erlang: false,
                 can_run_on_javascript: true,
-                can_run_on_nix: false,
             },
         },
     };
@@ -2813,15 +2801,12 @@ fn assert_suitable_main_function_javascript_not_supported() {
             module: "module".into(),
             external_erlang: Some(("wibble".into(), "wobble".into())),
             external_javascript: Some(("wobble".into(), "wibble".into())),
-            external_nix: None,
             implementations: Implementations {
                 gleam: false,
                 uses_erlang_externals: true,
                 uses_javascript_externals: true,
-                uses_nix_externals: false,
                 can_run_on_erlang: true,
                 can_run_on_javascript: false,
-                can_run_on_nix: false,
             },
         },
     };

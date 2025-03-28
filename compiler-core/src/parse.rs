@@ -121,22 +121,18 @@ struct Attributes {
     deprecated: Deprecation,
     external_erlang: Option<(EcoString, EcoString, SrcSpan)>,
     external_javascript: Option<(EcoString, EcoString, SrcSpan)>,
-    external_nix: Option<(EcoString, EcoString, SrcSpan)>,
     internal: InternalAttribute,
 }
 
 impl Attributes {
     fn has_function_only(&self) -> bool {
-        self.external_erlang.is_some()
-            || self.external_javascript.is_some()
-            || self.external_nix.is_some()
+        self.external_erlang.is_some() || self.external_javascript.is_some()
     }
 
     fn has_external_for(&self, target: Target) -> bool {
         match target {
             Target::Erlang => self.external_erlang.is_some(),
             Target::JavaScript => self.external_javascript.is_some(),
-            Target::Nix => self.external_nix.is_some(),
         }
     }
 
@@ -144,7 +140,6 @@ impl Attributes {
         match target {
             Target::Erlang => self.external_erlang = ext,
             Target::JavaScript => self.external_javascript = ext,
-            Target::Nix => self.external_nix = ext,
         }
     }
 }
@@ -617,7 +612,7 @@ where
                 }
                 if tail.is_some()
                     && elements.is_empty()
-                    && elements_after_tail.as_ref().is_none_or(|e| e.is_empty())
+                    && elements_after_tail.as_ref().map_or(true, |e| e.is_empty())
                 {
                     return parse_error(
                         ParseErrorType::ListSpreadWithoutElements,
@@ -706,20 +701,33 @@ where
                 self.advance();
                 let subjects =
                     Parser::series_of(self, &Parser::parse_expression, Some(&Token::Comma))?;
-                let _ = self.expect_one_following_series(&Token::LeftBrace, "an expression")?;
-                let clauses = Parser::series_of(self, &Parser::parse_case_clause, None)?;
-                let (_, end) =
-                    self.expect_one_following_series(&Token::RightBrace, "a case clause")?;
-                if subjects.is_empty() {
-                    return parse_error(
-                        ParseErrorType::ExpectedExpr,
-                        SrcSpan { start, end: case_e },
-                    );
+                if self.maybe_one(&Token::LeftBrace).is_some() {
+                    let clauses = Parser::series_of(self, &Parser::parse_case_clause, None)?;
+                    let (_, end) =
+                        self.expect_one_following_series(&Token::RightBrace, "a case clause")?;
+                    if subjects.is_empty() {
+                        return parse_error(
+                            ParseErrorType::ExpectedExpr,
+                            SrcSpan { start, end: case_e },
+                        );
+                    } else {
+                        UntypedExpr::Case {
+                            location: SrcSpan { start, end },
+                            subjects,
+                            clauses: Some(clauses),
+                        }
+                    }
                 } else {
                     UntypedExpr::Case {
-                        location: SrcSpan { start, end },
+                        location: SrcSpan::new(
+                            start,
+                            subjects
+                                .last()
+                                .map(|subject| subject.location().end)
+                                .unwrap_or(case_e),
+                        ),
                         subjects,
-                        clauses,
+                        clauses: None,
                     }
                 }
             }
@@ -1587,6 +1595,7 @@ where
                         location: SrcSpan { start, end },
                         type_: (),
                         name,
+                        definition_location: SrcSpan::default(),
                     }
                 };
 
@@ -1887,23 +1896,28 @@ where
         let return_annotation = self.parse_type_annotation(&Token::RArrow)?;
 
         let (body, end, end_position) = match self.maybe_one(&Token::LeftBrace) {
-            Some(_) => {
+            Some((left_brace_start, _)) => {
                 let some_body = self.parse_statement_seq()?;
-                let (_, rbr_e) = self.expect_one(&Token::RightBrace)?;
+                let (_, right_brace_end) = self.expect_one(&Token::RightBrace)?;
                 let end = return_annotation
                     .as_ref()
                     .map(|l| l.location().end)
                     .unwrap_or(rpar_e);
                 let body = match some_body {
                     None => vec1![Statement::Expression(UntypedExpr::Todo {
-                        kind: TodoKind::EmptyFunction,
-                        location: SrcSpan { start, end },
+                        kind: TodoKind::EmptyFunction {
+                            function_location: SrcSpan { start, end }
+                        },
+                        location: SrcSpan {
+                            start: left_brace_start + 1,
+                            end: right_brace_end
+                        },
                         message: None,
                     })],
                     Some((body, _)) => body,
                 };
 
-                (body, end, rbr_e)
+                (body, end, right_brace_end)
             }
 
             None if is_anon => {
@@ -1934,15 +1948,12 @@ where
             deprecation: std::mem::take(&mut attributes.deprecated),
             external_erlang: attributes.external_erlang.take(),
             external_javascript: attributes.external_javascript.take(),
-            external_nix: attributes.external_nix.take(),
             implementations: Implementations {
                 gleam: true,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
-                can_run_on_nix: true,
                 uses_erlang_externals: false,
                 uses_javascript_externals: false,
-                uses_nix_externals: false,
             },
         })))
     }
@@ -2221,7 +2232,6 @@ where
                         // Expecting all but the deprecated atterbutes to be default
                         if attributes.external_erlang.is_some()
                             || attributes.external_javascript.is_some()
-                            || attributes.external_nix.is_some()
                             || attributes.target.is_some()
                             || attributes.internal != InternalAttribute::Missing
                         {
@@ -2734,10 +2744,8 @@ where
                     gleam: true,
                     can_run_on_erlang: true,
                     can_run_on_javascript: true,
-                    can_run_on_nix: true,
                     uses_erlang_externals: false,
                     uses_javascript_externals: false,
-                    uses_nix_externals: false,
                 },
             })))
         } else {
@@ -3379,7 +3387,6 @@ functions are declared separately from types.";
             Token::Name { name } => match name.as_str() {
                 "javascript" => Ok(Target::JavaScript),
                 "erlang" => Ok(Target::Erlang),
-                "nix" => Ok(Target::Nix),
                 "js" => {
                     self.warnings
                         .push(DeprecatedSyntaxWarning::DeprecatedTargetShorthand {
@@ -3691,7 +3698,6 @@ functions are declared separately from types.";
         let target = match name.as_str() {
             "erlang" => Target::Erlang,
             "javascript" => Target::JavaScript,
-            "nix" => Target::Nix,
             _ => return parse_error(ParseErrorType::UnknownTarget, SrcSpan::new(start, end)),
         };
 

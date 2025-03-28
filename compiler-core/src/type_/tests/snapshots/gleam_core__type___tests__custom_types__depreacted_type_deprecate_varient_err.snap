@@ -1,0 +1,29 @@
+---
+source: compiler-core/src/type_/tests/custom_types.rs
+expression: "\n@deprecated(\"2\")\npub type Numbers {\n  @deprecated(\"1\")\n  One\n  Two\n}\n\npub fn num() {\n  let _two = Two\n  Nil\n}\n"
+---
+----- SOURCE CODE
+
+@deprecated("2")
+pub type Numbers {
+  @deprecated("1")
+  One
+  Two
+}
+
+pub fn num() {
+  let _two = Two
+  Nil
+}
+
+
+----- ERROR
+error: Custom type already deprecated
+  ┌─ /src/one/two.gleam:5:3
+  │
+5 │   One
+  │   ^^^
+
+This custom type has already been deprecated, so deprecating one of its
+variants does nothing.
+Consider removing the deprecation attribute on the variant.

@@ -5,7 +5,7 @@ use ecow::EcoString;
 use hexpm::version::Version;
 use pretty_assertions::assert_eq;
 
-use glistix_core::{
+use gleam_core::{
     build::Runtime,
     config::{DenoConfig, DenoFlag, Docs, ErlangConfig, JavaScriptConfig, Repository},
     manifest::{Base16Checksum, Manifest, ManifestPackage, ManifestPackageSource},
@@ -52,7 +52,6 @@ fn list_manifest_format() {
                 },
             },
         ],
-        glistix: Default::default(),
     };
     list_manifest_packages(&mut buffer, manifest).unwrap();
     assert_eq!(
@@ -60,6 +59,250 @@ fn list_manifest_format() {
         r#"root 1.0.0
 aaa 0.4.2
 zzz 0.4.0
+"#
+    )
+}
+
+#[test]
+fn tree_format() {
+    let mut buffer = vec![];
+    let manifest = Manifest {
+        requirements: HashMap::new(),
+        packages: vec![
+            ManifestPackage {
+                name: "deps_proj".into(),
+                version: Version::parse("1.0.0").unwrap(),
+                build_tools: [].into(),
+                otp_app: None,
+                requirements: vec!["gleam_regexp".into(), "gleam_stdlib".into()],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![1, 2, 3, 4]),
+                },
+            },
+            ManifestPackage {
+                name: "gleam_stdlib".into(),
+                version: Version::new(0, 52, 0),
+                build_tools: ["rebar3".into(), "make".into()].into(),
+                otp_app: Some("aaa_app".into()),
+                requirements: vec![],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![3, 22]),
+                },
+            },
+            ManifestPackage {
+                name: "gleam_regexp".into(),
+                version: Version::new(1, 0, 0),
+                build_tools: ["mix".into()].into(),
+                otp_app: None,
+                requirements: vec!["gleam_stdlib".into()],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![3, 22]),
+                },
+            },
+        ],
+    };
+
+    let options = TreeOptions {
+        package: None,
+        invert: None,
+    };
+
+    let root_package_name = EcoString::from("deps_proj");
+
+    list_package_and_dependencies_tree(
+        &mut buffer,
+        options,
+        manifest.packages.clone(),
+        root_package_name,
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buffer).unwrap(),
+        r#"deps_proj v1.0.0
+├── gleam_regexp v1.0.0
+│   └── gleam_stdlib v0.52.0
+└── gleam_stdlib v0.52.0
+"#
+    )
+}
+
+#[test]
+fn tree_package_format() {
+    let mut buffer = vec![];
+    let manifest = Manifest {
+        requirements: HashMap::new(),
+        packages: vec![
+            ManifestPackage {
+                name: "gleam_stdlib".into(),
+                version: Version::new(0, 52, 0),
+                build_tools: ["rebar3".into(), "make".into()].into(),
+                otp_app: Some("aaa_app".into()),
+                requirements: vec![],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![3, 22]),
+                },
+            },
+            ManifestPackage {
+                name: "deps_proj".into(),
+                version: Version::parse("1.0.0").unwrap(),
+                build_tools: [].into(),
+                otp_app: None,
+                requirements: vec!["gleam_stdlib".into(), "gleam_regexp".into()],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![1, 2, 3, 4]),
+                },
+            },
+            ManifestPackage {
+                name: "gleam_regexp".into(),
+                version: Version::new(1, 0, 0),
+                build_tools: ["mix".into()].into(),
+                otp_app: None,
+                requirements: vec!["gleam_stdlib".into()],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![3, 22]),
+                },
+            },
+        ],
+    };
+    let options = TreeOptions {
+        package: Some("gleam_regexp".to_string()),
+        invert: None,
+    };
+
+    let root_package_name = EcoString::from("deps_proj");
+
+    list_package_and_dependencies_tree(
+        &mut buffer,
+        options,
+        manifest.packages.clone(),
+        root_package_name,
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buffer).unwrap(),
+        r#"gleam_regexp v1.0.0
+└── gleam_stdlib v0.52.0
+"#
+    )
+}
+
+#[test]
+fn tree_invert_format() {
+    let mut buffer = vec![];
+    let manifest = Manifest {
+        requirements: HashMap::new(),
+        packages: vec![
+            ManifestPackage {
+                name: "gleam_stdlib".into(),
+                version: Version::new(0, 52, 0),
+                build_tools: ["rebar3".into(), "make".into()].into(),
+                otp_app: Some("aaa_app".into()),
+                requirements: vec![],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![3, 22]),
+                },
+            },
+            ManifestPackage {
+                name: "deps_proj".into(),
+                version: Version::parse("1.0.0").unwrap(),
+                build_tools: [].into(),
+                otp_app: None,
+                requirements: vec!["gleam_stdlib".into(), "gleam_regexp".into()],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![1, 2, 3, 4]),
+                },
+            },
+            ManifestPackage {
+                name: "gleam_regexp".into(),
+                version: Version::new(1, 0, 0),
+                build_tools: ["mix".into()].into(),
+                otp_app: None,
+                requirements: vec!["gleam_stdlib".into()],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![3, 22]),
+                },
+            },
+        ],
+    };
+    let options = TreeOptions {
+        package: None,
+        invert: Some("gleam_stdlib".to_string()),
+    };
+
+    let root_package_name = EcoString::from("deps_proj");
+
+    list_package_and_dependencies_tree(
+        &mut buffer,
+        options,
+        manifest.packages.clone(),
+        root_package_name,
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buffer).unwrap(),
+        r#"gleam_stdlib v0.52.0
+├── deps_proj v1.0.0
+└── gleam_regexp v1.0.0
+    └── deps_proj v1.0.0
+"#
+    )
+}
+
+#[test]
+fn list_tree_invalid_package_format() {
+    let mut buffer = vec![];
+    let manifest = Manifest {
+        requirements: HashMap::new(),
+        packages: vec![
+            ManifestPackage {
+                name: "gleam_stdlib".into(),
+                version: Version::new(0, 52, 0),
+                build_tools: ["rebar3".into(), "make".into()].into(),
+                otp_app: Some("aaa_app".into()),
+                requirements: vec![],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![3, 22]),
+                },
+            },
+            ManifestPackage {
+                name: "gleam_regexp".into(),
+                version: Version::new(1, 0, 0),
+                build_tools: ["mix".into()].into(),
+                otp_app: None,
+                requirements: vec!["gleam_stdlib".into()],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![3, 22]),
+                },
+            },
+            ManifestPackage {
+                name: "root".into(),
+                version: Version::parse("1.0.0").unwrap(),
+                build_tools: [].into(),
+                otp_app: None,
+                requirements: vec!["gleam_regexp".into(), "gleam_stdlib".into()],
+                source: ManifestPackageSource::Hex {
+                    outer_checksum: Base16Checksum(vec![1, 2, 3, 4]),
+                },
+            },
+        ],
+    };
+    let options = TreeOptions {
+        package: Some("zzzzzz".to_string()),
+        invert: None,
+    };
+
+    let root_package_name = EcoString::from("deps_proj");
+
+    list_package_and_dependencies_tree(
+        &mut buffer,
+        options,
+        manifest.packages.clone(),
+        root_package_name,
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buffer).unwrap(),
+        r#"Package not found. Please check the package name.
 "#
     )
 }
@@ -170,7 +413,6 @@ fn missing_local_packages() {
                 },
             },
         ],
-        glistix: Default::default(),
     };
     let mut extra = LocalPackages {
         packages: [
@@ -242,7 +484,6 @@ fn extra_local_packages() {
                 },
             },
         ],
-        glistix: Default::default(),
     });
     extra.sort();
     assert_eq!(
@@ -263,7 +504,6 @@ fn provide_wrong_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -288,7 +528,6 @@ fn provide_existing_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -299,7 +538,6 @@ fn provide_existing_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -315,7 +553,6 @@ fn provide_conflicting_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -328,7 +565,6 @@ fn provide_conflicting_package() {
             path: Utf8Path::new("./test/other").to_path_buf(),
         },
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -336,90 +572,6 @@ fn provide_conflicting_package() {
         assert_eq!(package, "hello_world");
     } else {
         panic!("Expected ProvidedDependencyConflict error")
-    }
-}
-
-#[test]
-fn glistix_provide_conflicting_package_patched_by_root() {
-    let mut provided = HashMap::new();
-
-    let patched_package = EcoString::from("hello_world");
-    let mut root_config = PackageConfig::default();
-    let _ = root_config.dependencies.insert(
-        patched_package.clone(),
-        Requirement::Path {
-            path: Utf8PathBuf::from("./test/hello_world"),
-        },
-    );
-    root_config
-        .glistix
-        .preview
-        .local_overrides
-        .push(patched_package.clone());
-
-    let project_paths = crate::project_paths_at_current_directory_without_toml();
-    let result = provide_local_package(
-        patched_package.clone(),
-        Utf8Path::new("./test/hello_world"),
-        Utf8Path::new("./"),
-        &project_paths,
-        &root_config,
-        &mut provided,
-        &mut vec!["root".into(), "subpackage".into()],
-    );
-    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
-
-    let result = provide_local_package(
-        patched_package,
-        Utf8Path::new("./test/"),
-        Utf8Path::new("./"),
-        &project_paths,
-        &root_config,
-        &mut provided,
-        &mut vec!["root".into(), "subpackage".into()],
-    );
-    // OK: There was a conflict, but root had a dependency with an override.
-    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
-}
-
-#[test]
-fn glistix_provide_conflicting_package_patched_by_root_but_not_root_dependency() {
-    let mut provided = HashMap::new();
-
-    let patched_package = EcoString::from("hello_world");
-    let mut root_config = PackageConfig::default();
-    root_config
-        .glistix
-        .preview
-        .local_overrides
-        .push(patched_package.clone());
-
-    let project_paths = crate::project_paths_at_current_directory_without_toml();
-    let result = provide_local_package(
-        patched_package.clone(),
-        Utf8Path::new("./test/hello_world"),
-        Utf8Path::new("./"),
-        &project_paths,
-        &root_config,
-        &mut provided,
-        &mut vec!["root".into(), "subpackage".into()],
-    );
-    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
-
-    let result = provide_local_package(
-        patched_package,
-        Utf8Path::new("./test/"),
-        Utf8Path::new("./"),
-        &project_paths,
-        &root_config,
-        &mut provided,
-        &mut vec!["root".into(), "subpackage".into()],
-    );
-    // There was an override, but no matching root dependency, so it doesn't count.
-    if let Err(Error::ProvidedDependencyConflict { package, .. }) = result {
-        assert_eq!(package, "hello_world");
-    } else {
-        panic!("Expected ProvidedDependencyConflict error, got {result:?}")
     }
 }
 
@@ -432,7 +584,6 @@ fn provided_is_absolute() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -454,7 +605,6 @@ fn provided_recursive() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "hello_world".into(), "subpackage".into()],
     );
@@ -465,6 +615,7 @@ fn provided_recursive() {
         })
     )
 }
+
 #[test]
 fn provided_local_to_hex() {
     let provided_package = ProvidedPackage {
@@ -725,7 +876,6 @@ fn create_testable_unlock_manifest(
     Manifest {
         packages: manifest_packages,
         requirements: root_requirements,
-        glistix: Default::default(),
     }
 }
 
@@ -1055,7 +1205,6 @@ fn package_config(
         },
         target: Target::Erlang,
         internal_modules: None,
-        glistix: Default::default(),
     }
 }
 
@@ -1075,7 +1224,6 @@ fn test_remove_do_nothing() {
             manifest_package("a", "1.0.0", vec![]),
             manifest_package("b", "2.0.8", vec![]),
         ],
-        glistix: Default::default(),
     };
 
     let manifest_copy = manifest.clone();
@@ -1093,7 +1241,6 @@ fn test_remove_simple() {
     let mut manifest = Manifest {
         requirements: HashMap::from([("a".into(), Requirement::hex("~>1"))]),
         packages: vec![manifest_package("a", "1.0.0", vec![])],
-        glistix: Default::default(),
     };
 
     remove_extra_requirements(&config, &mut manifest).unwrap();
@@ -1113,7 +1260,6 @@ fn test_remove_package_with_transitive_dependencies() {
             manifest_package("b", "1.2.3", vec!["c".into()]),
             manifest_package("c", "2.0.0", vec![]),
         ],
-        glistix: Default::default(),
     };
 
     remove_extra_requirements(&config, &mut manifest).unwrap();
@@ -1140,7 +1286,6 @@ fn test_remove_package_with_shared_transitive_dependencies() {
             manifest_package("c", "2.0.0", vec![]),
             manifest_package("d", "0.1.0", vec![]),
         ],
-        glistix: Default::default(),
     };
 
     remove_extra_requirements(&config, &mut manifest).unwrap();
@@ -1173,7 +1318,6 @@ fn test_remove_package_that_is_also_a_transitive_dependency() {
             manifest_package("c", "2.0.0", vec![]),
             manifest_package("d", "0.1.0", vec![]),
         ],
-        glistix: Default::default(),
     };
 
     let manifest_copy = manifest.clone();

@@ -1,7 +1,7 @@
 mod auth;
 
 use crate::{cli, http::HttpClient};
-use glistix_core::{
+use gleam_core::{
     hex::{self, RetirementReason},
     io::HttpClient as _,
     Error, Result,

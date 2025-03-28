@@ -69,6 +69,7 @@ struct AccessorsMap {
   type @0 :Type;
   sharedAccessors @1 :List(Property(RecordAccessor));
   variantSpecificAccessors @2 :List(VariantSpecificAccessors);
+  publicity @3 :Publicity;
 }
 
 struct VariantSpecificAccessors {
@@ -136,8 +137,6 @@ struct Implementations {
   usesJavascriptExternals @2 :Bool;
   canRunOnErlang @3 :Bool;
   canRunOnJavascript @4 :Bool;
-  usesNixExternals @5 :Bool;
-  canRunOnNix @6 :Bool;
 }
 
 struct ValueConstructorVariant {
@@ -160,7 +159,6 @@ struct ValueConstructorVariant {
       implementations @18 :Implementations;
       externalErlang @20 :Option(External);
       externalJavascript @21 :Option(External);
-      externalNix @22 :Option(External);
     }
 
     record :group {

@@ -5,7 +5,6 @@ use ecow::EcoString;
 use globset::GlobBuilder;
 use hexpm::version::Identifier;
 
-use crate::config::GlistixConfig;
 use crate::{
     analyse::TargetSupport,
     build::{Module, Origin, Package, Target},
@@ -167,7 +166,6 @@ fn package_from_module(module: Module) -> Package {
             links: vec![],
             erlang: ErlangConfig::default(),
             javascript: JavaScriptConfig::default(),
-            glistix: GlistixConfig::default(),
             target: Target::Erlang,
             internal_modules: Some(vec![GlobBuilder::new("internals/*")
                 .build()

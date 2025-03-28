@@ -25,8 +25,8 @@ pub fn show_complete(code: &str, position: Position) -> String {
 fn apply_conversion(src: &str, completions: Vec<CompletionItem>, value: &str) -> String {
     let completion = completions
         .iter()
-        .find(|c| c.label == *value)
-        .unwrap_or_else(|| panic!("no completion with value `{value}`"));
+        .find(|c| c.label == value.to_string())
+        .expect(&format!("no completion with value `{value}`"));
 
     let mut edits = vec![];
     if let Some(lsp_types::CompletionTextEdit::Edit(edit)) = &completion.text_edit {
@@ -1884,5 +1884,20 @@ pub fn map(_, _) { [] }
         TestProject::for_source(code).add_dep_module("list", list),
         "list.map",
         Position::new(3, 8)
+    );
+}
+
+#[test]
+fn case_subject() {
+    let code = "
+pub fn main(something: Bool) {
+  case so
+}
+";
+
+    assert_apply_completion!(
+        TestProject::for_source(code),
+        "something",
+        Position::new(2, 9)
     );
 }

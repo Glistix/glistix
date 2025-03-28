@@ -256,25 +256,23 @@ where
     }
 
     fn write_prelude(&self) -> Result<()> {
-        // Only the JavaScript and Nix targets have a prelude to write.
-        let (prelude, prelude_filename) = match self.target() {
-            Target::Erlang => return Ok(()),
-            Target::JavaScript => (crate::javascript::PRELUDE, "prelude.mjs"),
-            Target::Nix => (crate::nix::PRELUDE, "prelude.nix"),
-        };
+        // Only the JavaScript target has a prelude to write.
+        if !self.target().is_javascript() {
+            return Ok(());
+        }
 
         let build = self
             .paths
             .build_directory_for_target(self.mode(), self.target());
 
-        // Write the prelude
-        let path = build.join(prelude_filename);
+        // Write the JavaScript prelude
+        let path = build.join("prelude.mjs");
         if !self.io.is_file(&path) {
-            self.io.write(&path, prelude)?;
+            self.io.write(&path, crate::javascript::PRELUDE)?;
         }
 
         // Write the TypeScript prelude, if asked for
-        if self.target().is_javascript() && self.config.javascript.typescript_declarations {
+        if self.config.javascript.typescript_declarations {
             let path = build.join("prelude.d.mts");
             if !self.io.is_file(&path) {
                 self.io.write(&path, crate::javascript::PRELUDE_TS_DEF)?;
@@ -514,15 +512,7 @@ where
             }
         };
         let config_path = package_root.join("gleam.toml");
-        let config = PackageConfig::read(config_path, &self.io).map(|mut c| {
-            // Apply root config's patches to dependency
-            self.config
-                .glistix
-                .preview
-                .patch
-                .patch_config(&mut c, self.paths.root());
-            c
-        })?;
+        let config = PackageConfig::read(config_path, &self.io)?;
         self.compile_gleam_package(&config, false, package_root)
             .into_result()
     }
@@ -562,11 +552,6 @@ where
                 emit_typescript_definitions: self.config.javascript.typescript_declarations,
                 // This path is relative to each package output directory
                 prelude_location: Utf8PathBuf::from("../prelude.mjs"),
-            },
-
-            Target::Nix => super::TargetCodegenConfiguration::Nix {
-                // This path is relative to each package output directory
-                prelude_location: Utf8PathBuf::from("../prelude.nix"),
             },
         };
 

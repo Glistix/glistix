@@ -74,9 +74,9 @@ mod shell;
 use config::root_config;
 use dependencies::UseManifest;
 use fs::{get_current_directory, get_project_root};
-pub use glistix_core::error::{Error, Result};
+pub use gleam_core::error::{Error, Result};
 
-use glistix_core::{
+use gleam_core::{
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, NullTelemetry, Options, Runtime, Target},
     hex::RetirementReason,
@@ -99,6 +99,27 @@ struct UpdateOptions {
     /// If omitted, all dependencies will be updated
     #[arg(verbatim_doc_comment)]
     packages: Vec<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+struct TreeOptions {
+    /// Name of the package to get the dependency tree for
+    #[arg(
+        short,
+        long,
+        ignore_case = true,
+        help = "Package to be used as the root of the tree"
+    )]
+    package: Option<String>,
+    /// Name of the package to get the inverted dependency tree for
+    #[arg(
+        short,
+        long,
+        ignore_case = true,
+        help = "Invert the tree direction and focus on the given package",
+        value_name = "PACKAGE"
+    )]
+    invert: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -282,8 +303,6 @@ pub enum ExportTarget {
     JavascriptPrelude,
     /// The TypeScript prelude module
     TypescriptPrelude,
-    /// The Nix prelude module
-    NixPrelude,
     /// Information on the modules, functions, and types in the project in JSON format
     PackageInterface {
         #[arg(long = "out", required = true)]
@@ -301,7 +320,7 @@ pub struct NewOptions {
     #[arg(long)]
     pub name: Option<String>,
 
-    #[arg(long, ignore_case = true, default_value = "nix", help = template_doc())]
+    #[arg(long, ignore_case = true, default_value = "erlang", help = template_doc())]
     pub template: new::Template,
 
     /// Skip git initialization and creation of .gitignore, .git/* and .github/* files
@@ -342,14 +361,6 @@ pub struct CompilePackage {
     #[arg(verbatim_doc_comment, long = "javascript-prelude")]
     javascript_prelude: Option<Utf8PathBuf>,
 
-    /// The location of the Nix prelude module, relative to the `out`
-    /// directory.
-    ///
-    /// Required when compiling to Nix.
-    ///
-    #[arg(long = "nix-prelude")]
-    nix_prelude: Option<Utf8PathBuf>,
-
     /// Skip Erlang to BEAM bytecode compilation if given
     #[arg(long = "no-beam")]
     skip_beam_compilation: bool,
@@ -365,6 +376,9 @@ enum Dependencies {
 
     /// Update dependency packages to their latest versions
     Update(UpdateOptions),
+
+    /// Tree of all the dependency packages
+    Tree(TreeOptions),
 }
 
 #[derive(Subcommand, Debug)]
@@ -495,6 +509,8 @@ fn main() {
 
         Command::Deps(Dependencies::Update(options)) => dependencies::update(options.packages),
 
+        Command::Deps(Dependencies::Tree(options)) => dependencies::tree(options),
+
         Command::Hex(Hex::Authenticate) => hex::authenticate(),
 
         Command::New(options) => new::create(options, COMPILER_VERSION),
@@ -553,7 +569,6 @@ fn main() {
         Command::Export(ExportTarget::HexTarball) => export::hex_tarball(),
         Command::Export(ExportTarget::JavascriptPrelude) => export::javascript_prelude(),
         Command::Export(ExportTarget::TypescriptPrelude) => export::typescript_prelude(),
-        Command::Export(ExportTarget::NixPrelude) => export::nix_prelude(),
         Command::Export(ExportTarget::PackageInterface { output }) => {
             export::package_interface(output)
         }

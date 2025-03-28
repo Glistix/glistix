@@ -1,4 +1,4 @@
-use glistix_core::build::Telemetry;
+use gleam_core::build::Telemetry;
 #[derive(Debug)]
 pub struct LogTelemetry;
 

@@ -26,7 +26,6 @@ use std::collections::HashSet;
 use std::{collections::HashMap, fmt::write, time::SystemTime};
 use vec1::Vec1;
 
-use crate::codegen::Nix;
 use camino::{Utf8Path, Utf8PathBuf};
 
 use super::{ErlangAppCodegenConfiguration, TargetCodegenConfiguration, Telemetry};
@@ -183,10 +182,14 @@ where
             incomplete_modules,
         );
 
-        let modules = match outcome {
+        let mut modules = match outcome {
             Outcome::Ok(modules) => modules,
             Outcome::PartialFailure(_, _) | Outcome::TotalFailure(_) => return outcome,
         };
+
+        for mut module in modules.iter_mut() {
+            module.attach_doc_and_module_comments();
+        }
 
         tracing::debug!("performing_code_generation");
 
@@ -312,9 +315,6 @@ where
             TargetCodegenConfiguration::Erlang { app_file } => {
                 self.perform_erlang_codegen(modules, app_file.as_ref())
             }
-            TargetCodegenConfiguration::Nix { prelude_location } => {
-                self.perform_nix_codegen(modules, prelude_location)
-            }
         }
     }
 
@@ -354,7 +354,7 @@ where
         // we overwrite any precompiled Erlang that was included in the Hex
         // package. Otherwise we will build the potentially outdated precompiled
         // version and not the newly compiled version.
-        Erlang::new(&build_dir, &include_dir).render(io, modules)?;
+        Erlang::new(&build_dir, &include_dir).render(io, modules, self.root)?;
 
         if self.compile_beam_bytecode {
             written.extend(modules.iter().map(Module::compiled_erlang_path));
@@ -380,24 +380,6 @@ where
 
         JavaScript::new(&self.out, typescript, prelude_location, self.target_support)
             .render(&self.io, modules)?;
-
-        if self.copy_native_files {
-            self.copy_project_native_files(&self.out, &mut written)?;
-        } else {
-            tracing::debug!("skipping_native_file_copying");
-        }
-
-        Ok(())
-    }
-
-    fn perform_nix_codegen(
-        &mut self,
-        modules: &[Module],
-        prelude_location: &Utf8Path,
-    ) -> Result<(), Error> {
-        let mut written = HashSet::new();
-
-        Nix::new(&self.out, prelude_location, self.target_support).render(&self.io, modules)?;
 
         if self.copy_native_files {
             self.copy_project_native_files(&self.out, &mut written)?;

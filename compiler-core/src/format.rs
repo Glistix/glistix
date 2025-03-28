@@ -191,7 +191,6 @@ impl<'comments> Formatter<'comments> {
             None => document,
             Some(Target::Erlang) => docvec!["@target(erlang)", line(), document],
             Some(Target::JavaScript) => docvec!["@target(javascript)", line(), document],
-            Some(Target::Nix) => docvec!["@target(nix)", line(), document],
         };
 
         comments.to_doc().append(document.group())
@@ -284,7 +283,7 @@ impl<'comments> Formatter<'comments> {
     fn imports<'a>(&mut self, imports: Vec<&'a TargetedDefinition>) -> Vec<Document<'a>> {
         let mut import_groups_docs = vec![];
         let mut current_group = vec![];
-        let mut current_group_delimiter = docvec!();
+        let mut current_group_delimiter = nil();
 
         for import in imports {
             let start = import.definition.location().start;
@@ -311,7 +310,7 @@ impl<'comments> Formatter<'comments> {
 
                 let comments = self.pop_comments(start);
                 let _ = self.pop_empty_lines(start);
-                current_group_delimiter = printed_comments(comments, true).unwrap_or(docvec!());
+                current_group_delimiter = printed_comments(comments, true).unwrap_or(nil());
             }
             // Lastly we add the import to the group.
             current_group.push(import);
@@ -788,7 +787,6 @@ impl<'comments> Formatter<'comments> {
             .set_internal(function.publicity)
             .set_external_erlang(&function.external_erlang)
             .set_external_javascript(&function.external_javascript)
-            .set_external_nix(&function.external_nix)
             .to_doc();
 
         // Fn name and args
@@ -1032,7 +1030,7 @@ impl<'comments> Formatter<'comments> {
                 subjects,
                 clauses,
                 location,
-            } => self.case(subjects, clauses, location),
+            } => self.case(subjects, clauses.as_deref().unwrap_or_default(), location),
 
             UntypedExpr::FieldAccess {
                 label, container, ..
@@ -1085,7 +1083,7 @@ impl<'comments> Formatter<'comments> {
         match lines.as_slice() {
             [] | [_] => string.to_doc().surround("\"", "\""),
             [first_line, lines @ ..] => {
-                let mut doc = docvec!("\"", first_line);
+                let mut doc = docvec!["\"", first_line];
                 for line in lines {
                     doc = doc
                         .append(pretty::line().set_nesting(0))
@@ -1355,8 +1353,8 @@ impl<'comments> Formatter<'comments> {
         // Otherwise those would be moved out of the case expression.
         let comments = self.pop_comments(location.end);
         let closing_bracket = match printed_comments(comments, false) {
-            None => docvec!(line(), "}"),
-            Some(comment) => docvec!(line(), comment)
+            None => docvec![line(), "}"],
+            Some(comment) => docvec![line(), comment]
                 .nest(INDENT)
                 .append(line())
                 .append("}"),
@@ -2566,9 +2564,9 @@ impl<'comments> Formatter<'comments> {
         // Otherwise those would be moved out of the call.
         let comments = self.pop_comments(location.end);
         let closing_parens = match printed_comments(comments, false) {
-            None => docvec!(break_(",", ""), ")"),
+            None => docvec![break_(",", ""), ")"],
             Some(comment) => {
-                docvec!(break_(",", "").nest(INDENT), comment, line(), ")").force_break()
+                docvec![break_(",", "").nest(INDENT), comment, line(), ")"].force_break()
             }
         };
 
@@ -3028,7 +3026,6 @@ fn constant_call_arg_formatting<A, B>(
 struct AttributesPrinter<'a> {
     external_erlang: &'a Option<(EcoString, EcoString, SrcSpan)>,
     external_javascript: &'a Option<(EcoString, EcoString, SrcSpan)>,
-    external_nix: &'a Option<(EcoString, EcoString, SrcSpan)>,
     deprecation: &'a Deprecation,
     internal: bool,
 }
@@ -3038,7 +3035,6 @@ impl<'a> AttributesPrinter<'a> {
         Self {
             external_erlang: &None,
             external_javascript: &None,
-            external_nix: &None,
             deprecation: &Deprecation::NotDeprecated,
             internal: false,
         }
@@ -3057,14 +3053,6 @@ impl<'a> AttributesPrinter<'a> {
         external: &'a Option<(EcoString, EcoString, SrcSpan)>,
     ) -> Self {
         self.external_javascript = external;
-        self
-    }
-
-    pub fn set_external_nix(
-        mut self,
-        external: &'a Option<(EcoString, EcoString, SrcSpan)>,
-    ) -> Self {
-        self.external_nix = external;
         self
     }
 
@@ -3095,10 +3083,6 @@ impl<'a> Documentable<'a> for AttributesPrinter<'a> {
 
         if let Some((m, f, _)) = self.external_javascript {
             attributes.push(docvec!["@external(javascript, \"", m, "\", \"", f, "\")"])
-        };
-
-        if let Some((m, f, _)) = self.external_nix {
-            attributes.push(docvec!["@external(nix, \"", m, "\", \"", f, "\")"])
         };
 
         // @internal attribute

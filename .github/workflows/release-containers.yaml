@@ -4,18 +4,10 @@ on:
     types:
       - "published"
 
-env:
-  REGISTRY: ghcr.io
-
 jobs:
   publish-container-images:
     name: publish-container-images
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      packages: write
-
     strategy:
       matrix:
         base-image:
@@ -37,29 +29,18 @@ jobs:
       - name: Authenticate with GitHub container registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          username: lpil
+          password: ${{ secrets.CONTAINER_REGISTRY_PERSONAL_ACCESS_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # This is needed because the repo is under the "Glistix" - not "glistix" - org,
-      # and lowercase repo names are required for the registry.
-      # See https://github.com/orgs/community/discussions/25768
-      - name: Convert repository name to lowercase
-        env:
-          ORIGINAL_GH_REPO: ${{ github.repository }}
-        run: |
-          echo "GH_REPO=${ORIGINAL_GH_REPO,,}" >>${GITHUB_ENV}
-
       - name: Build version and tags
         id: versions
-        env:
-          GH_REF: ${{ github.ref }}
         run: |
           # Strip git ref prefix from version
-          V_VERSION=$(echo "$GH_REF" | sed -e 's|.*/\(.*\)|\1|')
+          V_VERSION=$(echo "${{ github.ref }}" | sed -e 's|.*/\(.*\)|\1|')
 
           # Strip `v` prefix from version
           BARE_VERSION=$(echo "$V_VERSION" | sed -e 's|^v/\(.*\)|\1|')
@@ -68,33 +49,33 @@ jobs:
           PLATFORM_VERSION=$BARE_VERSION-${{ matrix.base-image }}
 
           # Build container tag
-          TAG=$REGISTRY/$GH_REPO:$PLATFORM_VERSION
+          TAG=ghcr.io/${{ github.repository }}:$PLATFORM_VERSION
 
           echo "v_version=$V_VERSION" >> $GITHUB_OUTPUT
           echo "bare_version=$BARE_VERSION" >> $GITHUB_OUTPUT
           echo "platform_version=$PLATFORM_VERSION" >> $GITHUB_OUTPUT
           echo "container_tag=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Download Glistix archives from GitHub release
+      - name: Download Gleam archives from GitHub release
         run: |
           VERSION=${{ steps.versions.outputs.v_version }}
 
-          AMD_URL=https://github.com/$GH_REPO/releases/download/$VERSION/glistix-$VERSION-x86_64-unknown-linux-musl.tar.gz
-          ARM_URL=https://github.com/$GH_REPO/releases/download/$VERSION/glistix-$VERSION-aarch64-unknown-linux-musl.tar.gz
+          AMD_URL=https://github.com/${{ github.repository }}/releases/download/$VERSION/gleam-$VERSION-x86_64-unknown-linux-musl.tar.gz
+          ARM_URL=https://github.com/${{ github.repository }}/releases/download/$VERSION/gleam-$VERSION-aarch64-unknown-linux-musl.tar.gz
 
           echo Downloading amd $AMD_URL
-          curl -Lo glistix-amd.tar.gz $AMD_URL
+          curl -Lo gleam-amd.tar.gz $AMD_URL
 
           echo Downloading arm $ARM_URL
-          curl -Lo glistix-arm.tar.gz $ARM_URL
+          curl -Lo gleam-arm.tar.gz $ARM_URL
 
-      - name: Unpack Glistix binary from archive
+      - name: Unpack Gleam binary from archive
         run: |
-          tar xf glistix-amd.tar.gz
-          mv glistix glistix-amd64
+          tar xf gleam-amd.tar.gz
+          mv gleam gleam-amd64
 
-          tar xf glistix-arm.tar.gz
-          mv glistix glistix-arm64
+          tar xf gleam-arm.tar.gz
+          mv gleam gleam-arm64
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -105,8 +86,8 @@ jobs:
           push: true
           tags: ${{ steps.versions.outputs.container_tag }}
           labels: |
-            org.opencontainers.image.title=glistix
-            org.opencontainers.image.url=https://github.com/Glistix/glistix
-            org.opencontainers.image.source=https://github.com/Glistix/glistix
+            org.opencontainers.image.title=gleam
+            org.opencontainers.image.url=https://gleam.run
+            org.opencontainers.image.source=https://github.com/gleam-lang/gleam
             org.opencontainers.image.version=${{ steps.versions.outputs.platform_version }}
             org.opencontainers.image.licenses=Apache-2.0

@@ -80,6 +80,7 @@ impl<'a> ModuleEncoder<'a> {
         accessors: &AccessorsMap,
     ) {
         self.build_type(builder.reborrow().init_type(), &accessors.type_);
+        self.build_publicity(builder.reborrow().init_publicity(), accessors.publicity);
         let mut accessors_builder = builder
             .reborrow()
             .init_shared_accessors(accessors.shared_accessors.len() as u32);
@@ -327,7 +328,6 @@ impl<'a> ModuleEncoder<'a> {
                 implementations,
                 external_erlang,
                 external_javascript,
-                external_nix,
             } => {
                 let mut builder = builder.init_module_fn();
                 builder.set_name(name);
@@ -339,7 +339,6 @@ impl<'a> ModuleEncoder<'a> {
                     builder.reborrow().init_external_javascript(),
                     external_javascript,
                 );
-                self.build_external(builder.reborrow().init_external_nix(), external_nix);
                 self.build_optional_field_map(builder.reborrow().init_field_map(), field_map);
                 self.build_src_span(builder.reborrow().init_location(), *location);
                 self.build_implementations(builder.init_implementations(), *implementations);
@@ -586,10 +585,8 @@ impl<'a> ModuleEncoder<'a> {
         builder.set_gleam(implementations.gleam);
         builder.set_uses_erlang_externals(implementations.uses_erlang_externals);
         builder.set_uses_javascript_externals(implementations.uses_javascript_externals);
-        builder.set_uses_nix_externals(implementations.uses_nix_externals);
         builder.set_can_run_on_erlang(implementations.can_run_on_erlang);
         builder.set_can_run_on_javascript(implementations.can_run_on_javascript);
-        builder.set_can_run_on_nix(implementations.can_run_on_nix);
     }
 
     fn build_external(

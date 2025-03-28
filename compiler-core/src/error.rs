@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use crate::build::{Outcome, Runtime, Target};
 use crate::diagnostic::{Diagnostic, ExtraLabel, Label, Location};
+use crate::type_::collapse_links;
 use crate::type_::error::{
     MissingAnnotation, ModuleValueUsageContext, Named, UnknownField, UnknownTypeHint,
     UnsafeRecordUpdateReason,
@@ -21,6 +22,7 @@ use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use termcolor::Buffer;
 use thiserror::Error;
 use vec1::Vec1;
@@ -39,9 +41,6 @@ macro_rules! wrap_format {
         wrap(&format!($($tts)*))
     }
 }
-
-#[allow(unused)]
-const GLISTIX_BOOK_LINK: &str = "https://glistix.github.io/book";
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct UnknownImportDetails {
@@ -291,25 +290,6 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     #[error("The --javascript-prelude flag must be given when compiling to JavaScript")]
     JavaScriptPreludeRequired,
 
-    #[error("nix codegen failed")]
-    Nix {
-        path: Utf8PathBuf,
-        src: EcoString,
-        error: crate::nix::Error,
-    },
-
-    #[error("The --nix-prelude flag must be given when compiling to Nix")]
-    NixPreludeRequired,
-
-    #[error("Cannot patch Hex dependency {name} through [glistix.preview.hex-patch]")]
-    CannotPatchHexWithHex { name: EcoString },
-
-    #[error("Conflict between patches for \"{package}\" and \"{conflicting_rename}\" in [glistix.preview.patch]")]
-    GlistixConflictingPatches {
-        package: EcoString,
-        conflicting_rename: EcoString,
-    },
-
     #[error("The modules {unfinished:?} contain todo expressions and so cannot be published")]
     CannotPublishTodo { unfinished: Vec<EcoString> },
 
@@ -546,11 +526,58 @@ impl From<capnp::NotInSchema> for Error {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InvalidProjectNameReason {
     Format,
+    FormatNotLowercase,
     GleamPrefix,
     ErlangReservedWord,
     ErlangStandardLibraryModule,
     GleamReservedWord,
     GleamReservedModule,
+}
+
+pub fn format_invalid_project_name_error(
+    name: &str,
+    reason: &InvalidProjectNameReason,
+    with_suggestion: &Option<String>,
+) -> String {
+    let reason_message = match reason {
+        InvalidProjectNameReason::ErlangReservedWord => "is a reserved word in Erlang.",
+        InvalidProjectNameReason::ErlangStandardLibraryModule => {
+            "is a standard library module in Erlang."
+        }
+        InvalidProjectNameReason::GleamReservedWord => "is a reserved word in Gleam.",
+        InvalidProjectNameReason::GleamReservedModule => "is a reserved module name in Gleam.",
+        InvalidProjectNameReason::FormatNotLowercase => {
+            "does not have the correct format. Project names \
+may only contain lowercase letters."
+        }
+        InvalidProjectNameReason::Format => {
+            "does not have the correct format. Project names \
+must start with a lowercase letter and may only contain lowercase letters, \
+numbers and underscores."
+        }
+        InvalidProjectNameReason::GleamPrefix => {
+            "has the reserved prefix `gleam_`. \
+This prefix is intended for official Gleam packages only."
+        }
+    };
+
+    match with_suggestion {
+        Some(suggested_name) => wrap_format!(
+            "We were not able to create your project as `{}` {}
+
+Would you like to name your project '{}' instead?",
+            name,
+            reason_message,
+            suggested_name
+        ),
+        None => wrap_format!(
+            "We were not able to create your project as `{}` {}
+
+Please try again with a different project name.",
+            name,
+            reason_message
+        ),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -844,29 +871,7 @@ of the Gleam dependency modules."
             }
 
             Error::InvalidProjectName { name, reason } => {
-                let text = wrap_format!(
-                    "We were not able to create your project as `{}` {}
-
-Please try again with a different project name.",
-                    name,
-                    match reason {
-                        InvalidProjectNameReason::ErlangReservedWord =>
-                            "is a reserved word in Erlang.",
-                        InvalidProjectNameReason::ErlangStandardLibraryModule =>
-                            "is a standard library module in Erlang.",
-                        InvalidProjectNameReason::GleamReservedWord =>
-                            "is a reserved word in Gleam.",
-                        InvalidProjectNameReason::GleamReservedModule =>
-                            "is a reserved module name in Gleam.",
-                        InvalidProjectNameReason::Format =>
-                            "does not have the correct format. Project names \
-must start with a lowercase letter and may only contain lowercase letters, \
-numbers and underscores.",
-                        InvalidProjectNameReason::GleamPrefix =>
-                            "has the reserved prefix `gleam_`. \
-This prefix is intended for official Gleam packages only.",
-                    }
-                );
+                let text = format_invalid_project_name_error(name, reason, &None);
 
                 vec![Diagnostic {
                     title: "Invalid project name".into(),
@@ -1459,6 +1464,27 @@ The error from the encryption library was:
                 .iter()
                 .map(|error| {
                     match error {
+                TypeError::ErlangFloatUnsafe {
+                     location,  ..
+                } => Diagnostic {
+                        title: "Float is outside Erlang's floating point range".into(),
+                        text: wrap("This float value is too large to be represented by \
+Erlang's floating point type. To avoid this error float values must be in the range \
+-1.7976931348623157e308 - 1.7976931348623157e308."),
+                    hint: None,
+                    level: Level::Error,
+                    location: Some(Location {
+                        label: Label {
+                            text: None,
+                                span: *location,
+                            },
+                        path: path.clone(),
+                        src: src.clone(),
+                        extra_labels: vec![],
+                    }),
+                },
+
+
                 TypeError::SrcImportingTest {
                     location,
                     src_module,
@@ -1468,7 +1494,7 @@ The error from the encryption library was:
                         "The application module `{src_module}` \
 is importing the test module `{test_module}`.
 
-Test modules are not included in production builds so test \
+Test modules are not included in production builds so application \
 modules cannot import them. Perhaps move the `{test_module}` \
 module to the src directory.",
                         );
@@ -1983,6 +2009,20 @@ But function expects:
                     text.push_str(&printer.print_type(expected));
                     text.push_str("\n\nFound type:\n\n    ");
                     text.push_str(&printer.print_type(given));
+
+                    let (main_message_location, main_message_text, extra_labels) = match situation {
+                        // When the mismatch error comes from a case clause we want to highlight the
+                        // entire branch (pattern included) when reporting the error; in addition,
+                        // if the error could be resolved just by wrapping the value in an `Ok`
+                        // or `Error` we want to add an additional label with this hint below the
+                        // offending value.
+                        Some(UnifyErrorSituation::CaseClauseMismatch{ clause_location }) => (clause_location, None, vec![]),
+                        // In all other cases we just highlight the offending expression, optionally
+                        // adding the wrapping hint if it makes sense.
+                        Some(_) | None =>
+                            (location, hint_wrap_value_in_result(expected, given), vec![])
+                    };
+
                     Diagnostic {
                         title: "Type mismatch".into(),
                         text,
@@ -1990,12 +2030,12 @@ But function expects:
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
-                                text: None,
-                                span: *location,
+                                text: main_message_text,
+                                span: *main_message_location,
                             },
                             path: path.clone(),
                             src: src.clone(),
-                            extra_labels: vec![],
+                            extra_labels,
                         }),
                     }
                 }
@@ -2196,7 +2236,7 @@ but no type in scope with that name."
                     Diagnostic {
                         title: "Unknown type".into(),
                         text,
-                        hint: glistix_maybe_forgot_patch_hint(path),
+                        hint: None,
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -2219,12 +2259,18 @@ but no type in scope with that name."
                     let text = if *type_with_name_in_scope {
                         wrap_format!("`{name}` is a type, it cannot be used as a value.")
                     } else {
-                        wrap_format!("The name `{name}` is not in scope here.")
+                        let is_first_char_uppercase = name.chars().next().is_some_and(char::is_uppercase);
+
+                        if is_first_char_uppercase {
+                            wrap_format!("The custom type variant constructor `{name}` is not in scope here.")
+                        } else {
+                            wrap_format!("The name `{name}` is not in scope here.")
+                        }
                     };
                     Diagnostic {
                         title: "Unknown variable".into(),
                         text,
-                        hint: glistix_maybe_forgot_patch_hint(path),
+                        hint: None,
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -2346,7 +2392,7 @@ Private types can only be used within the module that defines them.",
                     Diagnostic {
                         title: "Unknown module value".into(),
                         text,
-                        hint: glistix_maybe_forgot_patch_hint(path),
+                        hint: None,
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -2983,62 +3029,6 @@ implementation but the function name `{function}` is not valid."
                     }
                 }
 
-                TypeError::InvalidExternalNixModule {
-                    location,
-                    name,
-                    module,
-                } => {
-                    let text = wrap_format!(
-                        "The function `{name}` has an external Nix \
-implementation but the module path `{module}` is not valid. Currently, it \
-must be a relative path (`./here.nix` or `../top.nix`) with a restricted set \
-of ASCII characters. To import from unsupported paths, re-export them in an \
-auxiliary Nix file in your project instead."
-                    );
-                    Diagnostic {
-                        title: "Invalid Nix module".into(),
-                        text,
-                        hint: None,
-                        level: Level::Error,
-                        location: Some(Location {
-                            label: Label {
-                                text: None,
-                                span: *location,
-                            },
-                            path: path.clone(),
-                            src: src.clone(),
-                            extra_labels: vec![],
-                        }),
-                    }
-                }
-
-                TypeError::InvalidExternalNixFunction {
-                    location,
-                    name,
-                    function,
-                } => {
-                    let text = wrap_format!(
-                        "The function `{name}` has an external Nix \
-implementation but the function name `{function}` is not valid, as it must be \
-a valid Nix identifier."
-                    );
-                    Diagnostic {
-                        title: "Invalid Nix function".into(),
-                        text,
-                        hint: None,
-                        level: Level::Error,
-                        location: Some(Location {
-                            label: Label {
-                                text: None,
-                                span: *location,
-                            },
-                            path: path.clone(),
-                            src: src.clone(),
-                            extra_labels: vec![],
-                        }),
-                    }
-                }
-
                 TypeError::InexhaustiveLetAssignment { location, missing } => {
                     let mut text =wrap(
                         "This assignment uses a pattern that does not \
@@ -3098,6 +3088,27 @@ The missing patterns are:\n"
                     }
                 }
 
+                TypeError::MissingCaseBody { location } => {
+                    let text = wrap(
+                        "This case expression is missing its body."
+                        );
+                    Diagnostic {
+                        title: "Missing case body".into(),
+                        text,
+                        hint: None,
+                        level: Level::Error,
+                        location: Some(Location {
+                            src: src.clone(),
+                            path: path.to_path_buf(),
+                            label: Label {
+                                text: None,
+                                span: *location,
+                            },
+                            extra_labels: Vec::new(),
+                        }),
+                    }
+                }
+
                 TypeError::UnsupportedExpressionTarget {
                     location,
                     target: current_target,
@@ -3108,14 +3119,13 @@ and there is no implementation for the {} target.\n",
                         match current_target {
                             Target::Erlang => "Erlang",
                             Target::JavaScript => "JavaScript",
-                            Target::Nix => "Nix",
                         }
                     );
                     let hint = wrap("Did you mean to build for a different target?");
                     Diagnostic {
                         title: "Unsupported target".into(),
                         text,
-                        hint: glistix_maybe_forgot_patch_hint(path).or(Some(hint)),
+                        hint: Some(hint),
                         level: Level::Error,
                         location: Some(Location {
                             path: path.clone(),
@@ -3137,7 +3147,6 @@ and there is no implementation for the {} target.\n",
                     let target = match target {
                         Target::Erlang => "Erlang",
                         Target::JavaScript => "JavaScript",
-                        Target::Nix => "Nix",
                     };
                     let text = wrap_format!(
                         "The `{name}` function is public but doesn't have an \
@@ -3650,24 +3659,6 @@ Fix the warnings and try again."
                 }],
             },
 
-            Error::Nix { src, path, error } => match error {
-                crate::nix::Error::Unsupported { feature, location } => vec![Diagnostic {
-                    title: "Unsupported feature for compilation target".into(),
-                    text: format!("{feature} is not supported for Nix compilation."),
-                    hint: glistix_maybe_forgot_patch_hint(path),
-                    level: Level::Error,
-                    location: Some(Location {
-                        label: Label {
-                            text: None,
-                            span: *location,
-                        },
-                        path: path.clone(),
-                        src: src.clone(),
-                        extra_labels: vec![],
-                    }),
-                }],
-            },
-
             Error::DownloadPackageError {
                 package_name,
                 package_version,
@@ -3782,10 +3773,7 @@ The error from the version resolver library was:
                 source_2,
             } => {
                 let text = format!(
-                    "The package `{package}` is provided as both `{source_1}` and `{source_2}`. \
-If your root project has a dependency on `{package}`, you can temporarily work around this by \
-adding `{package} = {{ path = \"(desired path)\" }}` under `[glistix.preview.patch]` to its `gleam.toml` \
-to ensure the root project's dependency overrides that of transitive dependencies.",
+                    "The package `{package}` is provided as both `{source_1}` and `{source_2}`.",
                 );
 
                 vec![Diagnostic {
@@ -3925,10 +3913,6 @@ satisfying {required_version} but you are using v{gleam_version}.",
                         "You can not set a runtime for Erlang. Did you mean to target JavaScript?"
                             .into(),
                     ),
-                    Target::Nix => Some(
-                        "You can not set a runtime for Nix. Did you mean to target JavaScript?"
-                            .into(),
-                    ),
                 };
 
                 vec![Diagnostic {
@@ -3948,44 +3932,6 @@ satisfying {required_version} but you are using v{gleam_version}.",
                 location: None,
                 hint: None,
             }],
-
-            Error::NixPreludeRequired => vec![Diagnostic {
-                title: "Nix prelude required".into(),
-                text: "The --nix-prelude flag must be given when compiling to Nix.".into(),
-                level: Level::Error,
-                location: None,
-                hint: None,
-            }],
-
-            Error::CannotPatchHexWithHex { name } => vec![Diagnostic {
-                title: "Cannot patch a Hex dependency through [glistix.preview.hex-patch]".into(),
-                text: format!(
-                    "Your project cannot depend on a Hex version of `{name}` and at the same time \
-patch it with another Hex version through [glistix.preview.hex-patch]. You can only use \
-[glistix.preview.hex-patch] to replace local dependencies with Hex packages when publishing."
-                ),
-                level: Level::Error,
-                location: None,
-                hint: None,
-            }],
-
-            Error::GlistixConflictingPatches { package, conflicting_rename } => vec![Diagnostic {
-                title: format!("Conflict between patches for \"{package}\" and \"{conflicting_rename}\" in [glistix.preview.patch]"),
-                text: wrap_format!(
-                    "Package \"{package}\" was patched to a certain version, local path or even renamed, whereas \
-package \"{conflicting_rename}\" is being patched precisely to \"{package}\" but in a different way (e.g. to a different version \
-than the one it was patched to), so the two patches conflict (should we apply the first patch to the second package or not?).
-
-As such, please manually apply the first patch on top of the second one, such that \"{conflicting_rename}\" is patched to \
-the exact same package (name and version / local path / Git repository) as \"{package}\".
-
-Check the Glistix handbook at {GLISTIX_BOOK_LINK} for more information."
-                ),
-                level: Level::Error,
-                location: None,
-                hint: None,
-            }],
-
             Error::CorruptManifest => vec![Diagnostic {
                 title: "Corrupt manifest.toml".into(),
                 text: "The `manifest.toml` file is corrupt.".into(),
@@ -4017,27 +3963,8 @@ or you can publish it using a different version number"),
                 level: Level::Error,
                 location: None,
                 hint: Some("Please add the --replace flag if you want to replace the release.".into()),
-            }],
+            }]
         }
-    }
-}
-
-fn glistix_maybe_forgot_patch_hint(path: &Utf8PathBuf) -> Option<String> {
-    if path.as_str().contains("gleam_stdlib") {
-        Some(wrap_format!(
-            "You may have forgotten to patch 'gleam_stdlib' with 'glistix_stdlib' \
-as per the Glistix handbook's instructions (see {GLISTIX_BOOK_LINK} for details)."
-        ))
-    } else if path.as_str().contains("build/packages") {
-        Some(wrap_format!("If this error occurs in a dependency, check if it supports the Nix target. \
-If it doesn't, try patching it with a fork implementing Nix support (see {GLISTIX_BOOK_LINK} for details).
-
-If the package does support the Nix target (or is target-agnostic), this error might also indicate your \
-project is applying a patch through [glistix.preview.patch] which this package is not compatible with. \
-For example, this package might depend on `gleam_stdlib` v0.44 whereas you could be patching it with \
-`glistix_stdlib` v0.38. In that case, you may have to pick different versions for patches or dependencies."))
-    } else {
-        None
     }
 }
 
@@ -4107,6 +4034,19 @@ fn hint_alternative_operator(op: &BinOp, given: &Type) -> Option<String> {
         BinOp::AddFloat if given.is_string() => Some(hint_string_message()),
 
         _ => None,
+    }
+}
+
+fn hint_wrap_value_in_result(expected: &Arc<Type>, given: &Arc<Type>) -> Option<String> {
+    let expected = collapse_links(expected.clone());
+    let (expected_ok_type, expected_error_type) = expected.result_types()?;
+
+    if given.same_as(expected_ok_type.as_ref()) {
+        Some("Did you mean to wrap this in an `Ok`?".into())
+    } else if given.same_as(expected_error_type.as_ref()) {
+        Some("Did you mean to wrap this in an `Error`?".into())
+    } else {
+        None
     }
 }
 

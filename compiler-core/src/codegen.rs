@@ -6,7 +6,7 @@ use crate::{
     io::FileSystemWriter,
     javascript,
     line_numbers::LineNumbers,
-    nix, Result,
+    Result,
 };
 use itertools::Itertools;
 use std::fmt::Debug;
@@ -33,10 +33,11 @@ impl<'a> Erlang<'a> {
         &self,
         writer: Writer,
         modules: &[Module],
+        root: &Utf8Path,
     ) -> Result<()> {
         for module in modules {
             let erl_name = module.name.replace("/", "@");
-            self.erlang_module(&writer, module, &erl_name)?;
+            self.erlang_module(&writer, module, &erl_name, root)?;
             self.erlang_record_headers(&writer, module, &erl_name)?;
         }
         Ok(())
@@ -47,11 +48,12 @@ impl<'a> Erlang<'a> {
         writer: &Writer,
         module: &Module,
         erl_name: &str,
+        root: &Utf8Path,
     ) -> Result<()> {
         let name = format!("{erl_name}.erl");
         let path = self.build_directory.join(&name);
         let line_numbers = LineNumbers::new(&module.code);
-        let output = erlang::module(&module.ast, &line_numbers);
+        let output = erlang::module(&module.ast, &line_numbers, root);
         tracing::debug!(name = ?name, "Generated Erlang module");
         writer.write(&path, &output?)
     }
@@ -248,72 +250,6 @@ impl<'a> JavaScript<'a> {
             self.typescript,
         );
         tracing::debug!(name = ?js_name, "Generated js module");
-        writer.write(&path, &output?)
-    }
-}
-
-#[derive(Debug)]
-pub struct Nix<'a> {
-    output_directory: &'a Utf8Path,
-    prelude_location: &'a Utf8Path,
-    target_support: TargetSupport,
-}
-
-impl<'a> Nix<'a> {
-    pub fn new(
-        output_directory: &'a Utf8Path,
-        prelude_location: &'a Utf8Path,
-        target_support: TargetSupport,
-    ) -> Self {
-        Self {
-            prelude_location,
-            output_directory,
-            target_support,
-        }
-    }
-
-    pub fn render(&self, writer: &impl FileSystemWriter, modules: &[Module]) -> Result<()> {
-        for module in modules {
-            let nix_name = module.name.clone();
-            self.nix_module(writer, module, &nix_name)?
-        }
-        self.write_prelude(writer)?;
-        Ok(())
-    }
-
-    fn write_prelude(&self, writer: &impl FileSystemWriter) -> Result<()> {
-        let rexport = format!(
-            "builtins.import {}\n",
-            nix::syntax::path(self.prelude_location.as_str())
-        );
-        let prelude_path = &self.output_directory.join("gleam.nix");
-
-        // This check skips unnecessary `gleam.nix` writes which confuse
-        // watchers
-        if !writer.exists(prelude_path) {
-            writer.write(prelude_path, &rexport)?;
-        }
-
-        Ok(())
-    }
-
-    fn nix_module(
-        &self,
-        writer: &impl FileSystemWriter,
-        module: &Module,
-        nix_name: &str,
-    ) -> Result<()> {
-        let name = format!("{nix_name}.nix");
-        let path = self.output_directory.join(name);
-        let line_numbers = LineNumbers::new(&module.code);
-        let output = nix::module(
-            &module.ast,
-            &line_numbers,
-            &module.input_path,
-            &module.code,
-            self.target_support,
-        );
-        tracing::debug!(name = ?nix_name, "Generated nix module");
         writer.write(&path, &output?)
     }
 }

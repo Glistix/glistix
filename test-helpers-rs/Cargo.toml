@@ -5,7 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-glistix-core = { path = "../compiler-core" }
+gleam-core = { path = "../compiler-core" }
 toml.workspace = true
 im.workspace = true
 itertools.workspace = true

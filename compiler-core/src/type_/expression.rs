@@ -41,16 +41,12 @@ pub struct Implementations {
     pub gleam: bool,
     pub can_run_on_erlang: bool,
     pub can_run_on_javascript: bool,
-    pub can_run_on_nix: bool,
     /// Wether the function has an implementation that uses external erlang
     /// code.
     pub uses_erlang_externals: bool,
     /// Wether the function has an implementation that uses external javascript
     /// code.
     pub uses_javascript_externals: bool,
-    /// Whether the function has an implementation that uses external Nix
-    /// code.
-    pub uses_nix_externals: bool,
 }
 
 impl Implementations {
@@ -59,10 +55,8 @@ impl Implementations {
             gleam: true,
             can_run_on_erlang: true,
             can_run_on_javascript: true,
-            can_run_on_nix: true,
             uses_javascript_externals: false,
             uses_erlang_externals: false,
-            uses_nix_externals: false,
         }
     }
 }
@@ -79,8 +73,6 @@ pub struct FunctionDefinition {
     pub has_erlang_external: bool,
     /// The function has @external(JavaScript, "...", "...")
     pub has_javascript_external: bool,
-    /// The function has @external(Nix, "...", "...")
-    pub has_nix_external: bool,
 }
 
 impl FunctionDefinition {
@@ -88,7 +80,6 @@ impl FunctionDefinition {
         match target {
             Target::Erlang => self.has_erlang_external,
             Target::JavaScript => self.has_javascript_external,
-            Target::Nix => self.has_nix_external,
         }
     }
 }
@@ -108,16 +99,13 @@ impl Implementations {
             gleam,
             uses_erlang_externals: other_uses_erlang_externals,
             uses_javascript_externals: other_uses_javascript_externals,
-            uses_nix_externals: other_uses_nix_externals,
             can_run_on_erlang: other_can_run_on_erlang,
             can_run_on_javascript: other_can_run_on_javascript,
-            can_run_on_nix: other_can_run_on_nix,
         } = implementations;
         let FunctionDefinition {
             has_body: _,
             has_erlang_external,
             has_javascript_external,
-            has_nix_external,
         } = current_function_definition;
 
         // If a pure-Gleam function uses a function that doesn't have a pure
@@ -130,8 +118,6 @@ impl Implementations {
             || (self.can_run_on_erlang && (*gleam || *other_can_run_on_erlang));
         self.can_run_on_javascript = *has_javascript_external
             || (self.can_run_on_javascript && (*gleam || *other_can_run_on_javascript));
-        self.can_run_on_nix =
-            *has_nix_external || (self.can_run_on_nix && (*gleam || *other_can_run_on_nix));
 
         // If a function uses a function that relies on external code (be it
         // javascript or erlang) then it's considered as using external code as
@@ -154,7 +140,6 @@ impl Implementations {
         self.uses_erlang_externals = self.uses_erlang_externals || *other_uses_erlang_externals;
         self.uses_javascript_externals =
             self.uses_javascript_externals || *other_uses_javascript_externals;
-        self.uses_nix_externals = self.uses_nix_externals || *other_uses_nix_externals;
     }
 
     /// Returns true if the current target is supported by the given
@@ -166,7 +151,6 @@ impl Implementations {
             || match target {
                 Target::Erlang => self.can_run_on_erlang,
                 Target::JavaScript => self.can_run_on_javascript,
-                Target::Nix => self.can_run_on_nix,
             }
     }
 }
@@ -183,15 +167,6 @@ pub enum CallKind {
         assignments_location: SrcSpan,
         last_statement_location: SrcSpan,
     },
-}
-impl CallKind {
-    #[must_use]
-    fn is_use_call(&self) -> bool {
-        match self {
-            CallKind::Function => false,
-            CallKind::Use { .. } => true,
-        }
-    }
 }
 
 /// This is used to tell apart regular call arguments and the callback that is
@@ -253,10 +228,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             gleam: definition.has_body,
             can_run_on_erlang: definition.has_body || definition.has_erlang_external,
             can_run_on_javascript: definition.has_body || definition.has_javascript_external,
-            can_run_on_nix: definition.has_body || definition.has_nix_external,
             uses_erlang_externals: definition.has_erlang_external,
             uses_javascript_externals: definition.has_javascript_external,
-            uses_nix_externals: definition.has_nix_external,
         };
 
         hydrator.permit_holes(true);
@@ -354,13 +327,21 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
             UntypedExpr::Float {
                 location, value, ..
-            } => Ok(self.infer_float(value, location)),
+            } => {
+                if self.environment.target == Target::Erlang
+                    && !self.current_function_definition.has_erlang_external
+                {
+                    check_erlang_float_safety(&value, location, self.problems)
+                }
+
+                Ok(self.infer_float(value, location))
+            }
 
             UntypedExpr::String {
                 location, value, ..
             } => Ok(self.infer_string(value, location)),
 
-            UntypedExpr::PipeLine { expressions } => self.infer_pipeline(expressions),
+            UntypedExpr::PipeLine { expressions } => Ok(self.infer_pipeline(expressions)),
 
             UntypedExpr::Fn {
                 location,
@@ -435,7 +416,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         }
     }
 
-    fn infer_pipeline(&mut self, expressions: Vec1<UntypedExpr>) -> Result<TypedExpr, Error> {
+    fn infer_pipeline(&mut self, expressions: Vec1<UntypedExpr>) -> TypedExpr {
         PipeTyper::infer(self, expressions)
     }
 
@@ -449,9 +430,13 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let type_ = self.new_unbound_var();
 
         // Emit a warning that there is a todo in the code.
+        let warning_location = match kind {
+            TodoKind::Keyword | TodoKind::IncompleteUse | TodoKind::EmptyBlock => location,
+            TodoKind::EmptyFunction { function_location } => function_location,
+        };
         self.problems.warning(Warning::Todo {
             kind,
-            location,
+            location: warning_location,
             type_: type_.clone(),
         });
 
@@ -1340,6 +1325,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
         let value_typ = value.type_();
 
+        let kind = self.infer_assignment_kind(kind.clone());
+
         // Ensure the pattern matches the type of the value
         let pattern_location = pattern.location();
         let mut pattern_typer = pattern::PatternTyper::new(
@@ -1396,14 +1383,6 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             (AssignmentKind::Assert { .. }, _) => {}
         }
 
-        let kind = match self.infer_assignment_kind(kind) {
-            Ok(kind) => kind,
-            Err(error) => {
-                self.problems.error(error);
-                AssignmentKind::Generated
-            }
-        };
-
         Assignment {
             location,
             annotation,
@@ -1416,10 +1395,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     fn infer_assignment_kind(
         &mut self,
         kind: AssignmentKind<UntypedExpr>,
-    ) -> Result<AssignmentKind<TypedExpr>, Error> {
+    ) -> AssignmentKind<TypedExpr> {
         match kind {
-            AssignmentKind::Let => Ok(AssignmentKind::Let),
-            AssignmentKind::Generated => Ok(AssignmentKind::Generated),
+            AssignmentKind::Let => AssignmentKind::Let,
+            AssignmentKind::Generated => AssignmentKind::Generated,
             AssignmentKind::Assert { location, message } => {
                 let message = match message {
                     Some(message) => {
@@ -1427,15 +1406,20 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                             FeatureKind::LetAssertWithMessage,
                             message.location(),
                         );
-                        let message = self.infer(*message)?;
+                        let message = self.infer(*message).unwrap_or_else(|error| {
+                            self.problems.error(error);
+                            self.error_expr(location)
+                        });
 
-                        unify(string(), message.type_())
-                            .map_err(|e| convert_unify_error(e, message.location()))?;
+                        let _ = unify(string(), message.type_()).map_err(|e| {
+                            self.problems
+                                .error(convert_unify_error(e, message.location()))
+                        });
                         Some(Box::new(message))
                     }
                     None => None,
                 };
-                Ok(AssignmentKind::Assert { location, message })
+                AssignmentKind::Assert { location, message }
             }
         }
     }
@@ -1443,13 +1427,12 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     fn infer_case(
         &mut self,
         subjects: Vec<UntypedExpr>,
-        clauses: Vec<UntypedClause>,
+        clauses: Option<Vec<UntypedClause>>,
         location: SrcSpan,
     ) -> TypedExpr {
         let subjects_count = subjects.len();
         let mut typed_subjects = Vec::with_capacity(subjects_count);
         let mut subject_types = Vec::with_capacity(subjects_count);
-        let mut typed_clauses = Vec::with_capacity(clauses.len());
 
         let return_type = self.new_unbound_var();
 
@@ -1474,6 +1457,20 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             typed_subjects.push(subject);
         }
 
+        let clauses = match clauses {
+            Some(clauses) => clauses,
+            None => {
+                self.problems.error(Error::MissingCaseBody { location });
+                return TypedExpr::Case {
+                    location,
+                    type_: return_type,
+                    subjects: typed_subjects,
+                    clauses: Vec::new(),
+                };
+            }
+        };
+
+        let mut typed_clauses = Vec::with_capacity(clauses.len());
         let mut has_a_guard = false;
         let mut all_patterns_are_discards = true;
         // NOTE: if there are 0 clauses then there are 0 panics
@@ -1487,9 +1484,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             let typed_clause = self.infer_clause(clause, &typed_subjects);
             all_clauses_panic = all_clauses_panic && self.previous_panics;
 
-            if let Err(e) = unify(return_type.clone(), typed_clause.then.type_())
-                .map_err(|e| e.case_clause_mismatch().into_error(typed_clause.location()))
-            {
+            if let Err(e) = unify(return_type.clone(), typed_clause.then.type_()).map_err(|e| {
+                e.case_clause_mismatch(typed_clause.location)
+                    .into_error(typed_clause.then.type_defining_location())
+            }) {
                 self.problems.error(e);
             }
             typed_clauses.push(typed_clause);
@@ -1654,8 +1652,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 let constructor = self.infer_value_constructor(&None, &name, &location)?;
 
                 // We cannot support all values in guard expressions as the BEAM does not
-                match &constructor.variant {
-                    ValueConstructorVariant::LocalVariable { .. } => (),
+                let definition_location = match &constructor.variant {
+                    ValueConstructorVariant::LocalVariable { location, .. } => *location,
                     ValueConstructorVariant::ModuleFn { .. }
                     | ValueConstructorVariant::Record { .. } => {
                         return Err(Error::NonLocalClauseGuardVariable { location, name });
@@ -1671,6 +1669,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     location,
                     name,
                     type_: constructor.type_,
+                    definition_location,
                 })
             }
 
@@ -2467,6 +2466,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 type_: record_type,
                 variant: ValueConstructorVariant::LocalVariable {
                     location: record_location,
+                    origin: VariableOrigin::Generated,
                 },
             },
             name: RECORD_UPDATE_VARIABLE.into(),
@@ -2884,7 +2884,13 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
             Constant::Float {
                 location, value, ..
-            } => Ok(Constant::Float { location, value }),
+            } => {
+                if self.environment.target == Target::Erlang {
+                    check_erlang_float_safety(&value, location, self.problems)
+                }
+
+                Ok(Constant::Float { location, value })
+            }
 
             Constant::String {
                 location, value, ..
@@ -3418,7 +3424,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                                 ignored_labelled_args = args
                                     .iter()
                                     .skip_while(|arg| arg.label.is_none())
-                                    .map(|arg| (arg.label.clone(), arg.location))
+                                    .map(|arg| (arg.label.clone(), arg.location, arg.implicit))
                                     .collect_vec();
                                 let args_to_keep = first_labelled_arg.unwrap_or(args.len());
                                 (
@@ -3513,14 +3519,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     )
                 }
 
-                let value = match self.infer_call_argument(value, type_.clone(), argument_kind) {
-                    Ok(value) => value,
-                    Err(e) => {
-                        self.problems.error(e);
-                        self.error_expr(location)
-                    }
-                };
-
+                let value = self.infer_call_argument(value, type_.clone(), argument_kind);
                 CallArg {
                     label,
                     value,
@@ -3538,21 +3537,16 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         //
         // So now what we want to do is add back those labelled arguments to
         // make sure the LS can still see that those were explicitly supplied.
-        //
-        // For use calls we've already filled in the gaps with values so we
-        // don't care about adding any label back.
-        if !kind.is_use_call() {
-            for (label, location) in ignored_labelled_args {
-                typed_args.push(CallArg {
-                    label,
-                    value: TypedExpr::Invalid {
-                        location,
-                        type_: self.new_unbound_var(),
-                    },
-                    implicit: None,
+        for (label, location, implicit) in ignored_labelled_args {
+            typed_args.push(CallArg {
+                label,
+                value: TypedExpr::Invalid {
                     location,
-                })
-            }
+                    type_: self.new_unbound_var(),
+                },
+                implicit,
+                location,
+            })
         }
 
         // We don't want to emit a warning for unreachable function call if the
@@ -3570,10 +3564,11 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         value: UntypedExpr,
         type_: Arc<Type>,
         kind: ArgumentKind,
-    ) -> Result<TypedExpr, Error> {
+    ) -> TypedExpr {
         let type_ = collapse_links(type_);
 
-        let value = match (&*type_, value) {
+        let value_location = value.location();
+        let result = match (&*type_, value) {
             // If the argument is expected to be a function and we are passed a
             // function literal with the correct number of arguments then we
             // have special handling of this argument, passing in information
@@ -3605,11 +3600,35 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
             // Otherwise just perform normal type inference.
             (_, value) => self.infer(value),
-        }?;
+        };
 
-        unify(type_, value.type_())
-            .map_err(|e| convert_unify_call_error(e, value.location(), kind))?;
-        Ok(value)
+        match result {
+            Err(error) => {
+                // If we couldn't infer the value, we record the error and
+                // return an invalid expression with the type we were expecting
+                // to see.
+                self.problems.error(error);
+                TypedExpr::Invalid {
+                    location: value_location,
+                    type_,
+                }
+            }
+            Ok(value) => match unify(type_.clone(), value.type_()) {
+                Ok(_) => value,
+                Err(error) => {
+                    // If we couldn't unify it, we record the error and return
+                    // an invalid expression with the type we infered for the
+                    // value.
+                    let location = value.location();
+                    let error = convert_unify_call_error(error, location, kind);
+                    self.problems.error(error);
+                    TypedExpr::Invalid {
+                        location,
+                        type_: value.type_(),
+                    }
+                }
+            },
+        }
     }
 
     pub fn do_infer_fn(
@@ -3652,7 +3671,12 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
             for (arg, t) in args.iter().zip(args.iter().map(|arg| arg.type_.clone())) {
                 match &arg.names {
-                    ArgNames::Named { name, .. } | ArgNames::NamedLabelled { name, .. } => {
+                    ArgNames::Named { name, location }
+                    | ArgNames::NamedLabelled {
+                        name,
+                        name_location: location,
+                        ..
+                    } => {
                         // Check that this name has not already been used for
                         // another argument
                         if !argument_names.insert(name) {
@@ -3663,9 +3687,12 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         }
 
                         // Insert a variable for the argument into the environment
-                        body_typer
-                            .environment
-                            .insert_local_variable(name.clone(), arg.location, t);
+                        body_typer.environment.insert_local_variable(
+                            name.clone(),
+                            *location,
+                            VariableOrigin::Variable(name.clone()),
+                            t,
+                        );
 
                         if !body.first().is_placeholder() {
                             // Register the variable in the usage tracker so that we

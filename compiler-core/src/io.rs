@@ -443,14 +443,6 @@ pub trait TarUnpacker {
     }
 }
 
-#[inline]
-pub fn is_native_file_extension(extension: &str) -> bool {
-    matches!(
-        extension,
-        "erl" | "hrl" | "ex" | "js" | "mjs" | "ts" | "nix"
-    )
-}
-
 pub fn ordered_map<S, K, V>(value: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,

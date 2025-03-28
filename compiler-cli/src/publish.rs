@@ -1,6 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use flate2::{write::GzEncoder, Compression};
-use glistix_core::{
+use gleam_core::{
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, Options, Package, Target},
     config::{PackageConfig, SpdxLicense},
@@ -344,15 +344,11 @@ fn do_build_hex_tarball(paths: &ProjectPaths, config: &mut PackageConfig) -> Res
     let generated_files = match target {
         Target::Erlang => generated_erlang_files(paths, &built.root_package)?,
         Target::JavaScript => vec![],
-        Target::Nix => vec![],
     };
-    let src_files = project_files(Utf8Path::new(""))?;
+    let src_files = project_files()?;
     let contents_tar_gz = contents_tarball(&src_files, &generated_files)?;
     let version = "3";
-    // Hex dependencies of the published package are based on the unpatched
-    // [dependencies] section. Patches in Hex dependencies are ignored.
-    let unpatched_config = crate::config::root_config_unpatched()?;
-    let metadata = metadata_config(&unpatched_config, &src_files, &generated_files)?;
+    let metadata = metadata_config(&built.root_package.config, &src_files, &generated_files)?;
 
     // Calculate checksum
     let mut hasher = sha2::Sha256::new();
@@ -400,17 +396,9 @@ fn metadata_config<'a>(
     generated_files: &[(Utf8PathBuf, String)],
 ) -> Result<String> {
     let repo_url = http::Uri::try_from(config.repository.url().unwrap_or_default()).ok();
-    prevent_patching_hex_with_hex(config)?;
     let requirements: Result<Vec<ReleaseRequirement<'a>>> = config
         .dependencies
         .iter()
-        .map(
-            |(name, requirement)| match config.glistix.preview.hex_patch.get(name) {
-                // Workaround while we don't have full dependency patching
-                Some(patched_hex_dependency) => (name, patched_hex_dependency),
-                None => (name, requirement),
-            },
-        )
         .map(|(name, requirement)| match requirement {
             Requirement::Hex { version } => Ok(ReleaseRequirement {
                 name,
@@ -442,18 +430,6 @@ fn metadata_config<'a>(
     Ok(metadata)
 }
 
-fn prevent_patching_hex_with_hex(config: &PackageConfig) -> Result<()> {
-    for (name, patch) in &config.glistix.preview.hex_patch {
-        if let (Requirement::Hex { .. }, Some(Requirement::Hex { .. })) =
-            (patch, config.dependencies.get(name))
-        {
-            return Err(Error::CannotPatchHexWithHex { name: name.clone() });
-        }
-    }
-
-    Ok(())
-}
-
 fn contents_tarball(
     files: &[Utf8PathBuf],
     data_files: &[(Utf8PathBuf, String)],
@@ -474,16 +450,19 @@ fn contents_tarball(
     Ok(contents_tar_gz)
 }
 
-fn project_files(base_path: &Utf8Path) -> Result<Vec<Utf8PathBuf>> {
-    let src = base_path.join(Utf8Path::new("src"));
-    let mut files: Vec<Utf8PathBuf> = fs::gleam_files(&src)
-        .chain(fs::native_files(&src))
+// TODO: test
+// TODO: Don't include git-ignored native files
+fn project_files() -> Result<Vec<Utf8PathBuf>> {
+    let src = Utf8Path::new("src");
+    let mut files: Vec<Utf8PathBuf> = fs::gleam_files_excluding_gitignore(src)
+        .chain(fs::native_files(src)?)
         .collect();
-    let private = base_path.join(Utf8Path::new("priv"));
-    let mut private_files: Vec<Utf8PathBuf> = fs::private_files(&private).collect();
+    let private = Utf8Path::new("priv");
+    let mut private_files: Vec<Utf8PathBuf> =
+        fs::private_files_excluding_gitignore(private).collect();
     files.append(&mut private_files);
     let mut add = |path| {
-        let path = base_path.join(path);
+        let path = Utf8PathBuf::from(path);
         if path.exists() {
             files.push(path);
         }
@@ -530,7 +509,7 @@ fn generated_erlang_files(
 
     // Erlang headers
     if include.is_dir() {
-        for file in fs::erlang_files(&include) {
+        for file in fs::erlang_files(&include)? {
             let name = file.file_name().expect("generated_files include file name");
             files.push((tar_include.join(name), fs::read(file)?));
         }
@@ -754,38 +733,6 @@ fn prevent_publish_local_dependency() {
 }
 
 #[test]
-fn glistix_prevent_publish_hex_patched_with_hex() {
-    let mut config = PackageConfig::default();
-    config.dependencies = [("trophy".into(), Requirement::hex(">= 0.0.0"))].into();
-    config.glistix.preview.hex_patch =
-        [("trophy".into(), Requirement::hex("~> 0.34 or ~> 1.0"))].into();
-    assert_eq!(
-        metadata_config(&config, &[], &[]),
-        Err(Error::CannotPatchHexWithHex {
-            name: "trophy".into(),
-        })
-    );
-}
-
-#[test]
-fn glistix_patch_published_local_dependency() {
-    let mut config = PackageConfig::default();
-    config.dependencies = [("provided".into(), Requirement::path("./path/to/package"))].into();
-    config.glistix.preview.hex_patch =
-        [("provided".into(), Requirement::hex("~> 0.34 or ~> 1.0"))].into();
-    let meta = metadata_config(&config, &[], &[]).unwrap();
-    assert!(meta.contains(
-        r#"{<<"requirements">>, [
-  {<<"provided">>, [
-    {<<"app">>, <<"provided">>},
-    {<<"optional">>, false},
-    {<<"requirement">>, <<"~> 0.34 or ~> 1.0">>}
-  ]}
-]}."#
-    ))
-}
-
-#[test]
 fn prevent_publish_git_dependency() {
     let config = PackageConfig {
         dependencies: [(
@@ -805,125 +752,4 @@ fn prevent_publish_git_dependency() {
 
 fn quotes(x: &str) -> String {
     format!(r#"<<"{x}">>"#)
-}
-
-#[test]
-fn exported_project_files_test() {
-    let tmp = tempfile::tempdir().unwrap();
-    let path = Utf8PathBuf::from_path_buf(tmp.path().join("my_project")).expect("Non Utf8 Path");
-
-    let exported_project_files = &[
-        "LICENCE",
-        "LICENCE.md",
-        "LICENCE.txt",
-        "LICENSE",
-        "LICENSE.md",
-        "LICENSE.txt",
-        "NOTICE",
-        "NOTICE.md",
-        "NOTICE.txt",
-        "README",
-        "README.md",
-        "README.txt",
-        "gleam.toml",
-        "priv/ignored",
-        "priv/wibble",
-        "priv/wobble.js",
-        "src/.hidden/hidden_ffi.erl",
-        "src/.hidden/hidden_ffi.mjs",
-        "src/.hidden/hidden_ffi.nix",
-        "src/.hidden_ffi.erl",
-        "src/.hidden_ffi.mjs",
-        "src/.hidden_ffi.nix",
-        "src/exported.gleam",
-        "src/exported_ffi.erl",
-        "src/exported_ffi.ex",
-        "src/exported_ffi.hrl",
-        "src/exported_ffi.js",
-        "src/exported_ffi.mjs",
-        "src/exported_ffi.nix",
-        "src/exported_ffi.ts",
-        "src/ignored.gleam",
-        "src/ignored_ffi.erl",
-        "src/ignored_ffi.mjs",
-        "src/ignored_ffi.nix",
-        "src/nested/exported.gleam",
-        "src/nested/exported_ffi.erl",
-        "src/nested/exported_ffi.ex",
-        "src/nested/exported_ffi.hrl",
-        "src/nested/exported_ffi.js",
-        "src/nested/exported_ffi.mjs",
-        "src/nested/exported_ffi.nix",
-        "src/nested/exported_ffi.ts",
-        "src/nested/ignored.gleam",
-        "src/nested/ignored_ffi.erl",
-        "src/nested/ignored_ffi.mjs",
-        "src/nested/ignored_ffi.nix",
-    ];
-
-    let unexported_project_files = &[
-        ".git/",
-        ".github/workflows/test.yml",
-        ".gitignore",
-        "build/",
-        "ignored.txt",
-        "src/.hidden/hidden.gleam", // Not a valid Gleam module path
-        "src/.hidden.gleam",        // Not a valid Gleam module name
-        "src/also-ignored.gleam",   // Not a valid Gleam module name
-        "test/exported_test.gleam",
-        "test/exported_test_ffi.erl",
-        "test/exported_test_ffi.ex",
-        "test/exported_test_ffi.hrl",
-        "test/exported_test_ffi.js",
-        "test/exported_test_ffi.mjs",
-        "test/exported_test_ffi.nix",
-        "test/exported_test_ffi.ts",
-        "test/ignored_test.gleam",
-        "test/ignored_test_ffi.erl",
-        "test/ignored_test_ffi.mjs",
-        "test/ignored_test_ffi.nix",
-        "test/nested/exported_test.gleam",
-        "test/nested/exported_test_ffi.erl",
-        "test/nested/exported_test_ffi.ex",
-        "test/nested/exported_test_ffi.hrl",
-        "test/nested/exported_test_ffi.js",
-        "test/nested/exported_test_ffi.mjs",
-        "test/nested/exported_test_ffi.nix",
-        "test/nested/exported_test_ffi.ts",
-        "test/nested/ignored.gleam",
-        "test/nested/ignored_test_ffi.erl",
-        "test/nested/ignored_test_ffi.mjs",
-        "test/nested/ignored_test_ffi.nix",
-        "unrelated-file.txt",
-    ];
-
-    let gitignore = "ignored*
-src/also-ignored.gleam";
-
-    for &file in exported_project_files
-        .iter()
-        .chain(unexported_project_files)
-    {
-        if file.ends_with("/") {
-            fs::mkdir(path.join(file)).unwrap();
-            continue;
-        }
-
-        let contents = match file {
-            ".gitignore" => gitignore,
-            _ => "",
-        };
-
-        fs::write(&path.join(file), contents).unwrap();
-    }
-
-    let mut chosen_exported_files = project_files(&path).unwrap();
-    chosen_exported_files.sort_unstable();
-
-    let expected_exported_files = exported_project_files
-        .iter()
-        .map(|s| path.join(s))
-        .collect_vec();
-
-    assert_eq!(expected_exported_files, chosen_exported_files);
 }

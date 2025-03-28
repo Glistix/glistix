@@ -1,6 +1,6 @@
 FROM erlang:alpine
 
 ARG TARGETARCH
-COPY glistix-${TARGETARCH} /bin/glistix
+COPY gleam-${TARGETARCH} /bin/gleam
 
-CMD ["glistix"]
+CMD ["gleam"]

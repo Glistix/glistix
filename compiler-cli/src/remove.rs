@@ -1,6 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 
-use glistix_core::{
+use gleam_core::{
     error::{FileIoAction, FileKind},
     Error, Result,
 };

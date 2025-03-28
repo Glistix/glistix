@@ -130,14 +130,12 @@ where
         let config_path = paths.root_config();
         let modification_time = io.modification_time(&config_path)?;
         let toml = io.read(&config_path)?;
-        let config = toml::from_str(&toml)
-            .map(crate::config::PackageConfig::with_glistix_patches_applied)
-            .map_err(|e| Error::FileIo {
-                action: FileIoAction::Parse,
-                kind: FileKind::File,
-                path: config_path,
-                err: Some(e.to_string()),
-            })?;
+        let config = toml::from_str(&toml).map_err(|e| Error::FileIo {
+            action: FileIoAction::Parse,
+            kind: FileKind::File,
+            path: config_path,
+            err: Some(e.to_string()),
+        })?;
         let engine = LanguageServerEngine::new(config, progress_reporter, io, paths)?;
         let project = Project {
             engine,

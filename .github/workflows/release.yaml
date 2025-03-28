@@ -12,10 +12,6 @@ jobs:
   build-release:
     name: build-release
     runs-on: ${{ matrix.os }}
-
-    permissions:
-      contents: write
-
     strategy:
       matrix:
         target:
@@ -29,24 +25,24 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             binary: x86-64
-            use-cross: true
+            cargo-tool: cross
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             binary: aarch64
-            use-cross: true
+            cargo-tool: cross
           # macos>=14 runs exclusively on aarch64 and will thus fail to execute properly for x64
           - os: macos-13
             target: x86_64-apple-darwin
             binary: x86_64
-            use-cross: false
+            cargo-tool: cargo
           - os: macos-latest
             target: aarch64-apple-darwin
             binary: arm64
-            use-cross: false
+            cargo-tool: cargo
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: x86-64
-            use-cross: false
+            cargo-tool: cargo
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -63,16 +59,16 @@ jobs:
           key: v1-${{ matrix.target }}
 
       - name: Build release binary
-        uses: clechasseur/rs-cargo@v2
+        uses: clechasseur/rs-cargo@v3
         with:
           command: build
           args: --release --target ${{ matrix.target }}
-          use-cross: ${{ matrix.use-cross }}
+          tool: ${{ matrix.cargo-tool }}
 
       - name: Verify binary architecture
         shell: bash
         run: |
-          BINARY_PATH="target/${{ matrix.target }}/release/glistix"
+          BINARY_PATH="target/${{ matrix.target }}/release/gleam"
           if [[ "${{ matrix.target }}" == *"windows"* ]]; then
             BINARY_PATH="${BINARY_PATH}.exe"
           fi
@@ -91,15 +87,15 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/}"
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            ARCHIVE="glistix-$VERSION-${{ matrix.target }}.zip"
-            cp "target/${{ matrix.target }}/release/glistix.exe" "glistix.exe"
-            7z a "$ARCHIVE" "glistix.exe"
-            rm glistix.exe
+            ARCHIVE="gleam-$VERSION-${{ matrix.target }}.zip"
+            cp "target/${{ matrix.target }}/release/gleam.exe" "gleam.exe"
+            7z a "$ARCHIVE" "gleam.exe"
+            rm gleam.exe
           else
-            ARCHIVE="glistix-$VERSION-${{ matrix.target }}.tar.gz"
-            cp "target/${{ matrix.target }}/release/glistix" "glistix"
-            tar -czvf "$ARCHIVE" "glistix"
-            rm glistix
+            ARCHIVE="gleam-$VERSION-${{ matrix.target }}.tar.gz"
+            cp "target/${{ matrix.target }}/release/gleam" "gleam"
+            tar -czvf "$ARCHIVE" "gleam"
+            rm gleam
           fi
 
           openssl dgst -r -sha256 -out "$ARCHIVE".sha256 "$ARCHIVE"
@@ -112,12 +108,12 @@ jobs:
           case "${{ matrix.target }}" in
             x86_64-pc-windows-msvc)
               7z x "$ASSET"
-              ./glistix.exe --version ;;
+              ./gleam.exe --version ;;
             aarch64*)
               echo "We cannot test an ARM binary on a AMD64 runner" ;;
             *)
               tar -xvzf "$ASSET"
-              ./glistix --version ;;
+              ./gleam --version ;;
           esac
 
       - name: Upload release archive
@@ -136,10 +132,6 @@ jobs:
   build-release-wasm:
     name: build-release-wasm
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -161,7 +153,7 @@ jobs:
       - name: Build wasm archive
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
-          ARCHIVE="glistix-$VERSION-browser.tar.gz"
+          ARCHIVE="gleam-$VERSION-browser.tar.gz"
 
           tar -C compiler-wasm/pkg/ -czvf $ARCHIVE .
 

@@ -2,7 +2,7 @@
 mod generated_tests;
 
 use camino::Utf8PathBuf;
-use glistix_core::{
+use gleam_core::{
     build::{
         ErlangAppCodegenConfiguration, Mode, NullTelemetry, Outcome, StaleTracker, Target,
         TargetCodegenConfiguration,
@@ -33,12 +33,9 @@ pub fn prepare(path: &str) -> String {
             emit_typescript_definitions: config.javascript.typescript_declarations,
             prelude_location: Utf8PathBuf::from("../prelude.mjs"),
         },
-        Target::Nix => TargetCodegenConfiguration::Nix {
-            prelude_location: Utf8PathBuf::from("../prelude.nix"),
-        },
     };
 
-    let ids = glistix_core::uid::UniqueIdGenerator::new();
+    let ids = gleam_core::uid::UniqueIdGenerator::new();
     let mut modules = im::HashMap::new();
     let warnings = VectorWarningEmitterIO::default();
     let warning_emitter = WarningEmitter::new(Rc::new(warnings.clone()));
@@ -47,7 +44,7 @@ pub fn prepare(path: &str) -> String {
     let root = Utf8PathBuf::from("");
     let out = Utf8PathBuf::from("/out/lib/the_package");
     let lib = Utf8PathBuf::from("/out/lib");
-    let mut compiler = glistix_core::build::PackageCompiler::new(
+    let mut compiler = gleam_core::build::PackageCompiler::new(
         &config,
         Mode::Dev,
         &root,

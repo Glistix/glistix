@@ -6,6 +6,7 @@ use crate::analyse::TargetSupport;
 use crate::build::Target;
 use crate::config::PackageConfig;
 use crate::line_numbers::LineNumbers;
+use crate::type_::error::VariableOrigin;
 use crate::type_::expression::FunctionDefinition;
 use crate::type_::{Deprecation, Problems, PRELUDE_MODULE_NAME};
 use crate::warning::WarningEmitter;
@@ -149,7 +150,6 @@ fn compile_expression(src: &str) -> TypedStatement {
             has_body: true,
             has_erlang_external: false,
             has_javascript_external: false,
-            has_nix_external: false,
         },
         &mut problems,
     )
@@ -235,6 +235,7 @@ wibble}"#,
             publicity: Publicity::Private,
             variant: ValueConstructorVariant::LocalVariable {
                 location: SrcSpan { start: 5, end: 11 },
+                origin: VariableOrigin::Variable("wibble".into()),
             },
             type_: type_::int(),
         },
@@ -375,7 +376,6 @@ fn find_node_module_select() {
             name: "function".into(),
             external_erlang: None,
             external_javascript: None,
-            external_nix: None,
             location: SrcSpan { start: 1, end: 55 },
             documentation: None,
             field_map: None,
