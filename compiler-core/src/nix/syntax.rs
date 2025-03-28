@@ -213,7 +213,7 @@ pub fn fn_call<'a>(
 pub fn inherit<'a>(items: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
     let mut spaced_items = items
         .into_iter()
-        .map(|name| docvec!(break_("", " "), name))
+        .map(|name| docvec![break_("", " "), name])
         .peekable();
 
     if spaced_items.peek().is_none() {

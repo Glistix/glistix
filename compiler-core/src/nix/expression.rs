@@ -552,7 +552,7 @@ impl<'module> Generator<'module> {
                 } else if is_final_clause {
                     doc.append(break_("", " "))
                         .append("else")
-                        .append(docvec!(break_("", " "), body).nest(INDENT).group())
+                        .append(docvec![break_("", " "), body].nest(INDENT).group())
                 } else {
                     let condition = gen
                         .expression_generator
@@ -561,17 +561,17 @@ impl<'module> Generator<'module> {
                     doc.append(if is_first_clause {
                         "if".to_doc()
                     } else {
-                        docvec!(break_("", " "), "else if")
+                        docvec![break_("", " "), "else if"]
                     })
                     .append(
                         docvec!(
-                            docvec!(break_("", " "), condition).nest(INDENT),
+                            docvec![break_("", " "), condition].nest(INDENT),
                             break_("", " "),
                             "then"
                         )
                         .group(),
                     )
-                    .append(docvec!(break_("", " "), body).nest(INDENT).group())
+                    .append(docvec![break_("", " "), body].nest(INDENT).group())
                 };
             }
         }
@@ -839,7 +839,7 @@ impl Generator<'_> {
             fun_args(arguments)
         };
 
-        Ok(arguments.append(docvec!(break_("", " "), result?).group()))
+        Ok(arguments.append(docvec![break_("", " "), result?].group()))
     }
 
     fn todo<'a>(&mut self, location: &'a SrcSpan, message: Option<&'a TypedExpr>) -> Output<'a> {
@@ -971,7 +971,7 @@ impl Generator<'_> {
     ) -> Output<'a> {
         let left = self.wrap_child_expression(left)?;
         let right = self.wrap_child_expression(right)?;
-        Ok(docvec!(left, " ", op, " ", right))
+        Ok(docvec![left, " ", op, " ", right])
     }
 
     fn equal<'a>(
@@ -990,7 +990,7 @@ impl Generator<'_> {
     }
 
     fn negate_with<'a>(&mut self, with: &'static str, value: &'a TypedExpr) -> Output<'a> {
-        Ok(docvec!(with, self.wrap_child_expression(value)?))
+        Ok(docvec![with, self.wrap_child_expression(value)?])
     }
 }
 
@@ -1430,7 +1430,7 @@ pub(crate) fn constant_expression<'a>(
         Constant::StringConcatenation { left, right, .. } => {
             let left = wrap_child_constant_expression(tracker, left)?;
             let right = wrap_child_constant_expression(tracker, right)?;
-            Ok(docvec!(left, " + ", right))
+            Ok(docvec![left, " + ", right])
         }
 
         Constant::Invalid { .. } => panic!("invalid constants should not reach code generation"),
@@ -1445,18 +1445,18 @@ fn wrap_child_constant_expression<'a>(
     match expression {
         Constant::Int { value, .. } if int_requires_parsing(value) => {
             // Will call 'parseNumber'
-            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+            Ok(docvec!["(", constant_expression(tracker, expression)?, ")"])
         }
         Constant::Int { value, .. } | Constant::Float { value, .. } if value.starts_with('-') => {
-            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+            Ok(docvec!["(", constant_expression(tracker, expression)?, ")"])
         }
         Constant::List { .. }
         | Constant::BitArray { .. }
         | Constant::StringConcatenation { .. } => {
-            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+            Ok(docvec!["(", constant_expression(tracker, expression)?, ")"])
         }
         Constant::Record { args, .. } if !args.is_empty() => {
-            Ok(docvec!("(", constant_expression(tracker, expression)?, ")"))
+            Ok(docvec!["(", constant_expression(tracker, expression)?, ")"])
         }
         _ => constant_expression(tracker, expression),
     }
