@@ -1506,6 +1506,45 @@ Erlang's floating point type. To avoid this error float values must be in the ra
                     }),
                 },
 
+                TypeError::GlistixNixFloatUnsafe {
+                     location,  ..
+                } => Diagnostic {
+                        title: "Float is outside Nix's floating point range".into(),
+                        text: wrap("This float value is too large to be represented by \
+Nix's floating point type. To avoid this error float values must be in the range \
+-1.7976931348623157e308 - 1.7976931348623157e308."),
+                    hint: None,
+                    level: Level::Error,
+                    location: Some(Location {
+                        label: Label {
+                            text: None,
+                                span: *location,
+                            },
+                        path: path.clone(),
+                        src: src.clone(),
+                        extra_labels: vec![],
+                    }),
+                },
+
+                TypeError::GlistixNixIntUnsafe { location } => Diagnostic {
+                    title: "Int is outside Nix's integer range".into(),
+                    text: wrap(
+                        "This integer value is too large to be represented by \
+Nix's integer type. To avoid this error integer values must be in the range \
+-(2^63 - 1) - (2^63 - 1).",
+                    ),
+                    hint: None,
+                    level: Level::Error,
+                    location: Some(Location {
+                        path: path.to_path_buf(),
+                        src: src.clone(),
+                        label: Label {
+                            text: None,
+                            span: *location,
+                        },
+                        extra_labels: Vec::new(),
+                    }),
+                },
 
                 TypeError::SrcImportingTest {
                     location,
