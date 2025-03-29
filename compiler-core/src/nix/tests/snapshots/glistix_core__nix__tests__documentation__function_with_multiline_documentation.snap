@@ -1,0 +1,21 @@
+---
+source: compiler-core/src/nix/tests/documentation.rs
+expression: "\n/// Function doc!\n/// Hello!!\n///\npub fn documented() { 1 }"
+---
+----- SOURCE CODE
+
+/// Function doc!
+/// Hello!!
+///
+pub fn documented() { 1 }
+
+----- COMPILED NIX
+let
+  /**
+     Function doc!
+     Hello!!
+    
+  */
+  documented = { }: 1;
+in
+{ inherit documented; }

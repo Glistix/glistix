@@ -1,0 +1,14 @@
+---
+source: compiler-core/src/nix/tests/documentation.rs
+expression: "\n//// Hello! This is a single line module comment.\npub fn main() { 1 }"
+---
+----- SOURCE CODE
+
+//// Hello! This is a single line module comment.
+pub fn main() { 1 }
+
+----- COMPILED NIX
+/**
+   Hello! This is a single line module comment.
+*/
+let main = { }: 1; in { inherit main; }

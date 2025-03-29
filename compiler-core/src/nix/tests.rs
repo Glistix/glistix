@@ -19,6 +19,7 @@ mod case;
 mod case_clause_guards;
 mod consts;
 mod custom_types;
+mod documentation;
 mod externals;
 mod functions;
 mod lists;
@@ -146,7 +147,7 @@ pub fn compile(src: &str, deps: Vec<(&str, &str, &str)>) -> TypedModule {
     let mut config = PackageConfig::default();
     config.name = "thepackage".into();
 
-    crate::analyse::ModuleAnalyzerConstructor::<()> {
+    let ast = crate::analyse::ModuleAnalyzerConstructor::<()> {
         target: Target::Nix,
         ids: &ids,
         origin: Origin::Src,
@@ -157,7 +158,25 @@ pub fn compile(src: &str, deps: Vec<(&str, &str, &str)>) -> TypedModule {
         package_config: &config,
     }
     .infer_module(ast, line_numbers, "".into())
-    .expect("should successfully infer")
+    .expect("should successfully infer");
+
+    // After building everything we still need to attach the module comments, to
+    // do that we're reusing the `attach_doc_and_module_comments` that's used
+    // for the real thing. We just have to make a placeholder module wrapping
+    // the parsed ast and call the function!
+    let mut built_module = crate::build::Module {
+        name: "my/mod".into(),
+        code: src.into(),
+        mtime: std::time::SystemTime::UNIX_EPOCH,
+        input_path: Utf8PathBuf::from("test/path"),
+        origin: Origin::Src,
+        ast,
+        extra: parsed.extra,
+        dependencies: vec![],
+    };
+    built_module.attach_doc_and_module_comments();
+
+    built_module.ast
 }
 
 pub fn compile_nix(src: &str, deps: Vec<(&str, &str, &str)>) -> Result<String, crate::Error> {
