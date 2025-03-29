@@ -331,6 +331,12 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     check_javascript_int_safety(&int_value, location, self.problems);
                 }
 
+                if self.environment.target == Target::Nix
+                    && !self.current_function_definition.has_nix_external
+                {
+                    glistix_check_nix_int_safety(&int_value, location, self.problems);
+                }
+
                 Ok(self.infer_int(value, int_value, location))
             }
 
@@ -2897,6 +2903,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             } => {
                 if self.environment.target == Target::JavaScript {
                     check_javascript_int_safety(&int_value, location, self.problems);
+                }
+
+                if self.environment.target == Target::Nix {
+                    glistix_check_nix_int_safety(&int_value, location, self.problems);
                 }
 
                 Ok(Constant::Int {

@@ -97,6 +97,20 @@ macro_rules! assert_js_module_infer {
 }
 
 #[macro_export]
+macro_rules! glistix_assert_nix_module_infer {
+    ($src:expr, $module:expr $(,)?) => {{
+        let constructors = $crate::type_::tests::infer_module_with_target(
+            "test_module",
+            $src,
+            vec![],
+            $crate::build::Target::Nix,
+        );
+        let expected = $crate::type_::tests::stringify_tuple_strs($module);
+        assert_eq!(($src, constructors), ($src, expected));
+    }};
+}
+
+#[macro_export]
 macro_rules! assert_module_error {
     ($src:expr) => {
         let error = $crate::type_::tests::module_error($src, vec![]);

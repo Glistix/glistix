@@ -477,6 +477,12 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                     check_javascript_int_safety(&int_value, location, self.problems);
                 }
 
+                if self.environment.target == Target::Nix
+                    && !self.implementations.uses_nix_externals
+                {
+                    glistix_check_nix_int_safety(&int_value, location, self.problems);
+                }
+
                 Ok(Pattern::Int {
                     location,
                     value,

@@ -611,6 +611,10 @@ pub enum Error {
     GlistixNixFloatUnsafe {
         location: SrcSpan,
     },
+
+    GlistixNixIntUnsafe {
+        location: SrcSpan,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1074,7 +1078,9 @@ impl Error {
             | Error::AllVariantsDeprecated { location }
             | Error::DeprecatedVariantOnDeprecatedType { location }
             | Error::ErlangFloatUnsafe { location } => location.start,
-            Error::GlistixNixFloatUnsafe { location } => location.start,
+            Error::GlistixNixFloatUnsafe { location } | Error::GlistixNixIntUnsafe { location } => {
+                location.start
+            }
             Error::UnknownLabels { unknown, .. } => {
                 unknown.iter().map(|(_, s)| s.start).min().unwrap_or(0)
             }
@@ -1745,6 +1751,22 @@ pub fn check_erlang_float_safety(
 
     if float_value < erl_min_float || float_value > erl_max_float {
         problems.error(Error::ErlangFloatUnsafe { location });
+    }
+}
+
+/// When targeting Nix, errors if the given Int value is outside the range of
+/// valid integers, between -2^63 + 1 and 2^63 - 1.
+///
+pub fn glistix_check_nix_int_safety(
+    int_value: &BigInt,
+    location: SrcSpan,
+    problems: &mut Problems,
+) {
+    let nix_min_safe_integer = -9223372036854775807i64;
+    let nix_max_safe_integer = 9223372036854775807i64;
+
+    if *int_value < nix_min_safe_integer.into() || *int_value > nix_max_safe_integer.into() {
+        problems.error(Error::GlistixNixIntUnsafe { location });
     }
 }
 
