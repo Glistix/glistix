@@ -1,0 +1,32 @@
+---
+source: compiler-core/src/type_/tests/nix.rs
+expression: "\n  [\n    <<0:9_223_372_036_854_775_808>>,\n    <<0:size(9_223_372_036_854_775_808)>>,\n  ]\n"
+---
+----- SOURCE CODE
+
+  [
+    <<0:9_223_372_036_854_775_808>>,
+    <<0:size(9_223_372_036_854_775_808)>>,
+  ]
+
+
+----- ERROR
+error: Int is outside Nix's integer range
+  ┌─ /src/one/two.gleam:3:9
+  │
+3 │     <<0:9_223_372_036_854_775_808>>,
+  │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This integer value is too large to be represented by Nix's integer type. To
+avoid this error integer values must be in the range -(2^63 - 1) - (2^63 -
+1).
+
+error: Int is outside Nix's integer range
+  ┌─ /src/one/two.gleam:4:14
+  │
+4 │     <<0:size(9_223_372_036_854_775_808)>>,
+  │              ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This integer value is too large to be represented by Nix's integer type. To
+avoid this error integer values must be in the range -(2^63 - 1) - (2^63 -
+1).
