@@ -36,6 +36,8 @@ mod use_;
 mod version_inference;
 mod warnings;
 
+mod nix;
+
 #[macro_export]
 macro_rules! assert_infer {
     ($src:expr, $type_:expr $(,)?) => {
@@ -95,6 +97,20 @@ macro_rules! assert_js_module_infer {
 }
 
 #[macro_export]
+macro_rules! glistix_assert_nix_module_infer {
+    ($src:expr, $module:expr $(,)?) => {{
+        let constructors = $crate::type_::tests::infer_module_with_target(
+            "test_module",
+            $src,
+            vec![],
+            $crate::build::Target::Nix,
+        );
+        let expected = $crate::type_::tests::stringify_tuple_strs($module);
+        assert_eq!(($src, constructors), ($src, expected));
+    }};
+}
+
+#[macro_export]
 macro_rules! assert_module_error {
     ($src:expr) => {
         let error = $crate::type_::tests::module_error($src, vec![]);
@@ -126,6 +142,19 @@ macro_rules! assert_js_module_error {
 }
 
 #[macro_export]
+macro_rules! glistix_assert_nix_module_error {
+    ($src:expr) => {
+        let error = $crate::type_::tests::module_error_with_target(
+            $src,
+            vec![],
+            $crate::build::Target::Nix,
+        );
+        let output = format!("----- SOURCE CODE\n{}\n\n----- ERROR\n{}", $src, error);
+        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
+    };
+}
+
+#[macro_export]
 macro_rules! assert_module_syntax_error {
     ($src:expr) => {
         let error = $crate::type_::tests::syntax_error($src);
@@ -144,6 +173,32 @@ macro_rules! assert_error {
 
     ($src:expr) => {
         let (error, names) = $crate::type_::tests::compile_statement_sequence($src)
+            .expect_err("should infer an error");
+        let error = $crate::error::Error::Type {
+            names,
+            src: $src.into(),
+            path: camino::Utf8PathBuf::from("/src/one/two.gleam"),
+            errors: error,
+        };
+        let error_string = error.pretty_string();
+        let output = format!(
+            "----- SOURCE CODE\n{}\n\n----- ERROR\n{}",
+            $src, error_string
+        );
+        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
+    };
+}
+
+#[macro_export]
+macro_rules! glistix_assert_nix_error {
+    ($src:expr, $error:expr $(,)?) => {
+        let result = $crate::type_::tests::glistix_nix_compile_statement_sequence($src)
+            .expect_err("should infer an error");
+        assert_eq!(($src, sort_options($error)), ($src, sort_options(result)),);
+    };
+
+    ($src:expr) => {
+        let (error, names) = $crate::type_::tests::glistix_nix_compile_statement_sequence($src)
             .expect_err("should infer an error");
         let error = $crate::error::Error::Type {
             names,
@@ -363,8 +418,21 @@ macro_rules! assert_no_warnings {
     };
 }
 
+fn glistix_nix_compile_statement_sequence(
+    src: &str,
+) -> Result<Vec1<TypedStatement>, (Vec1<crate::type_::Error>, Names)> {
+    glistix_generic_compile_statement_sequence(src, Target::Nix)
+}
+
 fn compile_statement_sequence(
     src: &str,
+) -> Result<Vec1<TypedStatement>, (Vec1<crate::type_::Error>, Names)> {
+    glistix_generic_compile_statement_sequence(src, Target::Erlang)
+}
+
+fn glistix_generic_compile_statement_sequence(
+    src: &str,
+    target: Target,
 ) -> Result<Vec1<TypedStatement>, (Vec1<crate::type_::Error>, Names)> {
     let ast = crate::parse::parse_statement_sequence(src).expect("syntax error");
     let mut modules = im::HashMap::new();
@@ -380,7 +448,7 @@ fn compile_statement_sequence(
         "thepackage".into(),
         None,
         "themodule".into(),
-        Target::Erlang,
+        target,
         &modules,
         TargetSupport::Enforced,
     );
