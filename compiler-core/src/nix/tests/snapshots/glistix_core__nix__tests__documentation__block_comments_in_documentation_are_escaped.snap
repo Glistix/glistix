@@ -10,7 +10,7 @@ pub fn documented() { 1 }
 ----- COMPILED NIX
 let
   /**
-     /* hello * /
+    /* hello * /
   */
   documented = { }: 1;
 in

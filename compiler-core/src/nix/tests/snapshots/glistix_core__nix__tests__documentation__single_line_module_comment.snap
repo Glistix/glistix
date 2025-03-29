@@ -9,6 +9,6 @@ pub fn main() { 1 }
 
 ----- COMPILED NIX
 /**
-   Hello! This is a single line module comment.
+  Hello! This is a single line module comment.
 */
 let main = { }: 1; in { inherit main; }

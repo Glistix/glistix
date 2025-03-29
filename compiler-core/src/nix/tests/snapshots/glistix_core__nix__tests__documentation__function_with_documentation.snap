@@ -10,7 +10,7 @@ pub fn documented() { 1 }
 ----- COMPILED NIX
 let
   /**
-     Function doc!
+    Function doc!
   */
   documented = { }: 1;
 in

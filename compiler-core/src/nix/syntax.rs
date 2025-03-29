@@ -159,8 +159,15 @@ pub fn documentation(body: impl IntoIterator<Item = EcoString>) -> Document<'sta
         docvec![
             line(),
             join(
-                body.into_iter()
-                    .map(|doc_line| doc_line.replace("*/", "* /").to_doc()),
+                body.into_iter().map(|doc_line| {
+                    let line = doc_line.replace("*/", "* /");
+
+                    // Allow writing "/// abc" without extra spaces
+                    line.strip_prefix(" ")
+                        .map(EcoString::from)
+                        .unwrap_or(line)
+                        .to_doc()
+                }),
                 line(),
             )
         ]

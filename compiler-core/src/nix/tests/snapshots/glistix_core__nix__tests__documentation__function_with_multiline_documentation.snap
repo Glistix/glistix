@@ -12,8 +12,8 @@ pub fn documented() { 1 }
 ----- COMPILED NIX
 let
   /**
-     Function doc!
-     Hello!!
+    Function doc!
+    Hello!!
     
   */
   documented = { }: 1;

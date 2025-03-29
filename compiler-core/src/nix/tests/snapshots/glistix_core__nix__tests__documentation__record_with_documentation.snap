@@ -16,12 +16,12 @@ type Data {
 ----- COMPILED NIX
 let
   /**
-     Creates a single datum.
+    Creates a single datum.
   */
   Datum = field: { __gleamTag = "Datum"; inherit field; };
   
   /**
-     Creates empty data.
+    Creates empty data.
   */
   Empty = { __gleamTag = "Empty"; };
 in
