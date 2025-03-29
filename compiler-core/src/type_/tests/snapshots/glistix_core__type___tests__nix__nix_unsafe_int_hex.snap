@@ -1,0 +1,23 @@
+---
+source: compiler-core/src/type_/tests/nix.rs
+expression: "\n  [\n    0x7FFFFFFFFFFFFFFE,\n    0x7FFFFFFFFFFFFFFF,\n    0x8000000000000000,\n  ]\n"
+---
+----- SOURCE CODE
+
+  [
+    0x7FFFFFFFFFFFFFFE,
+    0x7FFFFFFFFFFFFFFF,
+    0x8000000000000000,
+  ]
+
+
+----- ERROR
+error: Int is outside Nix's integer range
+  ┌─ /src/one/two.gleam:5:5
+  │
+5 │     0x8000000000000000,
+  │     ^^^^^^^^^^^^^^^^^^
+
+This integer value is too large to be represented by Nix's integer type. To
+avoid this error integer values must be in the range -(2^63 - 1) - (2^63 -
+1).
