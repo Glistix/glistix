@@ -126,7 +126,7 @@ fn nix_unsafe_int_segment_size_in_pattern() {
 fn nix_unsafe_int_with_external_implementation() {
     glistix_assert_nix_module_infer!(
         r#"
-@external(nix, "./test.mjs", "go")
+@external(nix, "./test.nix", "go")
 pub fn go() -> Int {
   9_223_372_036_854_775_808
 }
@@ -139,7 +139,7 @@ pub fn go() -> Int {
 fn nix_unsafe_int_segment_in_pattern_with_external_implementation() {
     glistix_assert_nix_module_infer!(
         r#"
-@external(nix, "./test.mjs", "go")
+@external(nix, "./test.nix", "go")
 pub fn go(b: BitArray) -> BitArray {
   let assert <<0x800000000000000000:64>> = b
 }
