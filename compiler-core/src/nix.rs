@@ -45,6 +45,8 @@ struct ModuleDeclaration<'a> {
     name: Document<'a>,
     /// The value of the variable being declared.
     value: Document<'a>,
+    /// The associated documentation of this item, if any.
+    documentation: Option<EcoString>,
 }
 
 impl<'module> Generator<'module> {
@@ -113,19 +115,43 @@ impl<'module> Generator<'module> {
         // Assignment of top-level module names, exported or not.
         let assignments: Vec<_> = statements
             .into_iter()
-            .map(|declaration| syntax::assignment_line(declaration.name, declaration.value))
+            .map(
+                |ModuleDeclaration {
+                     name,
+                     value,
+                     documentation,
+                     exported: _,
+                 }| {
+                    let assignment = syntax::assignment_line(name, value);
+                    if let Some(documentation) = &documentation {
+                        docvec![
+                            syntax::documentation(documentation.split('\n').map(EcoString::from)),
+                            assignment
+                        ]
+                    } else {
+                        assignment
+                    }
+                },
+            )
             .collect();
 
         // Finish up the module.
+        let module_docs = if self.module.documentation.is_empty() {
+            nil()
+        } else {
+            syntax::documentation(self.module.documentation.iter().map(EcoString::clone))
+        };
         if no_imports && assignments.is_empty() {
-            Ok(docvec![exports, line()])
+            Ok(docvec![module_docs, exports, line()])
         } else if no_imports {
             Ok(docvec![
+                module_docs,
                 syntax::let_in(assignments, exports, true).group(),
                 line()
             ])
         } else {
             Ok(docvec![
+                module_docs,
                 syntax::let_in(
                     std::iter::once(import_lines).chain(assignments),
                     exports,
@@ -207,6 +233,7 @@ impl<'module> Generator<'module> {
             exported: !publicity.is_private(),
             name: maybe_escape_identifier_doc(name),
             value: expression::constant_expression(&mut self.tracker, value)?,
+            documentation: None,
         })
     }
 
@@ -248,6 +275,7 @@ impl<'module> Generator<'module> {
             exported: !function.publicity.is_private(),
             name,
             value: def_body,
+            documentation: function.documentation.as_ref().map(|(_, doc)| doc.clone()),
         }))
     }
 
@@ -300,6 +328,10 @@ impl<'module> Generator<'module> {
                 exported: should_export,
                 name,
                 value: result,
+                documentation: constructor
+                    .documentation
+                    .as_ref()
+                    .map(|(_, doc)| doc.clone()),
             };
         }
 
@@ -367,6 +399,10 @@ impl<'module> Generator<'module> {
             exported: should_export,
             name,
             value: constructor_fun,
+            documentation: constructor
+                .documentation
+                .as_ref()
+                .map(|(_, doc)| doc.clone()),
         }
     }
 

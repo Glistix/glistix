@@ -2,7 +2,7 @@
 
 use crate::docvec;
 use crate::nix::{Output, INDENT};
-use crate::pretty::{break_, concat, join, nil, Document, Documentable};
+use crate::pretty::{break_, concat, join, line, nil, Document, Documentable};
 use ecow::EcoString;
 use itertools::Itertools;
 use regex::Regex;
@@ -144,6 +144,39 @@ pub fn assignment_line<'a>(name: Document<'a>, value: Document<'a>) -> Document<
         " =",
         docvec![break_("", " "), value, ";"].nest(INDENT).group()
     ]
+}
+
+/// Produces a documentation block:
+///
+/// ```nix
+/// /**
+///   This function does something.
+/// */
+/// ```
+pub fn documentation(body: impl IntoIterator<Item = EcoString>) -> Document<'static> {
+    docvec![
+        "/**",
+        docvec![
+            line(),
+            join(
+                body.into_iter().map(|doc_line| {
+                    let line = doc_line.replace("*/", "* /");
+
+                    // Allow writing "/// abc" without extra spaces
+                    line.strip_prefix(" ")
+                        .map(EcoString::from)
+                        .unwrap_or(line)
+                        .to_doc()
+                }),
+                line(),
+            )
+        ]
+        .nest(INDENT),
+        line(),
+        "*/",
+        line(),
+    ]
+    .force_break()
 }
 
 /// Generates a Nix expression in the form
