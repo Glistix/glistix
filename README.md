@@ -58,6 +58,16 @@ If you also want to support the Glistix project directly, feel free to [support 
 
 If you like the project and know some Nix, **consider contributing!** At the time of writing, we have a few important issues open at [`glistix/stdlib`](https://github.com/glistix/stdlib) which could use some help. Additionally, feel free to explore issues at the Glistix compiler's repository (make sure to read the ["Contributing"](#contributing) section below).
 
+## Getting in touch
+
+You can talk to us at:
+
+1. [Zulip](https://glistix.zulipchat.com/join/dj7k33san27nujoppkmuqalc/)
+    - Preferred medium for structured discussions, as it is public and properly organized for that.
+    - Especially encouraged for prospective contributors.
+2. [Gleam's Discord](https://discord.gg/Fm8Pwmy), in the [Glistix thread](https://discord.com/channels/768594524158427167/1233797658192117844)
+    - This medium can be used for quick questions and general chatting.
+
 ## Installation
 
 Glistix officially supports **Linux, MacOS and Windows.** (Note, however, that Nix doesn't support Windows yet, so you won't be able to test your projects, but `glistix build` should work at least.)
