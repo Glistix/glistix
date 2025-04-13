@@ -1,6 +1,6 @@
 [package]
 name = "glistix-core"
-version = "0.7.0"
+version = "0.8.0"
 authors = ["PgBiel"]
 edition = "2021"
 license-file = "LICENCE"
