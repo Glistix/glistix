@@ -510,7 +510,7 @@ impl<'module> Generator<'module> {
         let get_name = |module: &'a str| {
             module
                 .split('/')
-                .last()
+                .next_back()
                 .expect("Nix generator could not identify imported module name.")
         };
 
