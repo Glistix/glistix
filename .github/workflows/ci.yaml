@@ -446,7 +446,11 @@ jobs:
         uses: cachix/install-nix-action@v25
         if: ${{ matrix.target == 'aarch64-apple-darwin' }}
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v4
+      - name: Cache Nix environment
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Check Flake
         run: nix flake check
