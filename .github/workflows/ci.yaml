@@ -455,7 +455,7 @@ jobs:
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
           # collect garbage until the Nix store size (in bytes) is at most this number
           # before trying to save a new cache.
-          gc-max-store-size-linux: 2G
+          gc-max-store-size-linux: 1.5G
 
       - name: Check Flake
         run: nix flake check
