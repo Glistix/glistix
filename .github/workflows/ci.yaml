@@ -438,19 +438,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Nix (not ARM MacOS)
-        uses: nixbuild/nix-quick-install-action@v27
-        if: ${{ matrix.target != 'aarch64-apple-darwin' }}
-
-      - name: Install Nix (ARM MacOS)
-        uses: cachix/install-nix-action@v25
-        if: ${{ matrix.target == 'aarch64-apple-darwin' }}
-
-      - name: Cache Nix environment
-        uses: nix-community/cache-nix-action@v6
+      # Nix must be installed in single user mode for caching to work, so we use this action
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@8505cd40ae3d4791ca658f2697c5767212e5ce71 # v30
         with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
+          nix_conf: |
+            keep-env-derivations = true
+            keep-outputs = true
+
+      - name: Nix cache
+        uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6
+        with:
+          # restore and save a cache using this key.
+          primary-key: nix-${{ runner.os }}-{{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          # if there's no cache hit, restore a cache by this prefix.
+          restore-prefixes-first-match: nix-${{ runner.os }}-{{ runner.arch }}-
+          # collect garbage until the Nix store size (in bytes) is at most this number
+          # before trying to save a new cache.
+          gc-max-store-size-linux: 2G
 
       - name: Check Flake
         run: nix flake check
