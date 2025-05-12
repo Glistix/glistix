@@ -450,9 +450,9 @@ jobs:
         uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6
         with:
           # restore and save a cache using this key.
-          primary-key: nix-${{ runner.os }}-{{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           # if there's no cache hit, restore a cache by this prefix.
-          restore-prefixes-first-match: nix-${{ runner.os }}-{{ runner.arch }}-
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
           # collect garbage until the Nix store size (in bytes) is at most this number
           # before trying to save a new cache.
           gc-max-store-size-linux: 2G
