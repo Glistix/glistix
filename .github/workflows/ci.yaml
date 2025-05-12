@@ -438,7 +438,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Nix must be installed in single user mode for caching to work, so we use this action
+      # Nix must be installed in single user mode for caching to work, so we use this action.
       - name: Install Nix
         uses: nixbuild/nix-quick-install-action@8505cd40ae3d4791ca658f2697c5767212e5ce71 # v30
         with:
