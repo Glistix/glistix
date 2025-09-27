@@ -1,22 +1,25 @@
 use hexpm::version::Version;
 use im::hashmap;
 use itertools::Itertools;
+use num_bigint::BigInt;
 
 /// Type inference and checking of patterns used in case expressions
 /// and variables bindings.
 ///
 use super::*;
 use crate::{
-    analyse::{name::check_name_case, Inferred},
+    analyse::{Inferred, name::check_name_case},
     ast::{
         AssignName, BitArrayOption, ImplicitCallArgOrigin, Layer, UntypedPatternBitArraySegment,
     },
+    type_::expression::FunctionDefinition,
 };
 use std::sync::Arc;
 
 pub struct PatternTyper<'a, 'b> {
     environment: &'a mut Environment<'b>,
     implementations: &'a Implementations,
+    current_function: &'a FunctionDefinition,
     hydrator: &'a Hydrator,
     mode: PatternMode,
     initial_pattern_vars: HashSet<EcoString>,
@@ -38,12 +41,14 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
     pub fn new(
         environment: &'a mut Environment<'b>,
         implementations: &'a Implementations,
+        current_function: &'a FunctionDefinition,
         hydrator: &'a Hydrator,
         problems: &'a mut Problems,
     ) -> Self {
         Self {
             environment,
             implementations,
+            current_function,
             hydrator,
             mode: PatternMode::Initial,
             initial_pattern_vars: HashSet::new(),
@@ -296,6 +301,43 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 location: error.location,
             })?;
 
+        // Track usage of the unaligned bit arrays feature on JavaScript so that
+        // warnings can be emitted if the Gleam version constraint is too low
+        if self.environment.target == Target::JavaScript
+            && !self.current_function.has_javascript_external
+        {
+            for option in options.iter() {
+                match option {
+                    // Use of the `bits` segment type
+                    BitArrayOption::<TypedPattern>::Bits { location } => {
+                        self.track_feature_usage(
+                            FeatureKind::JavaScriptUnalignedBitArray,
+                            *location,
+                        );
+                    }
+
+                    // Int segments that aren't a whole number of bytes
+                    BitArrayOption::<TypedPattern>::Size { value, .. } if segment_type == int() => {
+                        match &**value {
+                            Pattern::<_>::Int {
+                                location,
+                                int_value,
+                                ..
+                            } if int_value % 8 != BigInt::ZERO => {
+                                self.track_feature_usage(
+                                    FeatureKind::JavaScriptUnalignedBitArray,
+                                    *location,
+                                );
+                            }
+                            _ => (),
+                        }
+                    }
+
+                    _ => (),
+                }
+            }
+        }
+
         let type_ = {
             match value.deref() {
                 Pattern::Variable { .. } if segment_type == string() => {
@@ -422,16 +464,21 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 }
 
                 // The right hand side may assign a variable, which is the suffix of the string
-                if let AssignName::Variable(right) = &right_side_assignment {
-                    self.insert_variable(
-                        right.as_ref(),
-                        string(),
-                        right_location,
-                        VariableOrigin::Variable(right.clone()),
-                    )
-                    .map_err(|e| convert_unify_error(e, location))?;
-                } else if let AssignName::Discard(right) = &right_side_assignment {
-                    self.check_name_case(right_location, right, Named::Discard);
+                match &right_side_assignment {
+                    AssignName::Variable(right) => {
+                        self.insert_variable(
+                            right.as_ref(),
+                            string(),
+                            right_location,
+                            VariableOrigin::Variable(right.clone()),
+                        )
+                        .map_err(|e| convert_unify_error(e, location))?;
+                    }
+                    AssignName::Discard(_) => {
+                        if let AssignName::Discard(right) = &right_side_assignment {
+                            self.check_name_case(right_location, right, Named::Discard);
+                        }
+                    }
                 };
 
                 Ok(Pattern::StringPrefix {
@@ -472,15 +519,9 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 unify(type_, int()).map_err(|e| convert_unify_error(e, location))?;
 
                 if self.environment.target == Target::JavaScript
-                    && !self.implementations.uses_javascript_externals
+                    && !self.current_function.has_javascript_external
                 {
                     check_javascript_int_safety(&int_value, location, self.problems);
-                }
-
-                if self.environment.target == Target::Nix
-                    && !self.implementations.uses_nix_externals
-                {
-                    glistix_check_nix_int_safety(&int_value, location, self.problems);
                 }
 
                 Ok(Pattern::Int {
@@ -497,12 +538,6 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                     && !self.implementations.uses_erlang_externals
                 {
                     check_erlang_float_safety(&value, location, self.problems)
-                }
-
-                if self.environment.target == Target::Nix
-                    && !self.implementations.uses_nix_externals
-                {
-                    glistix_check_nix_float_safety(&value, location, self.problems)
                 }
 
                 Ok(Pattern::Float { location, value })

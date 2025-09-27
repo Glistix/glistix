@@ -1,15 +1,15 @@
-use glistix_core::{
+use gleam_core::{
+    Result, Warning,
     build::{NullTelemetry, Target},
-    error::{parse_os, Error, FileIoAction, FileKind, OS},
+    error::{Error, FileIoAction, FileKind, OS, ShellCommandFailureReason, parse_os},
     io::{
-        BeamCompiler, CommandExecutor, Content, DirEntry, FileSystemReader, FileSystemWriter,
-        OutputFile, ReadDir, Stdio, WrappedReader,
+        BeamCompiler, Command, CommandExecutor, Content, DirEntry, FileSystemReader,
+        FileSystemWriter, OutputFile, ReadDir, Stdio, WrappedReader, is_native_file_extension,
     },
     language_server::{DownloadDependencies, Locker, MakeLocker},
     manifest::Manifest,
     paths::ProjectPaths,
     warning::WarningEmitterIO,
-    Result, Warning,
 };
 use std::{
     collections::HashSet,
@@ -81,7 +81,7 @@ pub fn get_distro_str() -> String {
 }
 
 /// A `FileWriter` implementation that writes to the file system.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ProjectIO {
     beam_compiler: Arc<Mutex<crate::beam_compiler::BeamCompiler>>,
 }
@@ -186,21 +186,21 @@ impl FileSystemWriter for ProjectIO {
 }
 
 impl CommandExecutor for ProjectIO {
-    fn exec(
-        &self,
-        program: &str,
-        args: &[String],
-        env: &[(&str, String)],
-        cwd: Option<&Utf8Path>,
-        stdio: Stdio,
-    ) -> Result<i32, Error> {
+    fn exec(&self, command: Command) -> Result<i32, Error> {
+        let Command {
+            program,
+            args,
+            env,
+            cwd,
+            stdio,
+        } = command;
         tracing::trace!(program=program, args=?args.join(" "), env=?env, cwd=?cwd, "command_exec");
-        let result = std::process::Command::new(program)
+        let result = std::process::Command::new(&program)
             .args(args)
             .stdin(stdio.get_process_stdio())
             .stdout(stdio.get_process_stdio())
-            .envs(env.iter().map(|pair| (pair.0, &pair.1)))
-            .current_dir(cwd.unwrap_or_else(|| Utf8Path::new("./")))
+            .envs(env.iter().map(|pair| (&pair.0, &pair.1)))
+            .current_dir(cwd.unwrap_or_else(|| Utf8Path::new("./").to_path_buf()))
             .status();
 
         match result {
@@ -208,13 +208,13 @@ impl CommandExecutor for ProjectIO {
 
             Err(error) => Err(match error.kind() {
                 io::ErrorKind::NotFound => Error::ShellProgramNotFound {
-                    program: program.to_string(),
+                    program,
                     os: get_os(),
                 },
 
                 other => Error::ShellCommand {
-                    program: program.to_string(),
-                    err: Some(other),
+                    program,
+                    reason: ShellCommandFailureReason::IoError(other),
                 },
             }),
         }
@@ -228,7 +228,7 @@ impl BeamCompiler for ProjectIO {
         lib: &Utf8Path,
         modules: &HashSet<Utf8PathBuf>,
         stdio: Stdio,
-    ) -> Result<(), Error> {
+    ) -> Result<Vec<String>, Error> {
         self.beam_compiler
             .lock()
             .as_mut()
@@ -420,7 +420,7 @@ pub fn native_files(dir: &Utf8Path) -> impl Iterator<Item = Utf8PathBuf> + '_ {
         .map(|pb| Utf8PathBuf::from_path_buf(pb).expect("Non Utf-8 Path"))
         .filter(|path| {
             let extension = path.extension().unwrap_or_default();
-            glistix_core::io::is_native_file_extension(extension)
+            is_native_file_extension(extension)
         })
 }
 
@@ -680,7 +680,7 @@ pub fn is_inside_git_work_tree(path: &Utf8Path) -> Result<bool, Error> {
 
             other => Err(Error::ShellCommand {
                 program: "git".into(),
-                err: Some(other),
+                reason: ShellCommandFailureReason::IoError(other),
             }),
         },
     }
@@ -698,7 +698,14 @@ pub fn git_init(path: &Utf8Path) -> Result<(), Error> {
 
     let args = vec!["init".into(), "--quiet".into(), path.to_string()];
 
-    match ProjectIO::new().exec("git", &args, &[], None, Stdio::Inherit) {
+    let command = Command {
+        program: "git".to_string(),
+        args,
+        env: vec![],
+        cwd: None,
+        stdio: Stdio::Inherit,
+    };
+    match ProjectIO::new().exec(command) {
         Ok(_) => Ok(()),
         Err(err) => match err {
             Error::ShellProgramNotFound { .. } => Ok(()),

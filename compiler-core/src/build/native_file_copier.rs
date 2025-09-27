@@ -4,11 +4,11 @@ mod tests;
 use std::collections::{HashMap, HashSet};
 
 use camino::{Utf8Path, Utf8PathBuf};
-use ecow::{eco_format, EcoString};
+use ecow::{EcoString, eco_format};
 
 use crate::{
-    io::{DirWalker, FileSystemReader, FileSystemWriter},
     Error, Result,
+    io::{DirWalker, FileSystemReader, FileSystemWriter},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,7 +90,6 @@ where
         // add a special case for `.gleam`.
         if extension == "gleam" {
             self.check_for_conflicting_javascript_modules(&relative_path)?;
-            self.check_for_conflicting_nix_modules(&relative_path)?;
 
             return Ok(());
         }
@@ -110,9 +109,6 @@ where
         // also cause a conflict, despite not being native files, as they are
         // compiled to `.mjs`.
         self.check_for_conflicting_javascript_modules(&relative_path)?;
-
-        // Same as above but for `.nix`.
-        self.check_for_conflicting_nix_modules(&relative_path)?;
 
         // Check for Erlang modules conflicting between each other anywhere in
         // the tree.
@@ -196,52 +192,6 @@ where
         }
 
         // The only way for two `.mjs` files to clash is by having
-        // the exact same path.
-        assert_eq!(&existing, relative_path);
-        return Err(Error::DuplicateSourceFile {
-            file: existing.to_string(),
-        });
-    }
-
-    /// Gleam files are compiled to `.nix` files, which must not conflict with
-    /// an FFI `.nix` file with the same name, so we check for this case here.
-    fn check_for_conflicting_nix_modules(
-        &mut self,
-        relative_path: &Utf8PathBuf,
-    ) -> Result<(), Error> {
-        let nix_path = match relative_path.extension() {
-            Some("gleam") => eco_format!("{}", relative_path.with_extension("nix")),
-            Some("nix") => eco_format!("{}", relative_path),
-            _ => return Ok(()),
-        };
-
-        // Insert the full relative `.nix` path in `seen_modules` as there is
-        // no conflict if two `.nix` files have the same name but are in
-        // different subpaths, unlike Erlang files.
-        let existing = self
-            .seen_modules
-            .insert(nix_path.clone(), relative_path.clone());
-
-        // If there was no already existing one then there's no problem.
-        let Some(existing) = existing else {
-            return Ok(());
-        };
-
-        let existing_is_gleam = existing.extension() == Some("gleam");
-        if existing_is_gleam || relative_path.extension() == Some("gleam") {
-            let (gleam_file, native_file) = if existing_is_gleam {
-                (&existing, relative_path)
-            } else {
-                (relative_path, &existing)
-            };
-            return Err(Error::ClashingGleamModuleAndNativeFileName {
-                module: eco_format!("{}", gleam_file.with_extension("")),
-                gleam_file: gleam_file.clone(),
-                native_file: native_file.clone(),
-            });
-        }
-
-        // The only way for two `.nix` files to clash is by having
         // the exact same path.
         assert_eq!(&existing, relative_path);
         return Err(Error::DuplicateSourceFile {

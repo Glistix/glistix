@@ -650,7 +650,6 @@ pub enum ValueConstructorVariant {
         implementations: Implementations,
         external_erlang: Option<(EcoString, EcoString)>,
         external_javascript: Option<(EcoString, EcoString)>,
-        external_nix: Option<(EcoString, EcoString)>,
     },
 
     /// A constructor for a custom type
@@ -713,7 +712,6 @@ impl ValueConstructorVariant {
                 module: module_name.clone(),
                 external_erlang: None,
                 external_javascript: None,
-                external_nix: None,
                 documentation: None,
                 location: *location,
                 field_map: None,
@@ -727,7 +725,6 @@ impl ValueConstructorVariant {
                 field_map,
                 external_erlang,
                 external_javascript,
-                external_nix,
                 ..
             } => ModuleValueConstructor::Fn {
                 name: name.clone(),
@@ -735,7 +732,6 @@ impl ValueConstructorVariant {
                 documentation: documentation.clone(),
                 external_erlang: external_erlang.clone(),
                 external_javascript: external_javascript.clone(),
-                external_nix: external_nix.clone(),
                 location: *location,
                 field_map: field_map.clone(),
             },
@@ -780,10 +776,8 @@ impl ValueConstructorVariant {
                 gleam: true,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
-                can_run_on_nix: true,
                 uses_javascript_externals: false,
                 uses_erlang_externals: false,
-                uses_nix_externals: false,
             },
 
             ValueConstructorVariant::ModuleFn {
@@ -837,7 +831,6 @@ pub enum ModuleValueConstructor {
         ///
         external_erlang: Option<(EcoString, EcoString)>,
         external_javascript: Option<(EcoString, EcoString)>,
-        external_nix: Option<(EcoString, EcoString)>,
         field_map: Option<FieldMap>,
         documentation: Option<EcoString>,
     },
@@ -885,20 +878,30 @@ pub struct ModuleInterface {
     pub line_numbers: LineNumbers,
     /// Used for determining the source path of the module on disk
     pub src_path: Utf8PathBuf,
-    // Whether the module is internal or not. Internal modules are technically
-    // importable by other packages but to do so is violating the contract of
-    // the package and as such is not recommended.
+    /// Whether the module is internal or not. Internal modules are technically
+    /// importable by other packages but to do so is violating the contract of
+    /// the package and as such is not recommended.
     pub is_internal: bool,
     /// Warnings emitted during analysis of this module.
     pub warnings: Vec<Warning>,
     /// The minimum Gleam version needed to use this module.
     pub minimum_required_version: Version,
+    pub type_aliases: HashMap<EcoString, TypeAliasConstructor>,
+    pub documentation: Vec<EcoString>,
+    /// Wether there's any echo in the module.
+    pub contains_echo: bool,
 }
 
 impl ModuleInterface {
     pub fn contains_todo(&self) -> bool {
         self.warnings.iter().any(|warning| warning.is_todo())
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Opaque {
+    Opaque,
+    NotOpaque,
 }
 
 /// Information on the constructors of a custom type.
@@ -918,6 +921,7 @@ pub struct TypeVariantConstructors {
     /// and `a` is a Generic type variable with id 1, then this field will be `[1]`.
     ///
     pub type_parameters_ids: Vec<u64>,
+    pub opaque: Opaque,
     pub variants: Vec<TypeValueConstructor>,
 }
 
@@ -925,6 +929,7 @@ impl TypeVariantConstructors {
     pub(crate) fn new(
         variants: Vec<TypeValueConstructor>,
         type_parameters: &[&EcoString],
+        opaque: Opaque,
         hydrator: Hydrator,
     ) -> TypeVariantConstructors {
         let named_types = hydrator.named_type_variables();
@@ -947,6 +952,7 @@ impl TypeVariantConstructors {
         Self {
             type_parameters_ids: type_parameters,
             variants,
+            opaque,
         }
     }
 }
@@ -955,12 +961,14 @@ impl TypeVariantConstructors {
 pub struct TypeValueConstructor {
     pub name: EcoString,
     pub parameters: Vec<TypeValueConstructorField>,
+    pub documentation: Option<EcoString>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeValueConstructorField {
     /// This type of this parameter
     pub type_: Arc<Type>,
+    pub label: Option<EcoString>,
 }
 
 impl ModuleInterface {
@@ -1030,9 +1038,9 @@ pub struct PatternConstructor {
 }
 
 impl PatternConstructor {
-    pub fn definition_location(&self) -> Option<DefinitionLocation<'_>> {
+    pub fn definition_location(&self) -> Option<DefinitionLocation> {
         Some(DefinitionLocation {
-            module: Some(self.module.as_str()),
+            module: Some(self.module.clone()),
             span: self.location,
         })
     }
@@ -1264,7 +1272,7 @@ impl ValueConstructor {
         self.variant.is_local_variable()
     }
 
-    pub fn definition_location(&self) -> DefinitionLocation<'_> {
+    pub fn definition_location(&self) -> DefinitionLocation {
         match &self.variant {
             ValueConstructorVariant::Record {
                 module, location, ..
@@ -1275,7 +1283,7 @@ impl ValueConstructor {
             | ValueConstructorVariant::ModuleFn {
                 location, module, ..
             } => DefinitionLocation {
-                module: Some(module.as_str()),
+                module: Some(module.clone()),
                 span: *location,
             },
 
@@ -1309,8 +1317,11 @@ impl ValueConstructor {
 pub struct TypeAliasConstructor {
     pub publicity: Publicity,
     pub module: EcoString,
-    pub type_: Type,
+    pub type_: Arc<Type>,
     pub arity: usize,
+    pub deprecation: Deprecation,
+    pub documentation: Option<EcoString>,
+    pub origin: SrcSpan,
 }
 
 impl ValueConstructor {

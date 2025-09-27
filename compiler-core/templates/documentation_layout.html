@@ -294,7 +294,6 @@
     <script src="{{ unnest }}/js/highlightjs-elixir.min.js?v={{ gleam_version }}"></script>
     <script src="{{ unnest }}/js/highlightjs-javascript.min.js?v={{ gleam_version }}"></script>
     <script src="{{ unnest }}/js/highlightjs-typescript.min.js?v={{ gleam_version }}"></script>
-    <script src="{{ unnest }}/js/highlightjs-nix.min.js?v={{ gleam_version }}"></script>
     <script>
       document.querySelectorAll("pre code").forEach((elem) => {
         if (elem.className === "") {
@@ -303,10 +302,13 @@
       });
       hljs.highlightAll();
     </script>
+
     <script src="{{ unnest }}/js/lunr.min.js?v={{ gleam_version }}"></script>
     <script src="{{ unnest }}/js/index.js?v={{ rendering_timestamp }}"></script>
-
-    <!-- Load the search index using JSONP to avoid CORS issues -->
-    <script src="{{ unnest }}/search-data.js?v={{ rendering_timestamp }}"></script>
+    <script>
+      fetch("{{ unnest }}/search_data.json?v={{ rendering_timestamp }}")
+        .then(response => response.json())
+        .then(data => window.Gleam.initSearch(data));
+    </script>
   </body>
 </html>

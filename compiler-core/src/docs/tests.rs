@@ -1,10 +1,11 @@
 use std::{collections::HashSet, time::SystemTime};
 
+use super::{SearchData, SearchItem, SearchItemType, SearchProgrammingLanguage};
 use crate::{
     build::{Mode, NullTelemetry, PackageCompiler, StaleTracker, TargetCodegenConfiguration},
     config::{DocsPage, PackageConfig, Repository},
     docs::DocContext,
-    io::{memory::InMemoryFileSystem, FileSystemWriter},
+    io::{FileSystemWriter, memory::InMemoryFileSystem},
     paths::ProjectPaths,
     uid::UniqueIdGenerator,
     version::COMPILER_VERSION,
@@ -13,6 +14,7 @@ use crate::{
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 use itertools::Itertools;
+use serde_json::to_string as serde_to_string;
 
 #[derive(Default)]
 struct CompileWithMarkdownPagesOpts {
@@ -67,7 +69,8 @@ fn compile_with_markdown_pages(
             &mut HashSet::new(),
             &NullTelemetry,
         )
-        .unwrap();
+        .unwrap()
+        .modules;
 
     for module in &mut modules {
         module.attach_doc_and_module_comments();
@@ -134,6 +137,14 @@ pub fn one() {
 }
 "#,
     )];
+    insta::assert_snapshot!(compile(config, modules));
+}
+
+#[test]
+fn ignored_argument_is_called_arg() {
+    let mut config = PackageConfig::default();
+    config.name = EcoString::from("test_project_name");
+    let modules = vec![("app.gleam", "pub fn one(_) { 1 }")];
     insta::assert_snapshot!(compile(config, modules));
 }
 
@@ -382,8 +393,10 @@ fn source_link_for_github_repository() {
     };
 
     let modules = vec![("app.gleam", "pub type Wibble = Int")];
-    assert!(compile(config, modules)
-        .contains("https://github.com/wibble/wobble/blob/v0.1.0/src/app.gleam#L1-L1"));
+    assert!(
+        compile(config, modules)
+            .contains("https://github.com/wibble/wobble/blob/v0.1.0/src/app.gleam#L1-L1")
+    );
 }
 
 #[test]
@@ -480,4 +493,72 @@ pub fn one() {
             hex_publish: Some(DocContext::Build)
         }
     ));
+}
+
+fn create_sample_search_data() -> SearchData {
+    SearchData {
+        items: vec![
+            SearchItem {
+                type_: SearchItemType::Module,
+                parent_title: "gleam/option".to_string(),
+                title: "gleam/option".to_string(),
+                content: "".to_string(),
+                reference: "gleam/option.html".to_string(),
+            },
+            SearchItem {
+                type_: SearchItemType::Type,
+                parent_title: "gleam/option".to_string(),
+                title: "Option".to_string(),
+                content: "`Option` represents a value that may be present or not. `Some` means the value is present, `None` means the value is not.".to_string(),
+                reference: "gleam/option.html#Option".to_string(),
+            },
+            SearchItem {
+                type_: SearchItemType::Function,
+                parent_title: "gleam/option".to_string(),
+                title: "unwrap".to_string(),
+                content: "Extracts the value from an `Option`, returning a default value if there is none.".to_string(),
+                reference: "gleam/option.html#unwrap".to_string(),
+            },
+            SearchItem {
+                type_: SearchItemType::Constant,
+                parent_title: "gleam/dynamic/decode".to_string(),
+                title: "bool".to_string(),
+                content: "A decoder that decodes `Bool` values.\n\n # Examples\n\n \n let result = decode.run(dynamic.from(True), decode.bool)\n assert result == Ok(True)\n \n".to_string(),
+                reference: "gleam/dynamic/decode.html#bool".to_string(),
+            },
+        ],
+        programming_language: SearchProgrammingLanguage::Gleam,
+    }
+}
+
+#[test]
+fn ensure_search_data_matches_exdocs_search_data_model_specification() {
+    let data = create_sample_search_data();
+    let json = serde_to_string(&data).unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    // Ensure output of SearchData matches specification
+    assert!(parsed.is_object());
+    let obj = parsed.as_object().unwrap();
+    assert!(obj.contains_key("items"));
+    assert!(obj.contains_key("proglang"));
+
+    // Ensure output of SearchItem matches specification
+    let items = obj.get("items").unwrap().as_array().unwrap();
+    for item in items {
+        let item = item.as_object().unwrap();
+        assert!(item.contains_key("type"));
+        assert!(item.contains_key("parentTitle"));
+        assert!(item.contains_key("title"));
+        assert!(item.contains_key("doc"));
+        assert!(item.contains_key("ref"));
+    }
+}
+
+#[test]
+fn output_of_search_data_json() {
+    let data = create_sample_search_data();
+    let json = serde_to_string(&data).unwrap();
+    insta::assert_snapshot!(json);
 }

@@ -25,8 +25,8 @@ pub fn show_complete(code: &str, position: Position) -> String {
 fn apply_conversion(src: &str, completions: Vec<CompletionItem>, value: &str) -> String {
     let completion = completions
         .iter()
-        .find(|c| c.label == *value)
-        .unwrap_or_else(|| panic!("no completion with value `{value}`"));
+        .find(|c| c.label == value.to_string())
+        .expect(&format!("no completion with value `{value}`"));
 
     let mut edits = vec![];
     if let Some(lsp_types::CompletionTextEdit::Edit(edit)) = &completion.text_edit {
@@ -332,9 +332,11 @@ pub fn wobble() {
 }
 ";
 
-    assert_completion!(TestProject::for_source(code)
-        .add_module("dep", dep)
-        .add_module("dep2", dep2));
+    assert_completion!(
+        TestProject::for_source(code)
+            .add_module("dep", dep)
+            .add_module("dep2", dep2)
+    );
 }
 
 #[test]
@@ -393,9 +395,11 @@ fn importable_adds_extra_new_line_if_import_exists_below_other_definitions() {
     let dep = "pub fn wobble() {\nNil\n}";
     let code = "\nimport dep2\n"; // "code" goes after "fn typing_in_here() {}".
 
-    assert_completion!(TestProject::for_source(code)
-        .add_module("dep", dep)
-        .add_module("dep2", ""));
+    assert_completion!(
+        TestProject::for_source(code)
+            .add_module("dep", dep)
+            .add_module("dep2", "")
+    );
 }
 
 #[test]

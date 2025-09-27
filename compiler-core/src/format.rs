@@ -2,6 +2,7 @@
 mod tests;
 
 use crate::{
+    Error, Result,
     ast::{
         CustomType, Import, ModuleConstant, TypeAlias, TypeAstConstructor, TypeAstFn, TypeAstHole,
         TypeAstTuple, TypeAstVar, *,
@@ -9,14 +10,13 @@ use crate::{
     build::Target,
     docvec,
     io::Utf8Writer,
-    parse::extra::{Comment, ModuleExtra},
     parse::SpannedString,
+    parse::extra::{Comment, ModuleExtra},
     pretty::{self, *},
     type_::{self, Type},
     warning::WarningEmitter,
-    Error, Result,
 };
-use ecow::{eco_format, EcoString};
+use ecow::{EcoString, eco_format};
 use itertools::Itertools;
 use std::{cmp::Ordering, sync::Arc};
 use vec1::Vec1;
@@ -136,7 +136,7 @@ impl<'comments> Formatter<'comments> {
     fn pop_comments_with_position(
         &mut self,
         limit: u32,
-    ) -> impl Iterator<Item = (u32, Option<&'comments str>)> {
+    ) -> impl Iterator<Item = (u32, Option<&'comments str>)> + use<'comments> {
         let (popped, rest, empty_lines) =
             comments_before(self.comments, self.empty_lines, limit, true);
         self.comments = rest;
@@ -146,14 +146,20 @@ impl<'comments> Formatter<'comments> {
 
     /// Pop comments that occur before a byte-index in the source, consuming
     /// and retaining any empty lines contained within.
-    fn pop_comments(&mut self, limit: u32) -> impl Iterator<Item = Option<&'comments str>> {
+    fn pop_comments(
+        &mut self,
+        limit: u32,
+    ) -> impl Iterator<Item = Option<&'comments str>> + use<'comments> {
         self.pop_comments_with_position(limit)
             .map(|(_position, comment)| comment)
     }
 
     /// Pop doc comments that occur before a byte-index in the source, consuming
     /// and dropping any empty lines contained within.
-    fn pop_doc_comments(&mut self, limit: u32) -> impl Iterator<Item = Option<&'comments str>> {
+    fn pop_doc_comments(
+        &mut self,
+        limit: u32,
+    ) -> impl Iterator<Item = Option<&'comments str>> + use<'comments> {
         let (popped, rest, empty_lines) =
             comments_before(self.doc_comments, self.empty_lines, limit, false);
         self.doc_comments = rest;
@@ -191,7 +197,6 @@ impl<'comments> Formatter<'comments> {
             None => document,
             Some(Target::Erlang) => docvec!["@target(erlang)", line(), document],
             Some(Target::JavaScript) => docvec!["@target(javascript)", line(), document],
-            Some(Target::Nix) => docvec!["@target(nix)", line(), document],
         };
 
         comments.to_doc().append(document.group())
@@ -407,7 +412,7 @@ impl<'comments> Formatter<'comments> {
                 };
 
                 let doc = docvec!["import ", module.as_str(), second];
-                let default_module_access_name = module.split('/').next_back().map(EcoString::from);
+                let default_module_access_name = module.split('/').last().map(EcoString::from);
                 match (default_module_access_name, as_name) {
                     // If the `as name` is the same as the module name that would be
                     // used anyways we won't render it. For example:
@@ -788,7 +793,6 @@ impl<'comments> Formatter<'comments> {
             .set_internal(function.publicity)
             .set_external_erlang(&function.external_erlang)
             .set_external_javascript(&function.external_javascript)
-            .set_external_nix(&function.external_nix)
             .to_doc();
 
         // Fn name and args
@@ -967,6 +971,16 @@ impl<'comments> Formatter<'comments> {
             UntypedExpr::Todo {
                 message: Some(l), ..
             } => docvec!["todo as ", self.expr(l)],
+
+            UntypedExpr::Echo {
+                expression: None,
+                location: _,
+            } => "echo".to_doc(),
+
+            UntypedExpr::Echo {
+                expression: Some(e),
+                location: _,
+            } => docvec!["echo ", self.expr(e)],
 
             UntypedExpr::PipeLine { expressions, .. } => self.pipeline(expressions, false),
 
@@ -1233,6 +1247,7 @@ impl<'comments> Formatter<'comments> {
             | UntypedExpr::Tuple { .. }
             | UntypedExpr::TupleIndex { .. }
             | UntypedExpr::Todo { .. }
+            | UntypedExpr::Echo { .. }
             | UntypedExpr::Panic { .. }
             | UntypedExpr::BitArray { .. }
             | UntypedExpr::RecordUpdate { .. }
@@ -1340,6 +1355,7 @@ impl<'comments> Formatter<'comments> {
             .nest(INDENT)
             .append(break_("", " "))
             .append("{")
+            .next_break_fits(NextBreakFitsMode::Disabled)
             .group();
 
         let clauses_doc = concat(
@@ -1540,16 +1556,17 @@ impl<'comments> Formatter<'comments> {
         };
 
         match (position, arguments.as_slice()) {
-            // The capture is on the right hand side of a pipe and it only has
-            // an unlabelled hole:
+            // The capture has a single unlabelled hole:
             //
             //     wibble |> wobble(_)
+            //     list.map([], wobble(_))
             //
-            // We want it to become:
+            // We want these to become:
             //
             //     wibble |> wobble
+            //     list.map([], wobble)
             //
-            (FnCapturePosition::RightHandSideOfPipe, [arg])
+            (FnCapturePosition::RightHandSideOfPipe | FnCapturePosition::EverywhereElse, [arg])
                 if arg.is_capture_hole() && arg.label.is_none() =>
             {
                 self.expr(fun)
@@ -1766,7 +1783,10 @@ impl<'comments> Formatter<'comments> {
             ArgNames::NamedLabelled { label, name, .. } => docvec![label, " ", name],
             // We remove the underscore from discarded function arguments since we don't want to
             // expose this kind of detail: https://github.com/gleam-lang/gleam/issues/2561
-            ArgNames::Discard { name, .. } => name.strip_prefix('_').unwrap_or(name).to_doc(),
+            ArgNames::Discard { name, .. } => match name.strip_prefix('_').unwrap_or(name) {
+                "" => "arg".to_doc(),
+                name => name.to_doc(),
+            },
             ArgNames::LabelledDiscard { label, name, .. } => {
                 docvec![label, " ", name.strip_prefix('_').unwrap_or(name).to_doc()]
             }
@@ -2501,6 +2521,7 @@ impl<'comments> Formatter<'comments> {
             | UntypedExpr::TupleIndex { .. }
             | UntypedExpr::Todo { .. }
             | UntypedExpr::Panic { .. }
+            | UntypedExpr::Echo { .. }
             | UntypedExpr::BitArray { .. }
             | UntypedExpr::RecordUpdate { .. }
             | UntypedExpr::NegateBool { .. }
@@ -3028,7 +3049,6 @@ fn constant_call_arg_formatting<A, B>(
 struct AttributesPrinter<'a> {
     external_erlang: &'a Option<(EcoString, EcoString, SrcSpan)>,
     external_javascript: &'a Option<(EcoString, EcoString, SrcSpan)>,
-    external_nix: &'a Option<(EcoString, EcoString, SrcSpan)>,
     deprecation: &'a Deprecation,
     internal: bool,
 }
@@ -3038,7 +3058,6 @@ impl<'a> AttributesPrinter<'a> {
         Self {
             external_erlang: &None,
             external_javascript: &None,
-            external_nix: &None,
             deprecation: &Deprecation::NotDeprecated,
             internal: false,
         }
@@ -3057,14 +3076,6 @@ impl<'a> AttributesPrinter<'a> {
         external: &'a Option<(EcoString, EcoString, SrcSpan)>,
     ) -> Self {
         self.external_javascript = external;
-        self
-    }
-
-    pub fn set_external_nix(
-        mut self,
-        external: &'a Option<(EcoString, EcoString, SrcSpan)>,
-    ) -> Self {
-        self.external_nix = external;
         self
     }
 
@@ -3095,10 +3106,6 @@ impl<'a> Documentable<'a> for AttributesPrinter<'a> {
 
         if let Some((m, f, _)) = self.external_javascript {
             attributes.push(docvec!["@external(javascript, \"", m, "\", \"", f, "\")"])
-        };
-
-        if let Some((m, f, _)) = self.external_nix {
-            attributes.push(docvec!["@external(nix, \"", m, "\", \"", f, "\")"])
         };
 
         // @internal attribute

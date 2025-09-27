@@ -1,12 +1,12 @@
 [package]
 name = "test-project-compiler"
-version = "0.8.0"
-authors = ["PgBiel"]
-edition = "2021"
+version = "1.9.0"
+authors = ["Louis Pilfold <louis@lpil.uk>"]
+edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
-glistix-core = { path = "../compiler-core" }
+gleam-core = { path = "../compiler-core" }
 test-helpers-rs = { path = "../test-helpers-rs" }
 toml.workspace = true
 im.workspace = true

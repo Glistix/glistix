@@ -11,6 +11,7 @@ use strum::IntoEnumIterator;
 use vec1::Vec1;
 
 use crate::{
+    Result,
     ast::{
         self, Arg, CallArg, Definition, Function, FunctionLiteralKind, Pattern, Publicity,
         TypedExpr,
@@ -19,21 +20,20 @@ use crate::{
     io::{BeamCompiler, CommandExecutor, FileSystemReader, FileSystemWriter},
     line_numbers::LineNumbers,
     type_::{
-        self, collapse_links, error::VariableOrigin, pretty::Printer, FieldMap, ModuleInterface,
-        PreludeType, RecordAccessor, Type, TypeConstructor, ValueConstructorVariant,
-        PRELUDE_MODULE_NAME,
+        self, FieldMap, ModuleInterface, PRELUDE_MODULE_NAME, PreludeType, RecordAccessor, Type,
+        TypeConstructor, ValueConstructorVariant, collapse_links, error::VariableOrigin,
+        pretty::Printer,
     },
-    Result,
 };
 
 use super::{
+    DownloadDependencies, MakeLocker,
     compiler::LspProjectCompiler,
     edits::{
-        add_newlines_after_import, get_import, get_import_edit,
-        position_of_first_definition_if_import, Newlines,
+        Newlines, add_newlines_after_import, get_import, get_import_edit,
+        position_of_first_definition_if_import,
     },
     files::FileSystemProxy,
-    DownloadDependencies, MakeLocker,
 };
 
 // Represents the kind/specificity of completion that is being requested.
@@ -322,7 +322,7 @@ where
     }
 
     // Get all the modules that can be imported that have not already been imported.
-    fn completable_modules_for_import(&'a self) -> Vec<(&'a EcoString, &'a ModuleInterface)> {
+    fn completable_modules_for_import(&self) -> Vec<(&EcoString, &ModuleInterface)> {
         let mut direct_dep_packages: std::collections::HashSet<&EcoString> =
             std::collections::HashSet::from_iter(
                 self.compiler.project_compiler.config.dependencies.keys(),
@@ -469,15 +469,16 @@ where
             // e.x. when the user has typed mymodule.| we know unqualified module types are no longer relevant.
             if module_select.is_none() {
                 for unqualified in &import.unqualified_types {
-                    if let Some(type_) = module.get_public_type(&unqualified.name) {
-                        completions.push(type_completion(
+                    match module.get_public_type(&unqualified.name) {
+                        Some(type_) => completions.push(type_completion(
                             None,
                             unqualified.used_name(),
                             type_,
                             insert_range,
                             TypeCompletionForm::Default,
                             CompletionKind::ImportedModule,
-                        ))
+                        )),
+                        None => continue,
                     }
                 }
             }
@@ -503,7 +504,7 @@ where
 
             let qualifier = module_full_name
                 .split('/')
-                .next_back()
+                .last()
                 .unwrap_or(module_full_name);
 
             // If the user has already started a module select then don't show irrelevant modules.
@@ -656,16 +657,19 @@ where
             // e.x. when the user has typed mymodule.| we know unqualified module values are no longer relevant.
             if module_select.is_none() {
                 for unqualified in &import.unqualified_values {
-                    if let Some(value) = module.get_public_value(&unqualified.name) {
-                        let name = unqualified.used_name();
-                        completions.push(value_completion(
-                            None,
-                            mod_name,
-                            name,
-                            value,
-                            insert_range,
-                            CompletionKind::ImportedModule,
-                        ))
+                    match module.get_public_value(&unqualified.name) {
+                        Some(value) => {
+                            let name = unqualified.used_name();
+                            completions.push(value_completion(
+                                None,
+                                mod_name,
+                                name,
+                                value,
+                                insert_range,
+                                CompletionKind::ImportedModule,
+                            ))
+                        }
+                        None => continue,
                     }
                 }
             }
@@ -689,7 +693,7 @@ where
             }
             let qualifier = module_full_name
                 .split('/')
-                .next_back()
+                .last()
                 .unwrap_or(module_full_name);
 
             // If the user has already started a module select then don't show irrelevant modules.

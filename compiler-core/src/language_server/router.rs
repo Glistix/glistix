@@ -1,16 +1,16 @@
 use crate::{
+    Error, Result,
     build::SourceFingerprint,
     error::{FileIoAction, FileKind},
     io::{BeamCompiler, CommandExecutor, FileSystemReader, FileSystemWriter},
     language_server::{
-        engine::LanguageServerEngine, files::FileSystemProxy, progress::ProgressReporter,
-        DownloadDependencies, MakeLocker,
+        DownloadDependencies, MakeLocker, engine::LanguageServerEngine, files::FileSystemProxy,
+        progress::ProgressReporter,
     },
     paths::ProjectPaths,
-    Error, Result,
 };
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     time::SystemTime,
 };
 
@@ -130,14 +130,12 @@ where
         let config_path = paths.root_config();
         let modification_time = io.modification_time(&config_path)?;
         let toml = io.read(&config_path)?;
-        let config = toml::from_str(&toml)
-            .map(crate::config::PackageConfig::with_glistix_patches_applied)
-            .map_err(|e| Error::FileIo {
-                action: FileIoAction::Parse,
-                kind: FileKind::File,
-                path: config_path,
-                err: Some(e.to_string()),
-            })?;
+        let config = toml::from_str(&toml).map_err(|e| Error::FileIo {
+            action: FileIoAction::Parse,
+            kind: FileKind::File,
+            path: config_path,
+            err: Some(e.to_string()),
+        })?;
         let engine = LanguageServerEngine::new(config, progress_reporter, io, paths)?;
         let project = Project {
             engine,
@@ -196,7 +194,7 @@ pub(crate) struct Project<A, B> {
 #[cfg(test)]
 mod find_gleam_project_parent_tests {
     use super::*;
-    use crate::io::{memory::InMemoryFileSystem, FileSystemWriter};
+    use crate::io::{FileSystemWriter, memory::InMemoryFileSystem};
 
     #[test]
     fn root() {

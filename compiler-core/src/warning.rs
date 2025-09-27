@@ -17,7 +17,7 @@ use debug_ignore::DebugIgnore;
 use ecow::EcoString;
 use std::{
     io::Write,
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
 };
 use std::{rc::Rc, sync::atomic::AtomicUsize};
 use termcolor::Buffer;
@@ -333,7 +333,6 @@ To match on all possible lists, use the `_` catch-all pattern instead.",
                 let full_name = match target {
                     Target::Erlang => "erlang",
                     Target::JavaScript => "javascript",
-                    Target::Nix => "nix",
                 };
 
                 Diagnostic {
@@ -1003,14 +1002,21 @@ See: https://tour.gleam.run/advanced-features/{name}/"
                     panic_position: unreachable_code_kind,
                 } => {
                     let text = match unreachable_code_kind {
-                        PanicPosition::PreviousExpression =>
-                            "This code is unreachable because it comes after a `panic`.",
-                        PanicPosition::PreviousFunctionArgument =>
+                        PanicPosition::PreviousExpression => {
+                            "This code is unreachable because it comes after a `panic`."
+                        }
+                        PanicPosition::PreviousFunctionArgument => {
                             "This argument is unreachable because the previous one always panics. \
-Your code will crash before reaching this point.",
-                        PanicPosition::LastFunctionArgument =>
+Your code will crash before reaching this point."
+                        }
+                        PanicPosition::LastFunctionArgument => {
                             "This function call is unreachable because its last argument always panics. \
-Your code will crash before reaching this point.",
+Your code will crash before reaching this point."
+                        }
+                        PanicPosition::EchoExpression => {
+                            "This `echo` won't print anything because the expression it \
+should be printing always panics."
+                        }
                     };
 
                     Diagnostic {
@@ -1083,6 +1089,9 @@ See: https://tour.gleam.run/functions/pipelines/",
                         }
                         FeatureKind::VariantWithDeprecatedAnnotation => {
                             "Deprecating individual custom type variants was"
+                        }
+                        FeatureKind::JavaScriptUnalignedBitArray => {
+                            "Use of unaligned bit arrays on the JavaScript target was"
                         }
                     };
 

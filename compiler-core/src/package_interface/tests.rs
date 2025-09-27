@@ -5,7 +5,6 @@ use ecow::EcoString;
 use globset::GlobBuilder;
 use hexpm::version::Identifier;
 
-use crate::config::GlistixConfig;
 use crate::{
     analyse::TargetSupport,
     build::{Module, Origin, Package, Target},
@@ -136,7 +135,11 @@ pub fn compile_package(
     };
     module.attach_doc_and_module_comments();
     let package: Package = package_from_module(module);
-    serde_json::to_string_pretty(&PackageInterface::from_package(&package)).expect("to json")
+    serde_json::to_string_pretty(&PackageInterface::from_package(
+        &package,
+        &Default::default(),
+    ))
+    .expect("to json")
 }
 
 fn package_from_module(module: Module) -> Package {
@@ -167,12 +170,14 @@ fn package_from_module(module: Module) -> Package {
             links: vec![],
             erlang: ErlangConfig::default(),
             javascript: JavaScriptConfig::default(),
-            glistix: GlistixConfig::default(),
             target: Target::Erlang,
-            internal_modules: Some(vec![GlobBuilder::new("internals/*")
-                .build()
-                .expect("internals glob")]),
+            internal_modules: Some(vec![
+                GlobBuilder::new("internals/*")
+                    .build()
+                    .expect("internals glob"),
+            ]),
         },
+        cached_module_names: Vec::new(),
         modules: vec![module],
     }
 }
@@ -306,4 +311,29 @@ pub type Box(a, b) {
 #[test]
 pub fn internal_modules_are_not_exported() {
     assert_package_interface_with_name!("internals/internal_module", "pub fn main() { 1 }");
+}
+
+#[test]
+pub fn labelled_function_parameters() {
+    assert_package_interface!(
+        r#"
+pub fn fold(list: List(a), from acc: b, with f: fn(a, b) -> b) -> b {
+  todo
+}
+"#
+    );
+}
+
+#[test]
+pub fn constructors_with_documentation() {
+    assert_package_interface!(
+        r#"
+pub type Wibble {
+  /// This is the Wibble variant. It contains some example data.
+  Wibble(Int)
+  /// This is the Wobble variant. It is a recursive type.
+  Wobble(Wibble)
+}
+"#
+    );
 }

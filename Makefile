@@ -12,7 +12,7 @@ build: ## Build the compiler
 
 .PHONY: install
 install: ## Build the Gleam compiler and place it on PATH
-	cd compiler-cli && cargo install --path . --force --locked
+	cd gleam-bin && cargo install --path . --force --locked
 
 .PHONY: test
 test: ## Run the compiler unit tests
@@ -23,9 +23,6 @@ test: ## Run the compiler unit tests
 	cd test/project_erlang && cargo run clean && cargo run check && cargo run test
 	cd test/project_javascript && cargo run clean && cargo run check && cargo run test
 	cd test/project_deno && cargo run clean && cargo run check && cargo run test
-	cd test/glistix_project_nix && cargo run clean && cargo run check && cargo run test
-	cd test/glistix_local_patching && cargo run clean && cargo run check && cargo run test
-	cd test/glistix_hex_patching && cargo run clean && cargo run check && cargo run test
 	cd test/hextarball && make test
 	cd test/running_modules && make test
 	cd test/subdir_ffi && make

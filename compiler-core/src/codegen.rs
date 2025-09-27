@@ -1,13 +1,15 @@
 use crate::{
+    Result,
     analyse::TargetSupport,
-    build::{ErlangAppCodegenConfiguration, Module},
+    build::{ErlangAppCodegenConfiguration, Module, package_compiler::StdlibPackage},
     config::PackageConfig,
     erlang,
     io::FileSystemWriter,
-    javascript,
+    javascript::{self, ModuleConfig},
     line_numbers::LineNumbers,
-    nix, Result,
 };
+use ecow::EcoString;
+use erlang::escape_atom_string;
 use itertools::Itertools;
 use std::fmt::Debug;
 
@@ -93,6 +95,7 @@ impl<'a> ErlangApp<'a> {
         writer: Writer,
         config: &PackageConfig,
         modules: &[Module],
+        native_modules: Vec<EcoString>,
     ) -> Result<()> {
         fn tuple(key: &str, value: &str) -> String {
             format!("    {{{key}, {value}}},\n")
@@ -110,7 +113,10 @@ impl<'a> ErlangApp<'a> {
         let modules = modules
             .iter()
             .map(|m| m.name.replace("/", "@"))
+            .chain(native_modules)
+            .unique()
             .sorted()
+            .map(|m| escape_atom_string(m.clone().into()))
             .join(",\n               ");
 
         // TODO: When precompiling for production (i.e. as a precompiled hex
@@ -161,6 +167,7 @@ pub enum TypeScriptDeclarations {
 pub struct JavaScript<'a> {
     output_directory: &'a Utf8Path,
     prelude_location: &'a Utf8Path,
+    project_root: &'a Utf8Path,
     typescript: TypeScriptDeclarations,
     target_support: TargetSupport,
 }
@@ -170,23 +177,30 @@ impl<'a> JavaScript<'a> {
         output_directory: &'a Utf8Path,
         typescript: TypeScriptDeclarations,
         prelude_location: &'a Utf8Path,
+        project_root: &'a Utf8Path,
         target_support: TargetSupport,
     ) -> Self {
         Self {
             prelude_location,
             output_directory,
             target_support,
+            project_root,
             typescript,
         }
     }
 
-    pub fn render(&self, writer: &impl FileSystemWriter, modules: &[Module]) -> Result<()> {
+    pub fn render(
+        &self,
+        writer: &impl FileSystemWriter,
+        modules: &[Module],
+        stdlib_package: StdlibPackage,
+    ) -> Result<()> {
         for module in modules {
             let js_name = module.name.clone();
             if self.typescript == TypeScriptDeclarations::Emit {
                 self.ts_declaration(writer, module, &js_name)?;
             }
-            self.js_module(writer, module, &js_name)?
+            self.js_module(writer, module, &js_name, stdlib_package)?
         }
         self.write_prelude(writer)?;
         Ok(())
@@ -237,85 +251,22 @@ impl<'a> JavaScript<'a> {
         writer: &impl FileSystemWriter,
         module: &Module,
         js_name: &str,
+        stdlib_package: StdlibPackage,
     ) -> Result<()> {
         let name = format!("{js_name}.mjs");
         let path = self.output_directory.join(name);
         let line_numbers = LineNumbers::new(&module.code);
-        let output = javascript::module(
-            &module.ast,
-            &line_numbers,
-            &module.input_path,
-            &module.code,
-            self.target_support,
-            self.typescript,
-        );
+        let output = javascript::module(ModuleConfig {
+            module: &module.ast,
+            line_numbers: &line_numbers,
+            path: &module.input_path,
+            project_root: self.project_root,
+            src: &module.code,
+            target_support: self.target_support,
+            typescript: self.typescript,
+            stdlib_package,
+        });
         tracing::debug!(name = ?js_name, "Generated js module");
-        writer.write(&path, &output?)
-    }
-}
-
-#[derive(Debug)]
-pub struct Nix<'a> {
-    output_directory: &'a Utf8Path,
-    prelude_location: &'a Utf8Path,
-    target_support: TargetSupport,
-}
-
-impl<'a> Nix<'a> {
-    pub fn new(
-        output_directory: &'a Utf8Path,
-        prelude_location: &'a Utf8Path,
-        target_support: TargetSupport,
-    ) -> Self {
-        Self {
-            prelude_location,
-            output_directory,
-            target_support,
-        }
-    }
-
-    pub fn render(&self, writer: &impl FileSystemWriter, modules: &[Module]) -> Result<()> {
-        for module in modules {
-            let nix_name = module.name.clone();
-            self.nix_module(writer, module, &nix_name)?
-        }
-        self.write_prelude(writer)?;
-        Ok(())
-    }
-
-    fn write_prelude(&self, writer: &impl FileSystemWriter) -> Result<()> {
-        let rexport = format!(
-            "builtins.import {}\n",
-            nix::syntax::path(self.prelude_location.as_str())
-        );
-        let prelude_path = &self.output_directory.join("gleam.nix");
-
-        // This check skips unnecessary `gleam.nix` writes which confuse
-        // watchers
-        if !writer.exists(prelude_path) {
-            writer.write(prelude_path, &rexport)?;
-        }
-
-        Ok(())
-    }
-
-    fn nix_module(
-        &self,
-        writer: &impl FileSystemWriter,
-        module: &Module,
-        nix_name: &str,
-    ) -> Result<()> {
-        let name = format!("{nix_name}.nix");
-        let path = self.output_directory.join(name);
-        let line_numbers = LineNumbers::new(&module.code);
-        let output = nix::module(
-            &module.ast,
-            &line_numbers,
-            &module.input_path,
-            &module.code,
-            self.target_support,
-        );
-        tracing::debug!(name = ?nix_name, "Generated nix module");
         writer.write(&path, &output?)
     }
 }

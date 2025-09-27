@@ -11,7 +11,7 @@
 //! we can do the following:
 //!
 //! ```no_run
-//! use glistix_core::ast::{TypedFunction, visit::{self, Visit}};
+//! use gleam_core::ast::{TypedFunction, visit::{self, Visit}};
 //!
 //! struct FnCollector<'ast> {
 //!     functions: Vec<&'ast TypedFunction>
@@ -41,8 +41,8 @@
 use crate::{
     analyse::Inferred,
     type_::{
-        error::VariableOrigin, ModuleValueConstructor, PatternConstructor, TypedCallArg,
-        ValueConstructor,
+        ModuleValueConstructor, PatternConstructor, TypedCallArg, ValueConstructor,
+        error::VariableOrigin,
     },
 };
 use std::sync::Arc;
@@ -53,11 +53,12 @@ use vec1::Vec1;
 use crate::type_::Type;
 
 use super::{
-    untyped::FunctionLiteralKind, AssignName, BinOp, BitArrayOption, CallArg, Definition, Pattern,
+    AssignName, BinOp, BitArrayOption, CallArg, Definition, Pattern, PipelineAssignmentKind,
     SrcSpan, Statement, TodoKind, TypeAst, TypedArg, TypedAssignment, TypedClause,
     TypedClauseGuard, TypedConstant, TypedCustomType, TypedDefinition, TypedExpr,
     TypedExprBitArraySegment, TypedFunction, TypedModule, TypedModuleConstant, TypedPattern,
     TypedPatternBitArraySegment, TypedPipelineAssignment, TypedStatement, TypedUse,
+    untyped::FunctionLiteralKind,
 };
 
 pub trait Visit<'ast> {
@@ -83,6 +84,15 @@ pub trait Visit<'ast> {
 
     fn visit_typed_expr(&mut self, expr: &'ast TypedExpr) {
         visit_typed_expr(self, expr);
+    }
+
+    fn visit_typed_expr_echo(
+        &mut self,
+        location: &'ast SrcSpan,
+        type_: &'ast Arc<Type>,
+        expression: &'ast Option<Box<TypedExpr>>,
+    ) {
+        visit_typed_expr_echo(self, location, type_, expression);
     }
 
     fn visit_typed_expr_int(
@@ -123,10 +133,19 @@ pub trait Visit<'ast> {
     fn visit_typed_expr_pipeline(
         &mut self,
         location: &'ast SrcSpan,
-        assignments: &'ast [TypedPipelineAssignment],
+        first_value: &'ast TypedPipelineAssignment,
+        assignments: &'ast [(TypedPipelineAssignment, PipelineAssignmentKind)],
         finally: &'ast TypedExpr,
+        finally_kind: &'ast PipelineAssignmentKind,
     ) {
-        visit_typed_expr_pipeline(self, location, assignments, finally);
+        visit_typed_expr_pipeline(
+            self,
+            location,
+            first_value,
+            assignments,
+            finally,
+            finally_kind,
+        );
     }
 
     fn visit_typed_expr_var(
@@ -202,9 +221,11 @@ pub trait Visit<'ast> {
         visit_typed_expr_record_access(self, location, type_, label, index, record);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn visit_typed_expr_module_select(
         &mut self,
         location: &'ast SrcSpan,
+        field_start: &'ast u32,
         type_: &'ast Arc<Type>,
         label: &'ast EcoString,
         module_name: &'ast EcoString,
@@ -214,6 +235,7 @@ pub trait Visit<'ast> {
         visit_typed_expr_module_select(
             self,
             location,
+            field_start,
             type_,
             label,
             module_name,
@@ -698,9 +720,11 @@ where
         } => v.visit_typed_expr_block(location, statements),
         TypedExpr::Pipeline {
             location,
+            first_value,
             assignments,
             finally,
-        } => v.visit_typed_expr_pipeline(location, assignments, finally),
+            finally_kind,
+        } => v.visit_typed_expr_pipeline(location, first_value, assignments, finally, finally_kind),
         TypedExpr::Var {
             location,
             constructor,
@@ -748,6 +772,7 @@ where
         } => v.visit_typed_expr_record_access(location, type_, label, index, record),
         TypedExpr::ModuleSelect {
             location,
+            field_start,
             type_,
             label,
             module_name,
@@ -755,6 +780,7 @@ where
             constructor,
         } => v.visit_typed_expr_module_select(
             location,
+            field_start,
             type_,
             label,
             module_name,
@@ -800,13 +826,18 @@ where
         }
         TypedExpr::NegateInt { location, value } => v.visit_typed_expr_negate_int(location, value),
         TypedExpr::Invalid { location, type_ } => v.visit_typed_expr_invalid(location, type_),
+        TypedExpr::Echo {
+            location,
+            expression,
+            type_,
+        } => v.visit_typed_expr_echo(location, type_, expression),
     }
 }
 
 pub fn visit_typed_expr_int<'a, V>(
     _v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     _value: &'a EcoString,
 ) where
     V: Visit<'a> + ?Sized,
@@ -816,7 +847,7 @@ pub fn visit_typed_expr_int<'a, V>(
 pub fn visit_typed_expr_float<'a, V>(
     _v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     _value: &'a EcoString,
 ) where
     V: Visit<'a> + ?Sized,
@@ -826,7 +857,7 @@ pub fn visit_typed_expr_float<'a, V>(
 pub fn visit_typed_expr_string<'a, V>(
     _v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     _value: &'a EcoString,
 ) where
     V: Visit<'a> + ?Sized,
@@ -848,12 +879,15 @@ pub fn visit_typed_expr_block<'a, V>(
 pub fn visit_typed_expr_pipeline<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    assignments: &'a [TypedPipelineAssignment],
+    first_value: &'a TypedPipelineAssignment,
+    assignments: &'a [(TypedPipelineAssignment, PipelineAssignmentKind)],
     finally: &'a TypedExpr,
+    _finally_kind: &'a PipelineAssignmentKind,
 ) where
     V: Visit<'a> + ?Sized,
 {
-    for assignment in assignments {
+    v.visit_typed_pipeline_assignment(first_value);
+    for (assignment, _kind) in assignments {
         v.visit_typed_pipeline_assignment(assignment);
     }
 
@@ -881,7 +915,7 @@ pub fn visit_typed_expr_var<'a, V>(
 pub fn visit_typed_expr_fn<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     _kind: &'a FunctionLiteralKind,
     _args: &'a [TypedArg],
     body: &'a Vec1<TypedStatement>,
@@ -897,7 +931,7 @@ pub fn visit_typed_expr_fn<'a, V>(
 pub fn visit_typed_expr_list<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     elements: &'a [TypedExpr],
     tail: &'a Option<Box<TypedExpr>>,
 ) where
@@ -915,7 +949,7 @@ pub fn visit_typed_expr_list<'a, V>(
 pub fn visit_typed_expr_call<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     fun: &'a TypedExpr,
     args: &'a [TypedCallArg],
 ) where
@@ -930,7 +964,7 @@ pub fn visit_typed_expr_call<'a, V>(
 pub fn visit_typed_expr_bin_op<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     _name: &'a BinOp,
     left: &'a TypedExpr,
     right: &'a TypedExpr,
@@ -944,7 +978,7 @@ pub fn visit_typed_expr_bin_op<'a, V>(
 pub fn visit_typed_expr_case<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     subjects: &'a [TypedExpr],
     clauses: &'a [TypedClause],
 ) where
@@ -962,7 +996,7 @@ pub fn visit_typed_expr_case<'a, V>(
 pub fn visit_typed_expr_record_access<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     _label: &'a EcoString,
     _index: &'a u64,
     record: &'a TypedExpr,
@@ -972,9 +1006,11 @@ pub fn visit_typed_expr_record_access<'a, V>(
     v.visit_typed_expr(record);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn visit_typed_expr_module_select<'a, V>(
     _v: &mut V,
     _location: &'a SrcSpan,
+    _field_start: &'a u32,
     _typ: &'a Arc<Type>,
     _label: &'a EcoString,
     _module_name: &'a EcoString,
@@ -989,7 +1025,7 @@ pub fn visit_typed_expr_module_select<'a, V>(
 pub fn visit_typed_expr_tuple<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     elems: &'a [TypedExpr],
 ) where
     V: Visit<'a> + ?Sized,
@@ -1002,7 +1038,7 @@ pub fn visit_typed_expr_tuple<'a, V>(
 pub fn visit_typed_expr_tuple_index<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     _index: &'a u64,
     tuple: &'a TypedExpr,
 ) where
@@ -1025,6 +1061,19 @@ pub fn visit_typed_expr_todo<'a, V>(
     }
 }
 
+fn visit_typed_expr_echo<'a, V>(
+    v: &mut V,
+    _location: &'a SrcSpan,
+    _type_: &'a Arc<Type>,
+    expression: &'a Option<Box<TypedExpr>>,
+) where
+    V: Visit<'a> + ?Sized,
+{
+    if let Some(expression) = expression {
+        v.visit_typed_expr(expression)
+    }
+}
+
 pub fn visit_typed_expr_panic<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
@@ -1041,7 +1090,7 @@ pub fn visit_typed_expr_panic<'a, V>(
 pub fn visit_typed_expr_bit_array<'a, V>(
     v: &mut V,
     _location: &'a SrcSpan,
-    _typ: &'a Arc<Type>,
+    _type_: &'a Arc<Type>,
     segments: &'a [TypedExprBitArraySegment],
 ) where
     V: Visit<'a> + ?Sized,
@@ -1641,7 +1690,7 @@ pub fn visit_typed_pattern_string_prefix<'a, V>(
 {
 }
 
-pub fn visit_typed_expr_invalid<'a, V>(_v: &mut V, _location: &'a SrcSpan, _typ: &'a Arc<Type>)
+pub fn visit_typed_expr_invalid<'a, V>(_v: &mut V, _location: &'a SrcSpan, _type_: &'a Arc<Type>)
 where
     V: Visit<'a> + ?Sized,
 {

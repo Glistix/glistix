@@ -5,12 +5,12 @@ use ecow::EcoString;
 use hexpm::version::Version;
 use pretty_assertions::assert_eq;
 
-use glistix_core::{
+use gleam_core::{
+    Error,
     build::Runtime,
     config::{DenoConfig, DenoFlag, Docs, ErlangConfig, JavaScriptConfig, Repository},
     manifest::{Base16Checksum, Manifest, ManifestPackage, ManifestPackageSource},
     requirement::Requirement,
-    Error,
 };
 
 use crate::dependencies::*;
@@ -52,7 +52,6 @@ fn list_manifest_format() {
                 },
             },
         ],
-        glistix: Default::default(),
     };
     list_manifest_packages(&mut buffer, manifest).unwrap();
     assert_eq!(
@@ -101,7 +100,6 @@ fn tree_format() {
                 },
             },
         ],
-        glistix: Default::default(),
     };
 
     let options = TreeOptions {
@@ -165,7 +163,6 @@ fn tree_package_format() {
                 },
             },
         ],
-        glistix: Default::default(),
     };
     let options = TreeOptions {
         package: Some("gleam_regexp".to_string()),
@@ -226,7 +223,6 @@ fn tree_invert_format() {
                 },
             },
         ],
-        glistix: Default::default(),
     };
     let options = TreeOptions {
         package: None,
@@ -289,7 +285,6 @@ fn list_tree_invalid_package_format() {
                 },
             },
         ],
-        glistix: Default::default(),
     };
     let options = TreeOptions {
         package: Some("zzzzzz".to_string()),
@@ -418,7 +413,6 @@ fn missing_local_packages() {
                 },
             },
         ],
-        glistix: Default::default(),
     };
     let mut extra = LocalPackages {
         packages: [
@@ -490,7 +484,6 @@ fn extra_local_packages() {
                 },
             },
         ],
-        glistix: Default::default(),
     });
     extra.sort();
     assert_eq!(
@@ -511,18 +504,19 @@ fn provide_wrong_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
-    if let Err(Error::WrongDependencyProvided {
-        expected, found, ..
-    }) = result
-    {
-        assert_eq!(expected, "wrong_name");
-        assert_eq!(found, "hello_world");
-    } else {
-        panic!("Expected WrongDependencyProvided error")
+    match result {
+        Err(Error::WrongDependencyProvided {
+            expected, found, ..
+        }) => {
+            assert_eq!(expected, "wrong_name");
+            assert_eq!(found, "hello_world");
+        }
+        _ => {
+            panic!("Expected WrongDependencyProvided error")
+        }
     }
 }
 
@@ -536,7 +530,6 @@ fn provide_existing_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -547,7 +540,6 @@ fn provide_existing_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -563,7 +555,6 @@ fn provide_conflicting_package() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
@@ -576,98 +567,16 @@ fn provide_conflicting_package() {
             path: Utf8Path::new("./test/other").to_path_buf(),
         },
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
-    if let Err(Error::ProvidedDependencyConflict { package, .. }) = result {
-        assert_eq!(package, "hello_world");
-    } else {
-        panic!("Expected ProvidedDependencyConflict error")
-    }
-}
-
-#[test]
-fn glistix_provide_conflicting_package_patched_by_root() {
-    let mut provided = HashMap::new();
-
-    let patched_package = EcoString::from("hello_world");
-    let mut root_config = PackageConfig::default();
-    let _ = root_config.dependencies.insert(
-        patched_package.clone(),
-        Requirement::Path {
-            path: Utf8PathBuf::from("./test/hello_world"),
-        },
-    );
-    root_config
-        .glistix
-        .preview
-        .local_overrides
-        .push(patched_package.clone());
-
-    let project_paths = crate::project_paths_at_current_directory_without_toml();
-    let result = provide_local_package(
-        patched_package.clone(),
-        Utf8Path::new("./test/hello_world"),
-        Utf8Path::new("./"),
-        &project_paths,
-        &root_config,
-        &mut provided,
-        &mut vec!["root".into(), "subpackage".into()],
-    );
-    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
-
-    let result = provide_local_package(
-        patched_package,
-        Utf8Path::new("./test/"),
-        Utf8Path::new("./"),
-        &project_paths,
-        &root_config,
-        &mut provided,
-        &mut vec!["root".into(), "subpackage".into()],
-    );
-    // OK: There was a conflict, but root had a dependency with an override.
-    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
-}
-
-#[test]
-fn glistix_provide_conflicting_package_patched_by_root_but_not_root_dependency() {
-    let mut provided = HashMap::new();
-
-    let patched_package = EcoString::from("hello_world");
-    let mut root_config = PackageConfig::default();
-    root_config
-        .glistix
-        .preview
-        .local_overrides
-        .push(patched_package.clone());
-
-    let project_paths = crate::project_paths_at_current_directory_without_toml();
-    let result = provide_local_package(
-        patched_package.clone(),
-        Utf8Path::new("./test/hello_world"),
-        Utf8Path::new("./"),
-        &project_paths,
-        &root_config,
-        &mut provided,
-        &mut vec!["root".into(), "subpackage".into()],
-    );
-    assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
-
-    let result = provide_local_package(
-        patched_package,
-        Utf8Path::new("./test/"),
-        Utf8Path::new("./"),
-        &project_paths,
-        &root_config,
-        &mut provided,
-        &mut vec!["root".into(), "subpackage".into()],
-    );
-    // There was an override, but no matching root dependency, so it doesn't count.
-    if let Err(Error::ProvidedDependencyConflict { package, .. }) = result {
-        assert_eq!(package, "hello_world");
-    } else {
-        panic!("Expected ProvidedDependencyConflict error, got {result:?}")
+    match result {
+        Err(Error::ProvidedDependencyConflict { package, .. }) => {
+            assert_eq!(package, "hello_world");
+        }
+        _ => {
+            panic!("Expected ProvidedDependencyConflict error")
+        }
     }
 }
 
@@ -680,16 +589,18 @@ fn provided_is_absolute() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "subpackage".into()],
     );
     assert_eq!(result, Ok(hexpm::version::Range::new("== 0.1.0".into())));
     let package = provided.get("hello_world").unwrap().clone();
-    if let ProvidedPackageSource::Local { path } = package.source {
-        assert!(path.is_absolute())
-    } else {
-        panic!("Provide_local_package provided a package that is not local!")
+    match package.source {
+        ProvidedPackageSource::Local { path } => {
+            assert!(path.is_absolute())
+        }
+        _ => {
+            panic!("Provide_local_package provided a package that is not local!")
+        }
     }
 }
 
@@ -702,7 +613,6 @@ fn provided_recursive() {
         Utf8Path::new("./test/hello_world"),
         Utf8Path::new("./"),
         &project_paths,
-        &PackageConfig::default(),
         &mut provided,
         &mut vec!["root".into(), "hello_world".into(), "subpackage".into()],
     );
@@ -713,6 +623,7 @@ fn provided_recursive() {
         })
     )
 }
+
 #[test]
 fn provided_local_to_hex() {
     let provided_package = ProvidedPackage {
@@ -973,7 +884,6 @@ fn create_testable_unlock_manifest(
     Manifest {
         packages: manifest_packages,
         requirements: root_requirements,
-        glistix: Default::default(),
     }
 }
 
@@ -1303,7 +1213,6 @@ fn package_config(
         },
         target: Target::Erlang,
         internal_modules: None,
-        glistix: Default::default(),
     }
 }
 
@@ -1323,7 +1232,6 @@ fn test_remove_do_nothing() {
             manifest_package("a", "1.0.0", vec![]),
             manifest_package("b", "2.0.8", vec![]),
         ],
-        glistix: Default::default(),
     };
 
     let manifest_copy = manifest.clone();
@@ -1341,7 +1249,6 @@ fn test_remove_simple() {
     let mut manifest = Manifest {
         requirements: HashMap::from([("a".into(), Requirement::hex("~>1"))]),
         packages: vec![manifest_package("a", "1.0.0", vec![])],
-        glistix: Default::default(),
     };
 
     remove_extra_requirements(&config, &mut manifest).unwrap();
@@ -1361,7 +1268,6 @@ fn test_remove_package_with_transitive_dependencies() {
             manifest_package("b", "1.2.3", vec!["c".into()]),
             manifest_package("c", "2.0.0", vec![]),
         ],
-        glistix: Default::default(),
     };
 
     remove_extra_requirements(&config, &mut manifest).unwrap();
@@ -1388,7 +1294,6 @@ fn test_remove_package_with_shared_transitive_dependencies() {
             manifest_package("c", "2.0.0", vec![]),
             manifest_package("d", "0.1.0", vec![]),
         ],
-        glistix: Default::default(),
     };
 
     remove_extra_requirements(&config, &mut manifest).unwrap();
@@ -1421,7 +1326,6 @@ fn test_remove_package_that_is_also_a_transitive_dependency() {
             manifest_package("c", "2.0.0", vec![]),
             manifest_package("d", "0.1.0", vec![]),
         ],
-        glistix: Default::default(),
     };
 
     let manifest_copy = manifest.clone();

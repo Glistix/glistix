@@ -469,6 +469,57 @@ fn no_eq_after_binding1() {
 }
 
 #[test]
+fn echo_followed_by_expression_ends_where_expression_ends() {
+    assert_parse!("echo wibble");
+}
+
+#[test]
+fn echo_with_no_expressions_after_it() {
+    assert_parse!("echo");
+}
+
+#[test]
+fn echo_with_block() {
+    assert_parse!("echo { 1 + 1 }");
+}
+
+#[test]
+fn echo_has_lower_precedence_than_binop() {
+    assert_parse!("echo 1 + 1");
+}
+
+#[test]
+fn echo_in_a_pipeline() {
+    assert_parse!("[] |> echo |> wibble");
+}
+
+#[test]
+fn echo_has_lower_precedence_than_pipeline() {
+    assert_parse!("echo wibble |> wobble |> woo");
+}
+
+#[test]
+fn echo_cannot_have_an_expression_in_a_pipeline() {
+    // So this is actually two pipelines!
+    assert_parse!("[] |> echo fun |> wibble");
+}
+
+#[test]
+fn panic_with_echo() {
+    assert_parse!("panic as echo \"string\"");
+}
+
+#[test]
+fn echo_with_panic() {
+    assert_parse!("echo panic as \"a\"");
+}
+
+#[test]
+fn repeated_echos() {
+    assert_parse!("echo echo echo 1");
+}
+
+#[test]
 fn no_let_binding_snapshot_1() {
     assert_error!("wibble = 4");
 }
@@ -1682,16 +1733,4 @@ fn nested_tuple_access_after_function() {
 #[test]
 fn case_expression_without_body() {
     assert_parse!("case a");
-}
-
-#[test]
-fn glistix_external_nix_attribute_on_type_variant() {
-    assert_module_error!(
-        r#"
-type Wibble {
-    @external(nix, "one.nix", "two")
-    Wibble1
-}
-"#
-    );
 }
