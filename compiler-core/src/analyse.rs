@@ -5,6 +5,7 @@ pub(crate) mod name;
 mod tests;
 
 use crate::{
+    GLEAM_CORE_PACKAGE_NAME,
     ast::{
         self, Arg, BitArrayOption, CustomType, Definition, DefinitionLocation, Function,
         GroupedStatements, Import, ModuleConstant, Publicity, RecordConstructor,
@@ -14,26 +15,25 @@ use crate::{
         UntypedModule, UntypedModuleConstant, UntypedStatement, UntypedTypeAlias,
     },
     build::{Origin, Outcome, Target},
-    call_graph::{into_dependency_order, CallGraphNode},
+    call_graph::{CallGraphNode, into_dependency_order},
     config::PackageConfig,
     dep_tree,
     line_numbers::LineNumbers,
     parse::SpannedString,
     type_::{
-        self,
+        self, AccessorsMap, Deprecation, ModuleInterface, Opaque, PatternConstructor,
+        RecordAccessor, Type, TypeAliasConstructor, TypeConstructor, TypeValueConstructor,
+        TypeValueConstructorField, TypeVariantConstructors, ValueConstructor,
+        ValueConstructorVariant, Warning,
         environment::*,
-        error::{convert_unify_error, Error, FeatureKind, MissingAnnotation, Named, Problems},
+        error::{Error, FeatureKind, MissingAnnotation, Named, Problems, convert_unify_error},
         expression::{ExprTyper, FunctionDefinition, Implementations},
         fields::{FieldMap, FieldMapBuilder},
         hydrator::Hydrator,
         prelude::*,
-        AccessorsMap, Deprecation, ModuleInterface, PatternConstructor, RecordAccessor, Type,
-        TypeConstructor, TypeValueConstructor, TypeValueConstructorField, TypeVariantConstructors,
-        ValueConstructor, ValueConstructorVariant, Warning,
     },
     uid::UniqueIdGenerator,
     warning::TypeWarningEmitter,
-    GLEAM_CORE_PACKAGE_NAME,
 };
 use camino::Utf8PathBuf;
 use ecow::EcoString;
@@ -74,7 +74,7 @@ impl<T> Inferred<T> {
 }
 
 impl Inferred<PatternConstructor> {
-    pub fn definition_location(&self) -> Option<DefinitionLocation<'_>> {
+    pub fn definition_location(&self) -> Option<DefinitionLocation> {
         match self {
             Inferred::Known(value) => value.definition_location(),
             Inferred::Unknown => None,
@@ -300,6 +300,8 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             module_values: values,
             accessors,
             names: type_names,
+            module_type_aliases: type_aliases,
+            echo_found,
             ..
         } = env;
 
@@ -319,7 +321,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         }
 
         let module = ast::Module {
-            documentation,
+            documentation: documentation.clone(),
             name: self.module_name.clone(),
             definitions: typed_statements,
             type_info: ModuleInterface {
@@ -335,6 +337,9 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                 src_path: self.src_path,
                 warnings,
                 minimum_required_version: self.minimum_required_version,
+                type_aliases,
+                documentation,
+                contains_echo: echo_found,
             },
             names: type_names,
         };
@@ -371,7 +376,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             has_body: true,
             has_erlang_external: false,
             has_javascript_external: false,
-            has_nix_external: false,
         };
         let mut expr_typer = ExprTyper::new(environment, definition, &mut self.problems);
         let typed_expr = expr_typer.infer_const(&annotation, *value);
@@ -460,7 +464,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             deprecation,
             external_erlang,
             external_javascript,
-            external_nix,
             return_type: (),
             implementations: _,
         } = f;
@@ -480,24 +483,15 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         // the implementation for JS externals.
         self.assert_valid_javascript_external(&name, external_javascript.as_ref(), location);
 
-        // Ensure that folks are not writing inline Nix expressions as
-        // the implementation for Nix externals.
-        self.assert_valid_nix_external(&name, external_nix.as_ref(), location);
-
         // Find the external implementation for the current target, if one has been given.
-        let external = target_function_implementation(
-            target,
-            &external_erlang,
-            &external_javascript,
-            &external_nix,
-        );
+        let external =
+            target_function_implementation(target, &external_erlang, &external_javascript);
 
         // The function must have at least one implementation somewhere.
         let has_implementation = self.ensure_function_has_an_implementation(
             &body,
             &external_erlang,
             &external_javascript,
-            &external_nix,
             location,
         );
 
@@ -514,7 +508,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             has_body,
             has_erlang_external: external_erlang.is_some(),
             has_javascript_external: external_javascript.is_some(),
-            has_nix_external: external_nix.is_some(),
         };
 
         let typed_args = arguments
@@ -626,9 +619,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             external_javascript: external_javascript
                 .as_ref()
                 .map(|(m, f, _)| (m.clone(), f.clone())),
-            external_nix: external_nix
-                .as_ref()
-                .map(|(m, f, _)| (m.clone(), f.clone())),
             field_map,
             module: environment.current_module.clone(),
             arity: typed_args.len(),
@@ -659,7 +649,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             body,
             external_erlang,
             external_javascript,
-            external_nix,
             implementations,
         })
     }
@@ -702,48 +691,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         }
     }
 
-    fn assert_valid_nix_external(
-        &mut self,
-        function_name: &EcoString,
-        external_nix: Option<&(EcoString, EcoString, SrcSpan)>,
-        location: SrcSpan,
-    ) {
-        use regex::Regex;
-
-        static MODULE: OnceLock<Regex> = OnceLock::new();
-        static FUNCTION: OnceLock<Regex> = OnceLock::new();
-
-        let (module, function) = match external_nix {
-            None => return,
-            Some((module, function, _location)) => (module, function),
-        };
-        // TODO(NIX): Consider allowing arbitrary paths, incl. <...> notation
-        // Currently, we force paths to be relative to something, that is,
-        // you can't import an external function from "word", but you can from
-        // "./word" or "../word". You can also import from "." or "..".
-        // We should expand this in the future.
-        if !MODULE
-            .get_or_init(|| Regex::new("^(?:\\.\\.?|\\.\\.?/[a-zA-Z0-9\\./:_-]*)$").expect("regex"))
-            .is_match(module)
-        {
-            self.problems.error(Error::InvalidExternalNixModule {
-                location,
-                module: module.clone(),
-                name: function_name.clone(),
-            });
-        }
-        if !FUNCTION
-            .get_or_init(|| Regex::new("^[a-zA-Z_][a-zA-Z0-9_'-]*$").expect("regex"))
-            .is_match(function)
-        {
-            self.problems.error(Error::InvalidExternalNixFunction {
-                location,
-                function: function.clone(),
-                name: function_name.clone(),
-            });
-        }
-    }
-
     fn ensure_annotations_present(
         &mut self,
         arguments: &[UntypedArg],
@@ -771,11 +718,10 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         body: &Vec1<UntypedStatement>,
         external_erlang: &Option<(EcoString, EcoString, SrcSpan)>,
         external_javascript: &Option<(EcoString, EcoString, SrcSpan)>,
-        external_nix: &Option<(EcoString, EcoString, SrcSpan)>,
         location: SrcSpan,
     ) -> bool {
-        match (external_erlang, external_javascript, external_nix) {
-            (None, None, None) if body.first().is_placeholder() => {
+        match (external_erlang, external_javascript) {
+            (None, None) if body.first().is_placeholder() => {
                 self.problems.error(Error::NoImplementation { location });
                 false
             }
@@ -906,27 +852,28 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                         .expect("Could not find preregistered type for function");
                     let preregistered_type = preregistered_fn.type_.clone();
 
-                    let args =
-                        if let Some((args_types, _return_type)) = preregistered_type.fn_types() {
-                            args.into_iter()
-                                .zip(&args_types)
-                                .map(|(argument, t)| {
-                                    if let Some((location, label)) = &argument.label {
-                                        self.check_name_case(*location, label, Named::Label);
-                                    }
+                    let args = match preregistered_type.fn_types() {
+                        Some((args_types, _return_type)) => args
+                            .into_iter()
+                            .zip(&args_types)
+                            .map(|(argument, t)| {
+                                if let Some((location, label)) = &argument.label {
+                                    self.check_name_case(*location, label, Named::Label);
+                                }
 
-                                    RecordConstructorArg {
-                                        label: argument.label,
-                                        ast: argument.ast,
-                                        location: argument.location,
-                                        type_: t.clone(),
-                                        doc: argument.doc,
-                                    }
-                                })
-                                .collect()
-                        } else {
+                                RecordConstructorArg {
+                                    label: argument.label,
+                                    ast: argument.ast,
+                                    location: argument.location,
+                                    type_: t.clone(),
+                                    doc: argument.doc,
+                                }
+                            })
+                            .collect(),
+                        _ => {
                             vec![]
-                        };
+                        }
+                    };
 
                     RecordConstructor {
                         location,
@@ -1065,7 +1012,10 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                     }
                 };
 
-                fields.push(TypeValueConstructorField { type_: t.clone() });
+                fields.push(TypeValueConstructorField {
+                    type_: t.clone(),
+                    label: label.as_ref().map(|(_location, label)| label.clone()),
+                });
 
                 // Register the type for this parameter
                 args_types.push(t);
@@ -1141,6 +1091,10 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             constructors_data.push(TypeValueConstructor {
                 name: constructor.name.clone(),
                 parameters: fields,
+                documentation: constructor
+                    .documentation
+                    .as_ref()
+                    .map(|(_, documentation)| documentation.clone()),
             });
             environment.insert_variable(
                 constructor.name.clone(),
@@ -1157,10 +1111,15 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             );
         }
 
+        let opaque = if *opaque {
+            Opaque::Opaque
+        } else {
+            Opaque::NotOpaque
+        };
         // Now record the constructors for the type.
         environment.insert_type_to_constructors(
             name.clone(),
-            TypeVariantConstructors::new(constructors_data, type_parameters, hydrator),
+            TypeVariantConstructors::new(constructors_data, type_parameters, opaque, hydrator),
         );
 
         Ok(())
@@ -1288,6 +1247,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         // in some fashion.
         let mut hydrator = Hydrator::new();
         let parameters = self.make_type_vars(args, &mut hydrator, environment);
+        let arity = parameters.len();
         let tryblock = || {
             hydrator.disallow_new_type_variables();
             let type_ = hydrator.type_from_ast(resolved_type, environment, &mut self.problems)?;
@@ -1303,10 +1263,23 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                     origin: *location,
                     module: self.module_name.clone(),
                     parameters,
-                    type_,
+                    type_: type_.clone(),
                     deprecation: deprecation.clone(),
                     publicity: *publicity,
                     documentation: documentation.as_ref().map(|(_, doc)| doc.clone()),
+                },
+            )?;
+
+            environment.insert_type_alias(
+                name.clone(),
+                TypeAliasConstructor {
+                    origin: *location,
+                    module: self.module_name.clone(),
+                    type_,
+                    publicity: *publicity,
+                    deprecation: deprecation.clone(),
+                    documentation: documentation.as_ref().map(|(_, doc)| doc.clone()),
+                    arity,
                 },
             )?;
 
@@ -1376,7 +1349,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             documentation,
             external_erlang,
             external_javascript,
-            external_nix,
             deprecation,
             end_position: _,
             body: _,
@@ -1401,9 +1373,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
 
         // When external implementations are present then the type annotations
         // must be given in full, so we disallow holes in the annotations.
-        hydrator.permit_holes(
-            external_erlang.is_none() && external_javascript.is_none() && external_nix.is_none(),
-        );
+        hydrator.permit_holes(external_erlang.is_none() && external_javascript.is_none());
 
         let arg_types = args
             .iter()
@@ -1424,9 +1394,6 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
                 .as_ref()
                 .map(|(m, f, _)| (m.clone(), f.clone())),
             external_javascript: external_javascript
-                .as_ref()
-                .map(|(m, f, _)| (m.clone(), f.clone())),
-            external_nix: external_nix
                 .as_ref()
                 .map(|(m, f, _)| (m.clone(), f.clone())),
             module: environment.current_module.clone(),
@@ -1527,12 +1494,10 @@ fn target_function_implementation<'a>(
     target: Target,
     external_erlang: &'a Option<(EcoString, EcoString, SrcSpan)>,
     external_javascript: &'a Option<(EcoString, EcoString, SrcSpan)>,
-    external_nix: &'a Option<(EcoString, EcoString, SrcSpan)>,
 ) -> &'a Option<(EcoString, EcoString, SrcSpan)> {
     match target {
         Target::Erlang => external_erlang,
         Target::JavaScript => external_javascript,
-        Target::Nix => external_nix,
     }
 }
 
@@ -1710,7 +1675,6 @@ fn generalise_function(
         return_type,
         external_erlang,
         external_javascript,
-        external_nix,
         implementations,
     } = function;
 
@@ -1734,9 +1698,6 @@ fn generalise_function(
             .as_ref()
             .map(|(m, f, _)| (m.clone(), f.clone())),
         external_javascript: external_javascript
-            .as_ref()
-            .map(|(m, f, _)| (m.clone(), f.clone())),
-        external_nix: external_nix
             .as_ref()
             .map(|(m, f, _)| (m.clone(), f.clone())),
         module: module_name.clone(),
@@ -1774,7 +1735,6 @@ fn generalise_function(
         body,
         external_erlang,
         external_javascript,
-        external_nix,
         implementations,
     })
 }

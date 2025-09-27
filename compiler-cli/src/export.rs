@@ -1,8 +1,9 @@
 use camino::Utf8PathBuf;
-use glistix_core::{
+use gleam_core::{
+    Result,
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, Options, Target},
-    Result,
+    paths::ProjectPaths,
 };
 
 #[cfg(target_os = "windows")]
@@ -26,8 +27,7 @@ static ENTRYPOINT_TEMPLATE: &str = include_str!("../templates/erlang-shipment-en
 /// - ebin
 /// - include
 /// - priv
-pub(crate) fn erlang_shipment() -> Result<()> {
-    let paths = crate::find_project_paths()?;
+pub(crate) fn erlang_shipment(paths: &ProjectPaths) -> Result<()> {
     let target = Target::Erlang;
     let mode = Mode::Prod;
     let build = paths.build_directory_for_target(mode, target);
@@ -41,6 +41,7 @@ pub(crate) fn erlang_shipment() -> Result<()> {
 
     // Build project in production mode
     let built = crate::build::main(
+        paths,
         Options {
             root_target_support: TargetSupport::Enforced,
             warnings_as_errors: false,
@@ -50,7 +51,7 @@ pub(crate) fn erlang_shipment() -> Result<()> {
             target: Some(target),
             no_print_progress: false,
         },
-        crate::build::download_dependencies(crate::cli::Reporter::new())?,
+        crate::build::download_dependencies(paths, crate::cli::Reporter::new())?,
     )?;
 
     for entry in crate::fs::read_dir(&build)?.filter_map(Result::ok) {
@@ -100,10 +101,9 @@ the {ENTRYPOINT_FILENAME} script.
     Ok(())
 }
 
-pub fn hex_tarball() -> Result<()> {
-    let paths = crate::find_project_paths()?;
-    let mut config = crate::config::root_config()?;
-    let data: Vec<u8> = crate::publish::build_hex_tarball(&paths, &mut config)?;
+pub fn hex_tarball(paths: &ProjectPaths) -> Result<()> {
+    let mut config = crate::config::root_config(paths)?;
+    let data: Vec<u8> = crate::publish::build_hex_tarball(paths, &mut config)?;
 
     let path = paths.build_export_hex_tarball(&config.name, &config.version.to_string());
     crate::fs::write_bytes(&path, &data)?;
@@ -117,23 +117,19 @@ Your hex tarball has been generated in {}.
 }
 
 pub fn javascript_prelude() -> Result<()> {
-    print!("{}", glistix_core::javascript::PRELUDE);
+    print!("{}", gleam_core::javascript::PRELUDE);
     Ok(())
 }
 
 pub fn typescript_prelude() -> Result<()> {
-    print!("{}", glistix_core::javascript::PRELUDE_TS_DEF);
+    print!("{}", gleam_core::javascript::PRELUDE_TS_DEF);
     Ok(())
 }
 
-pub fn nix_prelude() -> Result<()> {
-    print!("{}", glistix_core::nix::PRELUDE);
-    Ok(())
-}
-
-pub fn package_interface(path: Utf8PathBuf) -> Result<()> {
+pub fn package_interface(paths: &ProjectPaths, out: Utf8PathBuf) -> Result<()> {
     // Build the project
     let mut built = crate::build::main(
+        paths,
         Options {
             mode: Mode::Prod,
             target: None,
@@ -143,11 +139,15 @@ pub fn package_interface(path: Utf8PathBuf) -> Result<()> {
             root_target_support: TargetSupport::Enforced,
             no_print_progress: false,
         },
-        crate::build::download_dependencies(crate::cli::Reporter::new())?,
+        crate::build::download_dependencies(paths, crate::cli::Reporter::new())?,
     )?;
     built.root_package.attach_doc_and_module_comments();
 
-    let out = glistix_core::docs::generate_json_package_interface(path, &built.root_package);
-    crate::fs::write_outputs_under(&[out], crate::find_project_paths()?.root())?;
+    let out = gleam_core::docs::generate_json_package_interface(
+        out,
+        &built.root_package,
+        &built.module_interfaces,
+    );
+    crate::fs::write_outputs_under(&[out], paths.root())?;
     Ok(())
 }

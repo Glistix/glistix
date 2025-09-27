@@ -2,7 +2,8 @@ use self::expression::CallKind;
 
 use super::*;
 use crate::ast::{
-    ImplicitCallArgOrigin, Statement, TypedPipelineAssignment, UntypedExpr, PIPE_VARIABLE,
+    FunctionLiteralKind, ImplicitCallArgOrigin, PIPE_VARIABLE, PipelineAssignmentKind, Statement,
+    TypedPipelineAssignment, UntypedExpr,
 };
 use vec1::Vec1;
 
@@ -12,11 +13,30 @@ pub(crate) struct PipeTyper<'a, 'b, 'c> {
     argument_type: Arc<Type>,
     argument_location: SrcSpan,
     location: SrcSpan,
-    assignments: Vec<TypedPipelineAssignment>,
+    first_value: TypedPipelineAssignment,
+    assignments: Vec<(TypedPipelineAssignment, PipelineAssignmentKind)>,
     expr_typer: &'a mut ExprTyper<'b, 'c>,
 }
 
 impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
+    fn new(expr_typer: &'a mut ExprTyper<'b, 'c>, size: usize, first: TypedExpr, end: u32) -> Self {
+        let first_type = first.type_();
+        let first_location = first.location();
+        let first_value = new_pipeline_assignment(expr_typer, first);
+        Self {
+            size,
+            expr_typer,
+            argument_type: first_type,
+            argument_location: first_location,
+            location: SrcSpan {
+                start: first_location.start,
+                end,
+            },
+            assignments: Vec::with_capacity(size),
+            first_value,
+        }
+    }
+
     pub fn infer(
         expr_typer: &'a mut ExprTyper<'b, 'c>,
         expressions: Vec1<UntypedExpr>,
@@ -47,42 +67,28 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
             }
         };
 
-        let mut typer = Self {
-            size,
-            expr_typer,
-            argument_type: first.type_(),
-            argument_location: first.location(),
-            location: SrcSpan {
-                start: first.location().start,
-                end,
-            },
-            assignments: Vec::with_capacity(size),
-        };
-
-        // No need to update self.argument_* as we set it above
-        typer.push_assignment_no_update(first);
-
-        // Perform the type checking
-        typer.infer_expressions(expressions)
+        Self::new(expr_typer, size, first, end).infer_expressions(expressions)
     }
 
     fn infer_expressions(
-        &mut self,
+        mut self,
         expressions: impl IntoIterator<Item = UntypedExpr>,
     ) -> TypedExpr {
-        let finally = self.infer_each_expression(expressions);
+        let (finally, finally_kind) = self.infer_each_expression(expressions);
         let assignments = std::mem::take(&mut self.assignments);
         TypedExpr::Pipeline {
-            assignments,
             location: self.location,
+            first_value: self.first_value,
+            assignments,
             finally: Box::new(finally),
+            finally_kind,
         }
     }
 
     fn infer_each_expression(
         &mut self,
         expressions: impl IntoIterator<Item = UntypedExpr>,
-    ) -> TypedExpr {
+    ) -> (TypedExpr, PipelineAssignmentKind) {
         let mut finally = None;
 
         for (i, call) in expressions.into_iter().enumerate() {
@@ -93,20 +99,33 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
 
             self.warn_if_call_first_argument_is_hole(&call);
 
-            let call = match call {
-                func @ UntypedExpr::Fn { location, .. } => {
+            let (kind, call) = match call {
+                func @ UntypedExpr::Fn { location, kind, .. } => {
                     let (func, args, return_type) = self.expr_typer.do_infer_call(
                         func.clone(),
                         vec![self.untyped_left_hand_value_variable_call_argument()],
                         location,
                         CallKind::Function,
                     );
-                    TypedExpr::Call {
-                        location,
-                        args,
-                        type_: return_type,
-                        fun: Box::new(func),
-                    }
+
+                    let kind = match kind {
+                        FunctionLiteralKind::Capture { hole } => {
+                            PipelineAssignmentKind::Hole { hole }
+                        }
+                        FunctionLiteralKind::Anonymous { .. } | FunctionLiteralKind::Use { .. } => {
+                            PipelineAssignmentKind::FunctionCall
+                        }
+                    };
+
+                    (
+                        kind,
+                        TypedExpr::Call {
+                            location,
+                            args,
+                            type_: return_type,
+                            fun: Box::new(func),
+                        },
+                    )
                 }
 
                 // left |> right(..args)
@@ -133,22 +152,52 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
 
                     match fun.type_().fn_types() {
                         // Rewrite as right(..args)(left)
-                        Some((args, _)) if args.len() == arguments.len() => {
-                            self.infer_apply_to_call_pipe(fun, arguments, location)
-                        }
+                        Some((args, _)) if args.len() == arguments.len() => (
+                            PipelineAssignmentKind::FunctionCall,
+                            self.infer_apply_to_call_pipe(fun, arguments, location),
+                        ),
+
                         // Rewrite as right(left, ..args)
-                        _ => self.infer_insert_pipe(fun, arguments, location),
+                        _ => (
+                            PipelineAssignmentKind::FirstArgument {
+                                second_argument: arguments.first().map(|arg| arg.location),
+                            },
+                            self.infer_insert_pipe(fun, arguments, location),
+                        ),
                     }
                 }
 
+                UntypedExpr::Echo {
+                    location,
+                    expression: None,
+                } => {
+                    self.expr_typer.environment.echo_found = true;
+                    // An echo that is not followed by an expression that is
+                    // used as a pipeline's step is just like the identity
+                    // function.
+                    // So it gets the type of the value coming from the previous
+                    // step of the pipeline.
+                    (
+                        PipelineAssignmentKind::Echo,
+                        TypedExpr::Echo {
+                            location,
+                            expression: None,
+                            type_: self.argument_type.clone(),
+                        },
+                    )
+                }
+
                 // right(left)
-                call => self.infer_apply_pipe(call),
+                call => (
+                    PipelineAssignmentKind::FunctionCall,
+                    self.infer_apply_pipe(call),
+                ),
             };
 
             if i + 2 == self.size {
-                finally = Some(call);
+                finally = Some((call, kind));
             } else {
-                self.push_assignment(call);
+                self.push_assignment(call, kind);
             }
         }
 
@@ -209,28 +258,11 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
     }
 
     /// Push an assignment for the value on the left hand side of the pipe
-    fn push_assignment(&mut self, expression: TypedExpr) {
+    fn push_assignment(&mut self, expression: TypedExpr, kind: PipelineAssignmentKind) {
         self.argument_type = expression.type_();
         self.argument_location = expression.location();
-        self.push_assignment_no_update(expression)
-    }
-
-    fn push_assignment_no_update(&mut self, expression: TypedExpr) {
-        let location = expression.location();
-        // Insert the variable for use in type checking the rest of the pipeline
-        self.expr_typer.environment.insert_local_variable(
-            PIPE_VARIABLE.into(),
-            location,
-            VariableOrigin::Generated,
-            expression.type_(),
-        );
-        // Add the assignment to the AST
-        let assignment = TypedPipelineAssignment {
-            location,
-            name: PIPE_VARIABLE.into(),
-            value: Box::new(expression),
-        };
-        self.assignments.push(assignment);
+        let assignment = new_pipeline_assignment(self.expr_typer, expression);
+        self.assignments.push((assignment, kind));
     }
 
     /// Attempt to infer a |> b(..c) as b(..c)(a)
@@ -336,7 +368,7 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
         };
 
         TypedExpr::Call {
-            location: function.location(),
+            location: function_location,
             type_: return_type,
             fun: function,
             args: vec![self.typed_left_hand_value_variable_call_argument()],
@@ -384,5 +416,24 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
                 }
             }
         }
+    }
+}
+
+fn new_pipeline_assignment(
+    expr_typer: &mut ExprTyper<'_, '_>,
+    expression: TypedExpr,
+) -> TypedPipelineAssignment {
+    let location = expression.location();
+    // Insert the variable for use in type checking the rest of the pipeline
+    expr_typer.environment.insert_local_variable(
+        PIPE_VARIABLE.into(),
+        location,
+        VariableOrigin::Generated,
+        expression.type_(),
+    );
+    TypedPipelineAssignment {
+        location,
+        name: PIPE_VARIABLE.into(),
+        value: Box::new(expression),
     }
 }

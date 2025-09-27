@@ -1,15 +1,17 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use flate2::{write::GzEncoder, Compression};
-use glistix_core::{
+use ecow::EcoString;
+use flate2::{Compression, write::GzEncoder};
+use gleam_core::{
+    Error, Result,
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, Options, Package, Target},
     config::{PackageConfig, SpdxLicense},
     docs::DocContext,
-    error::{wrap, SmallVersion},
+    error::{SmallVersion, wrap},
     hex,
     paths::{self, ProjectPaths},
     requirement::Requirement,
-    Error, Result,
+    type_,
 };
 use hexpm::version::{Range, Version};
 use itertools::Itertools;
@@ -18,9 +20,8 @@ use std::{io::Write, path::PathBuf, time::Instant};
 
 use crate::{build, cli, docs, fs, http::HttpClient};
 
-pub fn command(replace: bool, i_am_sure: bool) -> Result<()> {
-    let paths = crate::find_project_paths()?;
-    let mut config = crate::config::root_config()?;
+pub fn command(paths: &ProjectPaths, replace: bool, i_am_sure: bool) -> Result<()> {
+    let mut config = crate::config::root_config(paths)?;
 
     let should_publish = check_for_gleam_prefix(&config)?
         && check_for_version_zero(&config)?
@@ -33,19 +34,22 @@ pub fn command(replace: bool, i_am_sure: bool) -> Result<()> {
 
     let Tarball {
         mut compile_result,
+        cached_modules,
         data: package_tarball,
         src_files_added,
         generated_files_added,
-    } = do_build_hex_tarball(&paths, &mut config)?;
+    } = do_build_hex_tarball(paths, &mut config)?;
 
     check_for_name_squatting(&compile_result)?;
     check_for_multiple_top_level_modules(&compile_result, i_am_sure)?;
 
     // Build HTML documentation
     let docs_tarball = fs::create_tar_archive(docs::build_documentation(
+        paths,
         &config,
         &mut compile_result,
         DocContext::HexPublish,
+        &cached_modules,
     )?)?;
 
     // Ask user if this is correct
@@ -256,6 +260,7 @@ core team.\n",
 
 struct Tarball {
     compile_result: Package,
+    cached_modules: im::HashMap<EcoString, type_::ModuleInterface>,
     data: Vec<u8>,
     src_files_added: Vec<Utf8PathBuf>,
     generated_files_added: Vec<(Utf8PathBuf, String)>,
@@ -275,6 +280,7 @@ fn do_build_hex_tarball(paths: &ProjectPaths, config: &mut PackageConfig) -> Res
 
     // Build the project to check that it is valid
     let built = build::main(
+        paths,
         Options {
             root_target_support: TargetSupport::Enforced,
             warnings_as_errors: false,
@@ -284,7 +290,7 @@ fn do_build_hex_tarball(paths: &ProjectPaths, config: &mut PackageConfig) -> Res
             compile: Compile::All,
             no_print_progress: false,
         },
-        build::download_dependencies(cli::Reporter::new())?,
+        build::download_dependencies(paths, cli::Reporter::new())?,
     )?;
 
     let minimum_required_version = built.minimum_required_version();
@@ -321,18 +327,29 @@ fn do_build_hex_tarball(paths: &ProjectPaths, config: &mut PackageConfig) -> Res
         }
     }
 
-    // If any of the modules in the package contain a todo then refuse to
-    // publish as the package is not yet finished.
-    let unfinished = built
-        .root_package
-        .modules
-        .iter()
-        .filter(|module| module.ast.type_info.contains_todo())
-        .map(|module| module.name.clone())
-        .sorted()
-        .collect_vec();
-    if !unfinished.is_empty() {
-        return Err(Error::CannotPublishTodo { unfinished });
+    // If any of the modules in the package contain a todo or an echo then
+    // refuse to publish as the package is not yet finished.
+    let mut modules_containing_todo = vec![];
+    let mut modules_containing_echo = vec![];
+
+    for module in built.root_package.modules.iter() {
+        if module.ast.type_info.contains_todo() {
+            modules_containing_todo.push(module.name.clone());
+        } else if module.ast.type_info.contains_echo {
+            modules_containing_echo.push(module.name.clone());
+        }
+    }
+
+    if !modules_containing_todo.is_empty() {
+        return Err(Error::CannotPublishTodo {
+            unfinished: modules_containing_todo,
+        });
+    }
+
+    if !modules_containing_echo.is_empty() {
+        return Err(Error::CannotPublishEcho {
+            unfinished: modules_containing_echo,
+        });
     }
 
     // TODO: If any of the modules in the package contain a leaked internal type then
@@ -344,15 +361,11 @@ fn do_build_hex_tarball(paths: &ProjectPaths, config: &mut PackageConfig) -> Res
     let generated_files = match target {
         Target::Erlang => generated_erlang_files(paths, &built.root_package)?,
         Target::JavaScript => vec![],
-        Target::Nix => vec![],
     };
     let src_files = project_files(Utf8Path::new(""))?;
     let contents_tar_gz = contents_tarball(&src_files, &generated_files)?;
     let version = "3";
-    // Hex dependencies of the published package are based on the unpatched
-    // [dependencies] section. Patches in Hex dependencies are ignored.
-    let unpatched_config = crate::config::root_config_unpatched()?;
-    let metadata = metadata_config(&unpatched_config, &src_files, &generated_files)?;
+    let metadata = metadata_config(&built.root_package.config, &src_files, &generated_files)?;
 
     // Calculate checksum
     let mut hasher = sha2::Sha256::new();
@@ -375,6 +388,7 @@ fn do_build_hex_tarball(paths: &ProjectPaths, config: &mut PackageConfig) -> Res
     tracing::info!("Generated package Hex release tarball");
     Ok(Tarball {
         compile_result: built.root_package,
+        cached_modules: built.module_interfaces,
         data: tarball,
         src_files_added: src_files,
         generated_files_added: generated_files,
@@ -400,17 +414,9 @@ fn metadata_config<'a>(
     generated_files: &[(Utf8PathBuf, String)],
 ) -> Result<String> {
     let repo_url = http::Uri::try_from(config.repository.url().unwrap_or_default()).ok();
-    prevent_patching_hex_with_hex(config)?;
     let requirements: Result<Vec<ReleaseRequirement<'a>>> = config
         .dependencies
         .iter()
-        .map(
-            |(name, requirement)| match config.glistix.preview.hex_patch.get(name) {
-                // Workaround while we don't have full dependency patching
-                Some(patched_hex_dependency) => (name, patched_hex_dependency),
-                None => (name, requirement),
-            },
-        )
         .map(|(name, requirement)| match requirement {
             Requirement::Hex { version } => Ok(ReleaseRequirement {
                 name,
@@ -440,18 +446,6 @@ fn metadata_config<'a>(
     .as_erlang();
     tracing::info!(contents = ?metadata, "Generated Hex metadata.config");
     Ok(metadata)
-}
-
-fn prevent_patching_hex_with_hex(config: &PackageConfig) -> Result<()> {
-    for (name, patch) in &config.glistix.preview.hex_patch {
-        if let (Requirement::Hex { .. }, Some(Requirement::Hex { .. })) =
-            (patch, config.dependencies.get(name))
-        {
-            return Err(Error::CannotPatchHexWithHex { name: name.clone() });
-        }
-    }
-
-    Ok(())
 }
 
 fn contents_tarball(
@@ -754,43 +748,11 @@ fn prevent_publish_local_dependency() {
 }
 
 #[test]
-fn glistix_prevent_publish_hex_patched_with_hex() {
-    let mut config = PackageConfig::default();
-    config.dependencies = [("trophy".into(), Requirement::hex(">= 0.0.0"))].into();
-    config.glistix.preview.hex_patch =
-        [("trophy".into(), Requirement::hex("~> 0.34 or ~> 1.0"))].into();
-    assert_eq!(
-        metadata_config(&config, &[], &[]),
-        Err(Error::CannotPatchHexWithHex {
-            name: "trophy".into(),
-        })
-    );
-}
-
-#[test]
-fn glistix_patch_published_local_dependency() {
-    let mut config = PackageConfig::default();
-    config.dependencies = [("provided".into(), Requirement::path("./path/to/package"))].into();
-    config.glistix.preview.hex_patch =
-        [("provided".into(), Requirement::hex("~> 0.34 or ~> 1.0"))].into();
-    let meta = metadata_config(&config, &[], &[]).unwrap();
-    assert!(meta.contains(
-        r#"{<<"requirements">>, [
-  {<<"provided">>, [
-    {<<"app">>, <<"provided">>},
-    {<<"optional">>, false},
-    {<<"requirement">>, <<"~> 0.34 or ~> 1.0">>}
-  ]}
-]}."#
-    ))
-}
-
-#[test]
 fn prevent_publish_git_dependency() {
     let config = PackageConfig {
         dependencies: [(
             "provided".into(),
-            Requirement::git("https://github.com/gleam-lang/gleam.git"),
+            Requirement::git("https://github.com/gleam-lang/gleam.git", "da6e917"),
         )]
         .into(),
         ..Default::default()
@@ -831,34 +793,28 @@ fn exported_project_files_test() {
         "priv/wobble.js",
         "src/.hidden/hidden_ffi.erl",
         "src/.hidden/hidden_ffi.mjs",
-        "src/.hidden/hidden_ffi.nix",
         "src/.hidden_ffi.erl",
         "src/.hidden_ffi.mjs",
-        "src/.hidden_ffi.nix",
         "src/exported.gleam",
         "src/exported_ffi.erl",
         "src/exported_ffi.ex",
         "src/exported_ffi.hrl",
         "src/exported_ffi.js",
         "src/exported_ffi.mjs",
-        "src/exported_ffi.nix",
         "src/exported_ffi.ts",
         "src/ignored.gleam",
         "src/ignored_ffi.erl",
         "src/ignored_ffi.mjs",
-        "src/ignored_ffi.nix",
         "src/nested/exported.gleam",
         "src/nested/exported_ffi.erl",
         "src/nested/exported_ffi.ex",
         "src/nested/exported_ffi.hrl",
         "src/nested/exported_ffi.js",
         "src/nested/exported_ffi.mjs",
-        "src/nested/exported_ffi.nix",
         "src/nested/exported_ffi.ts",
         "src/nested/ignored.gleam",
         "src/nested/ignored_ffi.erl",
         "src/nested/ignored_ffi.mjs",
-        "src/nested/ignored_ffi.nix",
     ];
 
     let unexported_project_files = &[
@@ -876,24 +832,20 @@ fn exported_project_files_test() {
         "test/exported_test_ffi.hrl",
         "test/exported_test_ffi.js",
         "test/exported_test_ffi.mjs",
-        "test/exported_test_ffi.nix",
         "test/exported_test_ffi.ts",
         "test/ignored_test.gleam",
         "test/ignored_test_ffi.erl",
         "test/ignored_test_ffi.mjs",
-        "test/ignored_test_ffi.nix",
         "test/nested/exported_test.gleam",
         "test/nested/exported_test_ffi.erl",
         "test/nested/exported_test_ffi.ex",
         "test/nested/exported_test_ffi.hrl",
         "test/nested/exported_test_ffi.js",
         "test/nested/exported_test_ffi.mjs",
-        "test/nested/exported_test_ffi.nix",
         "test/nested/exported_test_ffi.ts",
         "test/nested/ignored.gleam",
         "test/nested/ignored_test_ffi.erl",
         "test/nested/ignored_test_ffi.mjs",
-        "test/nested/ignored_test_ffi.nix",
         "unrelated-file.txt",
     ];
 

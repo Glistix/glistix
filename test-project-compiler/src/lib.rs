@@ -2,7 +2,7 @@
 mod generated_tests;
 
 use camino::Utf8PathBuf;
-use glistix_core::{
+use gleam_core::{
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, NullTelemetry, Options, ProjectCompiler, Telemetry},
     config::PackageConfig,

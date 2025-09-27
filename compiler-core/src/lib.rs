@@ -45,6 +45,7 @@
     unused_results
 )]
 #![allow(
+    clippy::assign_op_pattern,
     clippy::to_string_trait_impl,
     clippy::match_single_binding,
     clippy::match_like_matches_macro,
@@ -78,7 +79,6 @@ pub mod language_server;
 pub mod line_numbers;
 pub mod manifest;
 pub mod metadata;
-pub mod nix;
 pub mod package_interface;
 pub mod parse;
 pub mod paths;

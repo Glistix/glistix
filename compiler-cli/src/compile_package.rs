@@ -1,11 +1,11 @@
 use crate::{
-    config,
+    CompilePackage, config,
     fs::{self, ConsoleWarningEmitter, ProjectIO},
-    CompilePackage,
 };
 use camino::Utf8Path;
 use ecow::EcoString;
-use glistix_core::{
+use gleam_core::{
+    Error, Result,
     build::{
         Mode, NullTelemetry, PackageCompiler, StaleTracker, Target, TargetCodegenConfiguration,
     },
@@ -14,7 +14,6 @@ use glistix_core::{
     type_::ModuleInterface,
     uid::UniqueIdGenerator,
     warning::WarningEmitter,
-    Error, Result,
 };
 use std::{collections::HashSet, rc::Rc};
 
@@ -33,11 +32,6 @@ pub fn command(options: CompilePackage) -> Result<()> {
             prelude_location: options
                 .javascript_prelude
                 .ok_or_else(|| Error::JavaScriptPreludeRequired)?,
-        },
-        Target::Nix => TargetCodegenConfiguration::Nix {
-            prelude_location: options
-                .nix_prelude
-                .ok_or_else(|| Error::NixPreludeRequired)?,
         },
     };
 

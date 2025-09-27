@@ -1,24 +1,24 @@
-use std::ops::Deref;
 use std::{
     collections::{HashMap, HashSet},
+    process::Command,
     time::Instant,
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
-use ecow::{eco_format, EcoString};
+use ecow::{EcoString, eco_format};
 use flate2::read::GzDecoder;
 use futures::future;
-use glistix_core::{
+use gleam_core::{
+    Error, Result,
     build::{Mode, Target, Telemetry},
     config::PackageConfig,
     dependency,
-    error::{FileIoAction, FileKind, StandardIoAction},
+    error::{FileIoAction, FileKind, ShellCommandFailureReason, StandardIoAction},
     hex::{self, HEXPM_PUBLIC_KEY},
     io::{HttpClient as _, TarUnpacker, WrappedReader},
     manifest::{Base16Checksum, Manifest, ManifestPackage, ManifestPackageSource},
     paths::ProjectPaths,
     requirement::Requirement,
-    Error, Result,
 };
 use hexpm::version::Version;
 use itertools::Itertools;
@@ -29,11 +29,11 @@ use strum::IntoEnumIterator;
 mod tests;
 
 use crate::{
+    TreeOptions,
     build_lock::BuildLock,
     cli,
     fs::{self, ProjectIO},
     http::HttpClient,
-    TreeOptions,
 };
 
 struct Symbols {
@@ -50,13 +50,13 @@ static UTF8_SYMBOLS: Symbols = Symbols {
     right: "─",
 };
 
-pub fn list() -> Result<()> {
-    let (_, _, manifest) = get_manifest_details()?;
+pub fn list(paths: &ProjectPaths) -> Result<()> {
+    let (_, manifest) = get_manifest_details(paths)?;
     list_manifest_packages(std::io::stdout(), manifest)
 }
 
-pub fn tree(options: TreeOptions) -> Result<()> {
-    let (project, config, manifest) = get_manifest_details()?;
+pub fn tree(paths: &ProjectPaths, options: TreeOptions) -> Result<()> {
+    let (config, manifest) = get_manifest_details(paths)?;
 
     // Initialize the root package since it is not part of the manifest
     let root_package = ManifestPackage {
@@ -65,7 +65,7 @@ pub fn tree(options: TreeOptions) -> Result<()> {
         requirements: config.all_direct_dependencies()?.keys().cloned().collect(),
         version: config.version.clone(),
         source: ManifestPackageSource::Local {
-            path: project.clone(),
+            path: paths.root().to_path_buf(),
         },
         otp_app: None,
     };
@@ -77,13 +77,11 @@ pub fn tree(options: TreeOptions) -> Result<()> {
     list_package_and_dependencies_tree(std::io::stdout(), options, packages.clone(), config.name)
 }
 
-fn get_manifest_details() -> Result<(Utf8PathBuf, PackageConfig, Manifest)> {
+fn get_manifest_details(paths: &ProjectPaths) -> Result<(PackageConfig, Manifest)> {
     let runtime = tokio::runtime::Runtime::new().expect("Unable to start Tokio async runtime");
-    let project = fs::get_project_root(fs::get_current_directory()?)?;
-    let paths = ProjectPaths::new(project.clone());
-    let config = crate::config::root_config()?;
+    let config = crate::config::root_config(paths)?;
     let (_, manifest) = get_manifest(
-        &paths,
+        paths,
         runtime.handle().clone(),
         Mode::Dev,
         &config,
@@ -91,7 +89,7 @@ fn get_manifest_details() -> Result<(Utf8PathBuf, PackageConfig, Manifest)> {
         UseManifest::Yes,
         Vec::new(),
     )?;
-    Ok((project, config, manifest))
+    Ok((config, manifest))
 }
 
 fn list_manifest_packages<W: std::io::Write>(mut buffer: W, manifest: Manifest) -> Result<()> {
@@ -204,8 +202,7 @@ pub enum UseManifest {
     No,
 }
 
-pub fn update(packages: Vec<String>) -> Result<()> {
-    let paths = crate::find_project_paths()?;
+pub fn update(paths: &ProjectPaths, packages: Vec<String>) -> Result<()> {
     let use_manifest = if packages.is_empty() {
         UseManifest::No
     } else {
@@ -214,7 +211,7 @@ pub fn update(packages: Vec<String>) -> Result<()> {
 
     // Update specific packages
     _ = download(
-        &paths,
+        paths,
         cli::Reporter::new(),
         None,
         packages.into_iter().map(EcoString::from).collect(),
@@ -238,7 +235,7 @@ pub fn cleanup<Telem: Telemetry>(paths: &ProjectPaths, telemetry: Telem) -> Resu
     let _guard = lock.lock(&telemetry);
 
     // Read the project config
-    let config = crate::config::read(paths.root_config())?;
+    let config = crate::root_config(paths)?;
     let mut manifest = read_manifest_from_disc(paths)?;
 
     remove_extra_requirements(&config, &mut manifest)?;
@@ -339,7 +336,7 @@ pub fn parse_gleam_add_specifier(package: &str) -> Result<(EcoString, Requiremen
                 error: format!(
                     "Expected up to 3 numbers in version specifier (MAJOR.MINOR.PATCH), found {n}"
                 ),
-            })
+            });
         }
     };
 
@@ -371,31 +368,8 @@ pub fn download<Telem: Telemetry>(
     let fs = ProjectIO::boxed();
 
     // Read the project config
-    let mut config = crate::config::read(paths.root_config())?;
+    let mut config = crate::root_config(paths)?;
     let project_name = config.name.clone();
-
-    if !config.glistix.preview.local_overrides.is_empty()
-        || !config.glistix.preview.hex_patch.is_empty()
-    {
-        eprintln!("\n\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-        cli::print_colourful_prefix(
-            "WARNING",
-            &glistix_core::error::wrap(
-                "Using deprecated 'glistix.preview.local-overrides' and 'glistix.preview.hex-patch' \
-options in your 'gleam.toml' file. Please use [glistix.preview.patch] instead, available since Glistix v0.7.0.
-
-See the Glistix handbook for migration instructions: https://glistix.github.io/book/compiler/changelog/v0-7-0.html",
-            ),
-        );
-        eprintln!("\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
-    }
-
-    // GLISTIX: Ensure config's patches are consistent
-    config
-        .glistix
-        .preview
-        .patch
-        .check_for_conflicting_patches()?;
 
     // Insert the new packages to add, if it exists
     if let Some((packages, dev)) = new_package {
@@ -458,8 +432,19 @@ async fn add_missing_packages<Telem: Telemetry>(
     let missing_packages = local.missing_local_packages(manifest, &project_name);
 
     let mut num_to_download = 0;
+
+    let missing_git_packages = missing_packages
+        .iter()
+        .copied()
+        .filter(|package| package.is_git())
+        .inspect(|_| {
+            num_to_download += 1;
+        })
+        .collect_vec();
+
     let mut missing_hex_packages = missing_packages
-        .into_iter()
+        .iter()
+        .copied()
         .filter(|package| package.is_hex())
         .inspect(|_| {
             num_to_download += 1;
@@ -467,7 +452,7 @@ async fn add_missing_packages<Telem: Telemetry>(
         .peekable();
 
     // If we need to download at-least one package
-    if missing_hex_packages.peek().is_some() {
+    if missing_hex_packages.peek().is_some() || !missing_git_packages.is_empty() {
         let http = HttpClient::boxed();
         let downloader = hex::Downloader::new(fs.clone(), fs, http, Untar::boxed(), paths.clone());
         let start = Instant::now();
@@ -475,6 +460,12 @@ async fn add_missing_packages<Telem: Telemetry>(
         downloader
             .download_hex_packages(missing_hex_packages, &project_name)
             .await?;
+        for package in missing_git_packages {
+            let ManifestPackageSource::Git { repo, commit } = &package.source else {
+                continue;
+            };
+            let _ = download_git_package(&package.name, repo, commit, paths)?;
+        }
         telemetry.packages_downloaded(start, num_to_download);
     }
 
@@ -648,11 +639,6 @@ fn get_manifest<Telem: Telemetry>(
             &config.all_direct_dependencies()?,
             paths.root(),
         )?
-        && glistix_is_same_patches(
-            &manifest.glistix.preview.patch,
-            &config.glistix.preview.patch,
-            paths.root(),
-        )?
     {
         tracing::debug!("manifest_up_to_date");
         Ok((false, manifest))
@@ -682,45 +668,6 @@ fn is_same_requirements(
 
     for (key, requirement1) in requirements1 {
         if !same_requirements(requirement1, requirements2.get(key), root_path)? {
-            return Ok(false);
-        }
-    }
-
-    Ok(true)
-}
-
-/// Check whether all patches are identical.
-///
-/// This is supposed to be almost identical to the function above, while
-/// also checking if the 'renamed-to' names of packages are also the same.
-fn glistix_is_same_patches(
-    patches1: &glistix_core::config::GlistixPatches,
-    patches2: &glistix_core::config::GlistixPatches,
-    root_path: &Utf8Path,
-) -> Result<bool> {
-    let patches1 = &patches1.0;
-    let patches2 = &patches2.0;
-    if patches1.len() != patches2.len() {
-        return Ok(false);
-    }
-
-    // NOTE: In principle, we consider that patches don't affect each other,
-    // or ignore any behavior similar to that.
-    for (key, patch) in patches1 {
-        let glistix_core::config::GlistixPatch {
-            name: name1,
-            source: patch1,
-        } = patch;
-
-        let Some(glistix_core::config::GlistixPatch {
-            name: name2,
-            source: patch2,
-        }) = patches2.get(key)
-        else {
-            return Ok(false);
-        };
-
-        if name1 != name2 || !same_requirements(patch1, Some(patch2), root_path)? {
             return Ok(false);
         }
     }
@@ -874,28 +821,6 @@ fn resolve_versions<Telem: Telemetry>(
     // The version requires of the current project
     let mut root_requirements = HashMap::new();
 
-    // GLISTIX: Provide local and Git patches
-    for (name, patch) in &config.glistix.preview.patch.0 {
-        let name = patch.name.as_ref().unwrap_or(name);
-        match &patch.source {
-            Requirement::Hex { .. } => {}
-            Requirement::Path { path } => {
-                _ = provide_local_package(
-                    name.clone(),
-                    path,
-                    project_paths.root(),
-                    project_paths,
-                    config,
-                    &mut provided_packages,
-                    &mut vec![],
-                )?;
-            }
-            Requirement::Git { git } => {
-                _ = provide_git_package(name.clone(), git, project_paths, &mut provided_packages)?;
-            }
-        };
-    }
-
     // Populate the provided_packages and root_requirements maps
     for (name, requirement) in dependencies.into_iter() {
         let version = match requirement {
@@ -905,13 +830,17 @@ fn resolve_versions<Telem: Telemetry>(
                 &path,
                 project_paths.root(),
                 project_paths,
-                config,
                 &mut provided_packages,
                 &mut vec![],
             )?,
-            Requirement::Git { git } => {
-                provide_git_package(name.clone(), &git, project_paths, &mut provided_packages)?
-            }
+            Requirement::Git { git, ref_ } => provide_git_package(
+                name.clone(),
+                &git,
+                &ref_,
+                project_paths,
+                &mut provided_packages,
+                &mut Vec::new(),
+            )?,
         };
         let _ = root_requirements.insert(name, version);
     }
@@ -928,29 +857,18 @@ fn resolve_versions<Telem: Telemetry>(
         config.name.clone(),
         root_requirements.into_iter(),
         &locked,
-        &config.glistix.preview.patch,
     )?;
 
     // Convert the hex packages and local packages into manifest packages
-    let manifest_packages = runtime.block_on(future::try_join_all(resolved.into_iter().map(
-        |(name, version)| {
-            lookup_package(
-                name,
-                version,
-                &provided_packages,
-                &config.glistix.preview.patch,
-            )
-        },
-    )))?;
+    let manifest_packages = runtime.block_on(future::try_join_all(
+        resolved
+            .into_iter()
+            .map(|(name, version)| lookup_package(name, version, &provided_packages)),
+    ))?;
 
     let manifest = Manifest {
         packages: manifest_packages,
         requirements: config.all_direct_dependencies()?,
-        glistix: glistix_core::manifest::GlistixManifest {
-            preview: glistix_core::manifest::GlistixPreviewManifest {
-                patch: config.glistix.preview.patch.clone(),
-            },
-        },
     };
 
     Ok(manifest)
@@ -962,36 +880,9 @@ fn provide_local_package(
     package_path: &Utf8Path,
     parent_path: &Utf8Path,
     project_paths: &ProjectPaths,
-    root_config: &PackageConfig,
     provided: &mut HashMap<EcoString, ProvidedPackage>,
     parents: &mut Vec<EcoString>,
 ) -> Result<hexpm::version::Range> {
-    // Apply root [glistix] patch, but only if the root also has this as a dependency
-    // We have to redefine the variables instead of mutating them to avoid lifetime problems.
-    let (package_path, parent_path) = if root_config
-        .glistix
-        .preview
-        .local_overrides
-        .contains(&package_name)
-    {
-        if let Some(root_override) = root_config.dependencies.get(&package_name) {
-            match root_override {
-                Requirement::Hex { version } => return Ok(version.clone()),
-                Requirement::Git { git } => {
-                    return provide_git_package(package_name, git, project_paths, provided)
-                }
-                Requirement::Path { path } => {
-                    // Pretend we're on the root to apply patch
-                    // Ensure package will be fetched from correct source
-                    (path.deref(), project_paths.root())
-                }
-            }
-        } else {
-            (package_path, parent_path)
-        }
-    } else {
-        (package_path, parent_path)
-    };
     let package_path = if package_path.is_absolute() {
         package_path.to_path_buf()
     } else {
@@ -1005,24 +896,109 @@ fn provide_local_package(
         package_path,
         package_source,
         project_paths,
-        root_config,
         provided,
         parents,
     )
 }
 
+fn execute_command(command: &mut Command) -> Result<std::process::Output> {
+    let output = command.output().map_err(|error| Error::ShellCommand {
+        program: "git".into(),
+        reason: ShellCommandFailureReason::IoError(error.kind()),
+    })?;
+    if output.status.success() {
+        Ok(output)
+    } else {
+        let reason = match String::from_utf8(output.stderr) {
+            Ok(stderr) => ShellCommandFailureReason::ShellCommandError(stderr),
+            Err(_) => ShellCommandFailureReason::Unknown,
+        };
+        Err(Error::ShellCommand {
+            program: "git".into(),
+            reason,
+        })
+    }
+}
+
+fn download_git_package(
+    package_name: &str,
+    repo: &str,
+    ref_: &str,
+    project_paths: &ProjectPaths,
+) -> Result<EcoString> {
+    let package_path = project_paths.build_packages_package(package_name);
+    fs::mkdir(&package_path)?;
+
+    let _ = execute_command(Command::new("git").arg("init").current_dir(&package_path))?;
+
+    // This command can fail if the directory already exists,
+    // for example if we resolve versions, then download dependencies.
+    // If that happens, we don't really care: We already have the origin,
+    // so we can safely ignore any errors here
+    let _ = Command::new("git")
+        .arg("remote")
+        .arg("add")
+        .arg("origin")
+        .arg(repo)
+        .current_dir(&package_path)
+        .output();
+
+    let _ = execute_command(
+        Command::new("git")
+            .arg("fetch")
+            .arg("origin")
+            .current_dir(&package_path),
+    )?;
+
+    let _ = execute_command(
+        Command::new("git")
+            .arg("checkout")
+            .arg(ref_)
+            .current_dir(&package_path),
+    )?;
+
+    let output = execute_command(
+        Command::new("git")
+            .arg("rev-parse")
+            .arg("HEAD")
+            .current_dir(&package_path),
+    )?;
+
+    let commit = String::from_utf8(output.stdout)
+        .expect("Output should be UTF-8")
+        .trim()
+        .into();
+
+    Ok(commit)
+}
+
 /// Provide a package from a git repository
 fn provide_git_package(
-    _package_name: EcoString,
-    _repo: &str,
-    _project_paths: &ProjectPaths,
-    _provided: &mut HashMap<EcoString, ProvidedPackage>,
+    package_name: EcoString,
+    repo: &str,
+    // A git ref, such as a branch name, commit hash or tag name
+    ref_: &str,
+    project_paths: &ProjectPaths,
+    provided: &mut HashMap<EcoString, ProvidedPackage>,
+    parents: &mut Vec<EcoString>,
 ) -> Result<hexpm::version::Range> {
-    let _git = ProvidedPackageSource::Git {
-        repo: "repo".into(),
-        commit: "commit".into(),
+    let commit = download_git_package(&package_name, repo, ref_, project_paths)?;
+
+    let package_source = ProvidedPackageSource::Git {
+        repo: repo.into(),
+        commit,
     };
-    Err(Error::GitDependencyUnsupported)
+
+    let package_path = fs::canonicalise(&project_paths.build_packages_package(&package_name))?;
+
+    provide_package(
+        package_name,
+        package_path,
+        package_source,
+        project_paths,
+        provided,
+        parents,
+    )
 }
 
 /// Adds a gleam project located at a specific path to the list of "provided packages"
@@ -1031,7 +1007,6 @@ fn provide_package(
     package_path: Utf8PathBuf,
     package_source: ProvidedPackageSource,
     project_paths: &ProjectPaths,
-    root_config: &PackageConfig,
     provided: &mut HashMap<EcoString, ProvidedPackage>,
     parents: &mut Vec<EcoString>,
 ) -> Result<hexpm::version::Range> {
@@ -1039,7 +1014,7 @@ fn provide_package(
     if parents.contains(&package_name) {
         let mut last_cycle = parents
             .split(|p| p == &package_name)
-            .next_back()
+            .last()
             .unwrap_or_default()
             .to_vec();
         last_cycle.push(package_name);
@@ -1065,17 +1040,7 @@ fn provide_package(
         None => (),
     }
     // Load the package
-    let config = crate::config::read_unpatched(package_path.join("gleam.toml")).map(|mut c| {
-        // Patch transitive dependencies with root's patches
-        // (ignore their own)
-        root_config
-            .glistix
-            .preview
-            .patch
-            .patch_config(&mut c, project_paths.root());
-        c
-    })?;
-
+    let config = crate::config::read(package_path.join("gleam.toml"))?;
     // Check that we are loading the correct project
     if config.name != package_name {
         return Err(Error::WrongDependencyProvided {
@@ -1097,13 +1062,12 @@ fn provide_package(
                     &path,
                     &package_path,
                     project_paths,
-                    root_config,
                     provided,
                     parents,
                 )?
             }
-            Requirement::Git { git } => {
-                provide_git_package(name.clone(), &git, project_paths, provided)?
+            Requirement::Git { git, ref_ } => {
+                provide_git_package(name.clone(), &git, &ref_, project_paths, provided, parents)?
             }
         };
         let _ = requirements.insert(name, version);
@@ -1181,7 +1145,6 @@ async fn lookup_package(
     name: String,
     version: Version,
     provided: &HashMap<EcoString, ProvidedPackage>,
-    glistix_patches: &glistix_core::config::GlistixPatches,
 ) -> Result<ManifestPackage> {
     match provided.get(name.as_str()) {
         Some(provided_package) => Ok(provided_package.to_manifest_package(name.as_str())),
@@ -1199,11 +1162,6 @@ async fn lookup_package(
                 .requirements
                 .keys()
                 .map(|s| EcoString::from(s.as_str()))
-                .map(|s| {
-                    // Ensure dependencies renamed by a patch are also renamed
-                    // in the 'requirements' section of dependents in the manifest.
-                    glistix_patches.replace_name_ecostring(s)
-                })
                 .collect_vec();
             Ok(ManifestPackage {
                 name: name.into(),

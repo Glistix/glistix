@@ -78,9 +78,9 @@ pub enum UntypedExpr {
         //   user.name
         //   ^^^^^^^^^
         location: SrcSpan,
-        // This is the location of just the field access
+        // This is the location of just the field access (ignoring the `.`)
         //   user.name
-        //       ^^^^^
+        //        ^^^^
         label_location: SrcSpan,
         label: EcoString,
         container: Box<Self>,
@@ -106,6 +106,11 @@ pub enum UntypedExpr {
     Panic {
         location: SrcSpan,
         message: Option<Box<Self>>,
+    },
+
+    Echo {
+        location: SrcSpan,
+        expression: Option<Box<Self>>,
     },
 
     BitArray {
@@ -150,6 +155,7 @@ impl UntypedExpr {
             | Self::Var { location, .. }
             | Self::Int { location, .. }
             | Self::Todo { location, .. }
+            | Self::Echo { location, .. }
             | Self::Case { location, .. }
             | Self::Call { location, .. }
             | Self::List { location, .. }
@@ -251,7 +257,7 @@ impl HasLocation for UntypedExpr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionLiteralKind {
-    Capture,
+    Capture { hole: SrcSpan },
     Anonymous { head: SrcSpan },
     Use { location: SrcSpan },
 }
@@ -259,7 +265,7 @@ pub enum FunctionLiteralKind {
 impl FunctionLiteralKind {
     pub fn is_capture(&self) -> bool {
         match self {
-            FunctionLiteralKind::Capture => true,
+            FunctionLiteralKind::Capture { .. } => true,
             FunctionLiteralKind::Anonymous { .. } | FunctionLiteralKind::Use { .. } => false,
         }
     }

@@ -4,12 +4,12 @@ use crate::{
     ast::{
         Arg, Assignment, AssignmentKind, BinOp, BitArrayOption, BitArraySegment, CallArg, Clause,
         ClauseGuard, Constant, FunctionLiteralKind, HasLocation, ImplicitCallArgOrigin, Layer,
-        RecordBeingUpdated, SrcSpan, Statement, TodoKind, TypeAst, TypedArg, TypedAssignment,
-        TypedClause, TypedClauseGuard, TypedConstant, TypedExpr, TypedMultiPattern, TypedStatement,
-        UntypedArg, UntypedAssignment, UntypedClause, UntypedClauseGuard, UntypedConstant,
-        UntypedConstantBitArraySegment, UntypedExpr, UntypedExprBitArraySegment,
-        UntypedMultiPattern, UntypedStatement, UntypedUse, UntypedUseAssignment, Use,
-        UseAssignment, RECORD_UPDATE_VARIABLE, USE_ASSIGNMENT_VARIABLE,
+        RECORD_UPDATE_VARIABLE, RecordBeingUpdated, SrcSpan, Statement, TodoKind, TypeAst,
+        TypedArg, TypedAssignment, TypedClause, TypedClauseGuard, TypedConstant, TypedExpr,
+        TypedMultiPattern, TypedStatement, USE_ASSIGNMENT_VARIABLE, UntypedArg, UntypedAssignment,
+        UntypedClause, UntypedClauseGuard, UntypedConstant, UntypedConstantBitArraySegment,
+        UntypedExpr, UntypedExprBitArraySegment, UntypedMultiPattern, UntypedStatement, UntypedUse,
+        UntypedUseAssignment, Use, UseAssignment,
     },
     build::Target,
     exhaustiveness::{self, Reachability},
@@ -41,16 +41,12 @@ pub struct Implementations {
     pub gleam: bool,
     pub can_run_on_erlang: bool,
     pub can_run_on_javascript: bool,
-    pub can_run_on_nix: bool,
     /// Wether the function has an implementation that uses external erlang
     /// code.
     pub uses_erlang_externals: bool,
     /// Wether the function has an implementation that uses external javascript
     /// code.
     pub uses_javascript_externals: bool,
-    /// Whether the function has an implementation that uses external Nix
-    /// code.
-    pub uses_nix_externals: bool,
 }
 
 impl Implementations {
@@ -59,10 +55,8 @@ impl Implementations {
             gleam: true,
             can_run_on_erlang: true,
             can_run_on_javascript: true,
-            can_run_on_nix: true,
             uses_javascript_externals: false,
             uses_erlang_externals: false,
-            uses_nix_externals: false,
         }
     }
 }
@@ -79,8 +73,6 @@ pub struct FunctionDefinition {
     pub has_erlang_external: bool,
     /// The function has @external(JavaScript, "...", "...")
     pub has_javascript_external: bool,
-    /// The function has @external(Nix, "...", "...")
-    pub has_nix_external: bool,
 }
 
 impl FunctionDefinition {
@@ -88,7 +80,6 @@ impl FunctionDefinition {
         match target {
             Target::Erlang => self.has_erlang_external,
             Target::JavaScript => self.has_javascript_external,
-            Target::Nix => self.has_nix_external,
         }
     }
 }
@@ -108,16 +99,13 @@ impl Implementations {
             gleam,
             uses_erlang_externals: other_uses_erlang_externals,
             uses_javascript_externals: other_uses_javascript_externals,
-            uses_nix_externals: other_uses_nix_externals,
             can_run_on_erlang: other_can_run_on_erlang,
             can_run_on_javascript: other_can_run_on_javascript,
-            can_run_on_nix: other_can_run_on_nix,
         } = implementations;
         let FunctionDefinition {
             has_body: _,
             has_erlang_external,
             has_javascript_external,
-            has_nix_external,
         } = current_function_definition;
 
         // If a pure-Gleam function uses a function that doesn't have a pure
@@ -130,8 +118,6 @@ impl Implementations {
             || (self.can_run_on_erlang && (*gleam || *other_can_run_on_erlang));
         self.can_run_on_javascript = *has_javascript_external
             || (self.can_run_on_javascript && (*gleam || *other_can_run_on_javascript));
-        self.can_run_on_nix =
-            *has_nix_external || (self.can_run_on_nix && (*gleam || *other_can_run_on_nix));
 
         // If a function uses a function that relies on external code (be it
         // javascript or erlang) then it's considered as using external code as
@@ -154,7 +140,6 @@ impl Implementations {
         self.uses_erlang_externals = self.uses_erlang_externals || *other_uses_erlang_externals;
         self.uses_javascript_externals =
             self.uses_javascript_externals || *other_uses_javascript_externals;
-        self.uses_nix_externals = self.uses_nix_externals || *other_uses_nix_externals;
     }
 
     /// Returns true if the current target is supported by the given
@@ -166,7 +151,6 @@ impl Implementations {
             || match target {
                 Target::Erlang => self.can_run_on_erlang,
                 Target::JavaScript => self.can_run_on_javascript,
-                Target::Nix => self.can_run_on_nix,
             }
     }
 }
@@ -244,10 +228,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             gleam: definition.has_body,
             can_run_on_erlang: definition.has_body || definition.has_erlang_external,
             can_run_on_javascript: definition.has_body || definition.has_javascript_external,
-            can_run_on_nix: definition.has_body || definition.has_nix_external,
             uses_erlang_externals: definition.has_erlang_external,
             uses_javascript_externals: definition.has_javascript_external,
-            uses_nix_externals: definition.has_nix_external,
         };
 
         hydrator.permit_holes(true);
@@ -317,6 +299,11 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 location, message, ..
             } => self.infer_panic(location, message),
 
+            UntypedExpr::Echo {
+                location,
+                expression,
+            } => self.infer_echo(location, expression),
+
             UntypedExpr::Var { location, name, .. } => self.infer_var(name, location),
 
             UntypedExpr::Int {
@@ -329,12 +316,6 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     && !self.current_function_definition.has_javascript_external
                 {
                     check_javascript_int_safety(&int_value, location, self.problems);
-                }
-
-                if self.environment.target == Target::Nix
-                    && !self.current_function_definition.has_nix_external
-                {
-                    glistix_check_nix_int_safety(&int_value, location, self.problems);
                 }
 
                 Ok(self.infer_int(value, int_value, location))
@@ -356,12 +337,6 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     && !self.current_function_definition.has_erlang_external
                 {
                     check_erlang_float_safety(&value, location, self.problems)
-                }
-
-                if self.environment.target == Target::Nix
-                    && !self.current_function_definition.has_nix_external
-                {
-                    glistix_check_nix_float_safety(&value, location, self.problems)
                 }
 
                 Ok(self.infer_float(value, location))
@@ -414,9 +389,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 label_location,
                 label,
                 container,
-                ..
+                location,
             } => Ok(self.infer_field_access(
                 *container,
+                location,
                 label,
                 label_location,
                 FieldAccessUsage::Other,
@@ -509,6 +485,27 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             type_,
             message,
         })
+    }
+
+    fn infer_echo(
+        &mut self,
+        location: SrcSpan,
+        expression: Option<Box<UntypedExpr>>,
+    ) -> Result<TypedExpr, Error> {
+        self.environment.echo_found = true;
+        if let Some(expression) = expression {
+            let expression = self.infer(*expression)?;
+            if self.previous_panics {
+                self.warn_for_unreachable_code(location, PanicPosition::EchoExpression);
+            }
+            Ok(TypedExpr::Echo {
+                location,
+                type_: expression.type_(),
+                expression: Some(Box::new(expression)),
+            })
+        } else {
+            Err(Error::EchoWithNoFollowingExpression { location })
+        }
     }
 
     pub(crate) fn warn_for_unreachable_code(
@@ -1005,7 +1002,22 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     fn infer_field_access(
         &mut self,
         container: UntypedExpr,
+
+        // The SrcSpan of the entire field access:
+        // ```gleam
+        //    wibble.wobble
+        // // ^^^^^^^^^^^^^ This
+        // ```
+        //
+        location: SrcSpan,
         label: EcoString,
+
+        // The SrcSpan of the selection label:
+        // ```gleam
+        //    wibble.wobble
+        // // ^^^^^^ This
+        // ```
+        //
         label_location: SrcSpan,
         usage: FieldAccessUsage,
     ) -> TypedExpr {
@@ -1041,7 +1053,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             (_, Some((Err(module_access_err), false))) => {
                 self.problems.error(module_access_err);
                 TypedExpr::Invalid {
-                    location: label_location,
+                    location,
                     type_: self.new_unbound_var(),
                 }
             }
@@ -1060,7 +1072,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         record: Box::new(record),
                     },
                     Err(_) => TypedExpr::Invalid {
-                        location: label_location,
+                        location,
                         type_: self.new_unbound_var(),
                     },
                 }
@@ -1201,6 +1213,40 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 location: error.location,
             }
         })?;
+
+        // Track usage of the unaligned bit arrays feature on JavaScript so that
+        // warnings can be emitted if the Gleam version constraint is too low
+        if self.environment.target == Target::JavaScript
+            && !self.current_function_definition.has_javascript_external
+        {
+            for option in options.iter() {
+                if let BitArrayOption::<TypedValue>::Size {
+                    value, location, ..
+                } = option
+                {
+                    let mut using_unaligned_bit_array = false;
+
+                    if type_ == int() {
+                        match &(**value).as_int_literal() {
+                            Some(size) if size % 8 != 0 => {
+                                using_unaligned_bit_array = true;
+                            }
+                            _ => (),
+                        }
+                    } else if type_ == bits() {
+                        using_unaligned_bit_array = true;
+                    }
+
+                    if using_unaligned_bit_array {
+                        self.track_feature_usage(
+                            FeatureKind::JavaScriptUnalignedBitArray,
+                            *location,
+                        );
+                        break;
+                    }
+                }
+            }
+        }
 
         unify(type_.clone(), value.type_())
             .map_err(|e| convert_unify_error(e, value.location()))?;
@@ -1362,6 +1408,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let mut pattern_typer = pattern::PatternTyper::new(
             self.environment,
             &self.implementations,
+            &self.current_function_definition,
             &self.hydrator,
             self.problems,
         );
@@ -1636,6 +1683,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let mut pattern_typer = pattern::PatternTyper::new(
             self.environment,
             &self.implementations,
+            &self.current_function_definition,
             &self.hydrator,
             self.problems,
         );
@@ -1691,7 +1739,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
                     ValueConstructorVariant::ModuleConstant { literal, .. }
                     | ValueConstructorVariant::LocalConstant { literal } => {
-                        return Ok(ClauseGuard::Constant(literal.clone()))
+                        return Ok(ClauseGuard::Constant(literal.clone()));
                     }
                 };
 
@@ -2207,6 +2255,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             .and_then(|ma| match ma {
                 TypedExpr::ModuleSelect {
                     location,
+                    field_start: _,
                     type_,
                     label,
                     module_name,
@@ -2247,6 +2296,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         module_location: &SrcSpan,
         select_location: SrcSpan,
     ) -> Result<TypedExpr, Error> {
+        let location = module_location.merge(&select_location);
+
         let (module_name, constructor) = {
             let (_, module) = self
                 .environment
@@ -2265,10 +2316,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     .get_public_value(&label)
                     .ok_or_else(|| Error::UnknownModuleValue {
                         name: label.clone(),
-                        location: SrcSpan {
-                            start: module_location.end,
-                            end: select_location.end,
-                        },
+                        location: select_location,
                         module_name: module.name.clone(),
                         value_constructors: module.public_value_names(),
                         type_with_same_name: module.get_public_type(&label).is_some(),
@@ -2310,9 +2358,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         };
 
         Ok(TypedExpr::ModuleSelect {
+            location,
+            field_start: select_location.start,
             label,
             type_: Arc::clone(&type_),
-            location: select_location,
             module_name,
             module_alias: module_alias.clone(),
             constructor,
@@ -2546,32 +2595,37 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         self.track_feature_usage(FeatureKind::LabelShorthandSyntax, *location);
                     }
 
-                    if let Some(index) = fields.remove(label) {
-                        unify(variant.arg_type(index), value.type_())
-                            .map_err(|e| convert_unify_error(e, *location))?;
+                    match fields.remove(label) {
+                        Some(index) => {
+                            unify(variant.arg_type(index), value.type_())
+                                .map_err(|e| convert_unify_error(e, *location))?;
 
-                        Ok((
-                            index,
-                            CallArg {
-                                label: Some(label.clone()),
-                                location: *location,
-                                value,
-                                implicit: None,
-                            },
-                        ))
-                    } else if variant.has_field(label) {
-                        Err(Error::DuplicateArgument {
-                            location: *location,
-                            label: label.clone(),
-                        })
-                    } else {
-                        Err(self.unknown_field_error(
-                            variant.field_names(),
-                            record_type.clone(),
-                            *location,
-                            label.clone(),
-                            FieldAccessUsage::RecordUpdate,
-                        ))
+                            Ok((
+                                index,
+                                CallArg {
+                                    label: Some(label.clone()),
+                                    location: *location,
+                                    value,
+                                    implicit: None,
+                                },
+                            ))
+                        }
+                        _ => {
+                            if variant.has_field(label) {
+                                Err(Error::DuplicateArgument {
+                                    location: *location,
+                                    label: label.clone(),
+                                })
+                            } else {
+                                Err(self.unknown_field_error(
+                                    variant.field_names(),
+                                    record_type.clone(),
+                                    *location,
+                                    label.clone(),
+                                    FieldAccessUsage::RecordUpdate,
+                                ))
+                            }
+                        }
                     }
                 },
             )
@@ -2652,7 +2706,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             _ => {
                 return Err(Error::RecordUpdateInvalidConstructor {
                     location: constructor.location(),
-                })
+                });
             }
         };
 
@@ -2680,7 +2734,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             _ => {
                 return Err(Error::RecordUpdateInvalidConstructor {
                     location: constructor.location(),
-                })
+                });
             }
         };
 
@@ -2905,10 +2959,6 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     check_javascript_int_safety(&int_value, location, self.problems);
                 }
 
-                if self.environment.target == Target::Nix {
-                    glistix_check_nix_int_safety(&int_value, location, self.problems);
-                }
-
                 Ok(Constant::Int {
                     location,
                     value,
@@ -2921,10 +2971,6 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             } => {
                 if self.environment.target == Target::Erlang {
                     check_erlang_float_safety(&value, location, self.problems)
-                }
-
-                if self.environment.target == Target::Nix {
-                    glistix_check_nix_float_safety(&value, location, self.problems)
                 }
 
                 Ok(Constant::Float { location, value })
@@ -2970,13 +3016,13 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
                     ValueConstructorVariant::ModuleFn { .. }
                     | ValueConstructorVariant::LocalVariable { .. } => {
-                        return Err(Error::NonLocalClauseGuardVariable { location, name })
+                        return Err(Error::NonLocalClauseGuardVariable { location, name });
                     }
 
                     // TODO: remove this clone. Could use an rc instead
                     ValueConstructorVariant::ModuleConstant { literal, .. }
                     | ValueConstructorVariant::LocalConstant { literal } => {
-                        return Ok(literal.clone())
+                        return Ok(literal.clone());
                     }
                 };
 
@@ -3014,13 +3060,13 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
                     ValueConstructorVariant::ModuleFn { .. }
                     | ValueConstructorVariant::LocalVariable { .. } => {
-                        return Err(Error::NonLocalClauseGuardVariable { location, name })
+                        return Err(Error::NonLocalClauseGuardVariable { location, name });
                     }
 
                     // TODO: remove this clone. Could be an rc instead
                     ValueConstructorVariant::ModuleConstant { literal, .. }
                     | ValueConstructorVariant::LocalConstant { literal } => {
-                        return Ok(literal.clone())
+                        return Ok(literal.clone());
                     }
                 };
 
@@ -3030,7 +3076,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 // TODO: resvisit this. It is rather awkward at present how we
                 // have to convert to this other data structure.
                 let fun = match &module {
-                    Some((module_alias, _)) => {
+                    Some((module_alias, module_location)) => {
                         let type_ = Arc::clone(&constructor.type_);
                         let module_name = self
                             .environment
@@ -3051,12 +3097,13 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         };
 
                         TypedExpr::ModuleSelect {
+                            location: module_location.merge(&location),
+                            field_start: location.start,
                             label: name.clone(),
                             module_alias: module_alias.clone(),
                             module_name,
                             type_,
                             constructor: module_value_constructor,
-                            location,
                         }
                     }
 
@@ -3209,16 +3256,17 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             // Type annotation and inferred value are valid. Ensure they are unifiable.
             // NOTE: if the types are not unifiable we use the annotated type.
             (Some(Ok(const_ann)), Ok(inferred)) => {
-                if let Err(e) = unify(const_ann.clone(), inferred.type_())
+                match unify(const_ann.clone(), inferred.type_())
                     .map_err(|e| convert_unify_error(e, inferred.location()))
                 {
-                    self.problems.error(e);
-                    Constant::Invalid {
-                        location: loc,
-                        type_: const_ann,
+                    Err(e) => {
+                        self.problems.error(e);
+                        Constant::Invalid {
+                            location: loc,
+                            type_: const_ann,
+                        }
                     }
-                } else {
-                    inferred
+                    _ => inferred,
                 }
             }
             // Type annotation is valid but not the inferred value. Place a placeholder constant with the annotation type.
@@ -3320,9 +3368,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 label,
                 container,
                 label_location,
-                ..
+                location,
             } => Ok(self.infer_field_access(
                 *container,
+                location,
                 label,
                 label_location,
                 FieldAccessUsage::MethodCall,
@@ -3410,22 +3459,24 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 }
             });
         if let Err(e) = field_map {
-            if let Error::IncorrectArity {
-                expected,
-                given,
-                labels,
-                location,
-            } = e
-            {
-                labelled_arity_error = true;
-                self.problems.error(Error::IncorrectArity {
+            match e {
+                Error::IncorrectArity {
                     expected,
                     given,
                     labels,
                     location,
-                });
-            } else {
-                self.problems.error(e);
+                } => {
+                    labelled_arity_error = true;
+                    self.problems.error(Error::IncorrectArity {
+                        expected,
+                        given,
+                        labels,
+                        location,
+                    });
+                }
+                _ => {
+                    self.problems.error(e);
+                }
             }
         }
 

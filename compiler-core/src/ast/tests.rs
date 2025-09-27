@@ -8,7 +8,7 @@ use crate::config::PackageConfig;
 use crate::line_numbers::LineNumbers;
 use crate::type_::error::VariableOrigin;
 use crate::type_::expression::FunctionDefinition;
-use crate::type_::{Deprecation, Problems, PRELUDE_MODULE_NAME};
+use crate::type_::{Deprecation, PRELUDE_MODULE_NAME, Problems};
 use crate::warning::WarningEmitter;
 use crate::{
     ast::{SrcSpan, TypedExpr},
@@ -150,7 +150,6 @@ fn compile_expression(src: &str) -> TypedStatement {
             has_body: true,
             has_erlang_external: false,
             has_javascript_external: false,
-            has_nix_external: false,
         },
         &mut problems,
     )
@@ -367,7 +366,8 @@ fn find_node_tuple_index() {
 #[test]
 fn find_node_module_select() {
     let expr = TypedExpr::ModuleSelect {
-        location: SrcSpan { start: 1, end: 3 },
+        location: SrcSpan { start: 1, end: 4 },
+        field_start: 2,
         type_: type_::int(),
         label: "label".into(),
         module_name: "name".into(),
@@ -377,7 +377,6 @@ fn find_node_module_select() {
             name: "function".into(),
             external_erlang: None,
             external_javascript: None,
-            external_nix: None,
             location: SrcSpan { start: 1, end: 55 },
             documentation: None,
             field_map: None,
@@ -385,7 +384,14 @@ fn find_node_module_select() {
     };
 
     assert_eq!(expr.find_node(0), None);
-    assert_eq!(expr.find_node(1), Some(Located::Expression(&expr)));
+    assert_eq!(
+        expr.find_node(1),
+        Some(Located::ModuleName {
+            location: SrcSpan::new(1, 1),
+            name: &"name".into(),
+            layer: super::Layer::Value
+        })
+    );
     assert_eq!(expr.find_node(2), Some(Located::Expression(&expr)));
     assert_eq!(expr.find_node(3), Some(Located::Expression(&expr)));
 }

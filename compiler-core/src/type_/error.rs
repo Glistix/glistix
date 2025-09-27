@@ -1,6 +1,6 @@
 use super::{
-    expression::{ArgumentKind, CallKind},
     FieldAccessUsage,
+    expression::{ArgumentKind, CallKind},
 };
 use crate::{
     ast::{BinOp, Layer, SrcSpan, TodoKind},
@@ -143,7 +143,7 @@ impl ModuleSuggestion {
     pub fn last_name_component(&self) -> &str {
         match self {
             ModuleSuggestion::Imported(name) | ModuleSuggestion::Importable(name) => {
-                name.split('/').next_back().unwrap_or(name)
+                name.split('/').last().unwrap_or(name)
             }
         }
     }
@@ -436,22 +436,6 @@ pub enum Error {
         name: EcoString,
     },
 
-    /// A function's Nix implementation has been given but it does not
-    /// have a valid module name.
-    InvalidExternalNixModule {
-        location: SrcSpan,
-        module: EcoString,
-        name: EcoString,
-    },
-
-    /// A function's Nix implementation has been given but it does not
-    /// have a valid function name.
-    InvalidExternalNixFunction {
-        location: SrcSpan,
-        function: EcoString,
-        name: EcoString,
-    },
-
     /// A case expression is missing one or more patterns to match all possible
     /// values of the type.
     InexhaustiveCaseExpression {
@@ -584,7 +568,7 @@ pub enum Error {
         name: EcoString,
     },
 
-    /// Occers when all the variant types of a custom type are deprecated
+    /// Occurs when all the variant types of a custom type are deprecated
     ///
     /// ```gleam
     /// type Wibble {
@@ -608,11 +592,17 @@ pub enum Error {
         location: SrcSpan,
     },
 
-    GlistixNixFloatUnsafe {
-        location: SrcSpan,
-    },
-
-    GlistixNixIntUnsafe {
+    /// When the echo keyword is not followed by an expression to be printed.
+    /// The only place where echo is allowed to appear on its own is as a step
+    /// of a pipeline, otherwise omitting the expression will result in this
+    /// error. For example:
+    ///
+    /// ```gleam
+    /// call(echo, 1, 2)
+    /// //   ^^^^ Error!
+    /// ```
+    ///
+    EchoWithNoFollowingExpression {
         location: SrcSpan,
     },
 }
@@ -949,6 +939,7 @@ pub enum FeatureKind {
     RecordAccessVariantInference,
     LetAssertWithMessage,
     VariantWithDeprecatedAnnotation,
+    JavaScriptUnalignedBitArray,
 }
 
 impl FeatureKind {
@@ -974,6 +965,8 @@ impl FeatureKind {
             FeatureKind::VariantWithDeprecatedAnnotation | FeatureKind::LetAssertWithMessage => {
                 Version::new(1, 7, 0)
             }
+
+            FeatureKind::JavaScriptUnalignedBitArray => Version::new(1, 9, 0),
         }
     }
 }
@@ -986,6 +979,9 @@ pub enum PanicPosition {
     /// When the unreachable part is a function call, this means that its last
     /// argument must be a panic.
     LastFunctionArgument,
+
+    /// When the expression to be printed by echo panics.
+    EchoExpression,
 
     /// Any expression that doesn't fall in the previous two categories
     PreviousExpression,
@@ -1059,8 +1055,6 @@ impl Error {
             | Error::UnsupportedExpressionTarget { location, .. }
             | Error::InvalidExternalJavascriptModule { location, .. }
             | Error::InvalidExternalJavascriptFunction { location, .. }
-            | Error::InvalidExternalNixModule { location, .. }
-            | Error::InvalidExternalNixFunction { location, .. }
             | Error::InexhaustiveCaseExpression { location, .. }
             | Error::MissingCaseBody { location }
             | Error::InexhaustiveLetAssignment { location, .. }
@@ -1076,11 +1070,10 @@ impl Error {
             | Error::UseFnIncorrectArity { location, .. }
             | Error::BadName { location, .. }
             | Error::AllVariantsDeprecated { location }
+            | Error::EchoWithNoFollowingExpression { location }
             | Error::DeprecatedVariantOnDeprecatedType { location }
             | Error::ErlangFloatUnsafe { location } => location.start,
-            Error::GlistixNixFloatUnsafe { location } | Error::GlistixNixIntUnsafe { location } => {
-                location.start
-            }
+
             Error::UnknownLabels { unknown, .. } => {
                 unknown.iter().map(|(_, s)| s.start).min().unwrap_or(0)
             }
@@ -1751,43 +1744,5 @@ pub fn check_erlang_float_safety(
 
     if float_value < erl_min_float || float_value > erl_max_float {
         problems.error(Error::ErlangFloatUnsafe { location });
-    }
-}
-
-/// When targeting Nix, errors if the given Int value is outside the range of
-/// valid integers, between -2^63 + 1 and 2^63 - 1.
-///
-pub fn glistix_check_nix_int_safety(
-    int_value: &BigInt,
-    location: SrcSpan,
-    problems: &mut Problems,
-) {
-    let nix_min_safe_integer = -9223372036854775807i64;
-    let nix_max_safe_integer = 9223372036854775807i64;
-
-    if *int_value < nix_min_safe_integer.into() || *int_value > nix_max_safe_integer.into() {
-        problems.error(Error::GlistixNixIntUnsafe { location });
-    }
-}
-
-/// When targeting Nix, adds an error if the given Float value is outside the range
-/// -1.7976931348623157e308 to 1.7976931348623157e308 which is the allowed range for
-/// Nix's floating point numbers
-///
-pub fn glistix_check_nix_float_safety(
-    string_value: &EcoString,
-    location: SrcSpan,
-    problems: &mut Problems,
-) {
-    let nix_min_float = -1.7976931348623157e308f64;
-    let nix_max_float = 1.7976931348623157e308f64;
-
-    let float_value: f64 = string_value
-        .replace("_", "")
-        .parse()
-        .expect("Unable to parse string to floating point value");
-
-    if float_value < nix_min_float || float_value > nix_max_float {
-        problems.error(Error::GlistixNixFloatUnsafe { location });
     }
 }

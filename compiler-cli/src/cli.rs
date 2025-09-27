@@ -1,4 +1,4 @@
-use glistix_core::{
+use gleam_core::{
     build::Telemetry,
     error::{Error, StandardIoAction},
 };

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
-use glistix_core::Error;
+use gleam_core::Error;
 
 #[test]
 fn new() {
@@ -11,7 +11,7 @@ fn new() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: false,
             skip_github: false,
@@ -29,10 +29,6 @@ fn new() {
     assert!(path.join("test/my_project_test.gleam").exists());
     assert!(path.join(".github/workflows/test.yml").exists());
 
-    assert!(path.join("flake.nix").exists());
-    assert!(path.join("default.nix").exists());
-    assert!(path.join("shell.nix").exists());
-
     let toml = crate::fs::read(path.join("gleam.toml")).unwrap();
     assert!(toml.contains("name = \"my_project\""));
 }
@@ -45,7 +41,7 @@ fn new_with_default_template() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.join("my_project").to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: false,
             skip_github: true,
@@ -57,10 +53,12 @@ fn new_with_default_template() {
 
     insta::glob!(path, "my_project/*.*", |file_path| {
         if !file_path.is_dir() {
-            insta::assert_snapshot!(crate::fs::read(
-                Utf8PathBuf::from_path_buf(file_path.to_path_buf()).expect("Non Utf8 Path"),
-            )
-            .unwrap());
+            insta::assert_snapshot!(
+                crate::fs::read(
+                    Utf8PathBuf::from_path_buf(file_path.to_path_buf()).expect("Non Utf8 Path"),
+                )
+                .unwrap()
+            );
         }
     });
 }
@@ -85,10 +83,12 @@ fn new_with_javascript_template() {
 
     insta::glob!(path, "my_project/*.*", |file_path| {
         if !file_path.is_dir() {
-            insta::assert_snapshot!(crate::fs::read(
-                Utf8PathBuf::from_path_buf(file_path.to_path_buf()).expect("Non Utf8 Path"),
-            )
-            .unwrap());
+            insta::assert_snapshot!(
+                crate::fs::read(
+                    Utf8PathBuf::from_path_buf(file_path.to_path_buf()).expect("Non Utf8 Path"),
+                )
+                .unwrap()
+            );
         }
     });
 }
@@ -101,7 +101,7 @@ fn new_with_skip_git() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: true,
             skip_github: false,
@@ -122,7 +122,7 @@ fn new_with_skip_github() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: false,
             skip_github: true,
@@ -146,7 +146,7 @@ fn new_with_skip_git_and_github() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -167,17 +167,19 @@ fn invalid_path() {
     let tmp = tempfile::tempdir().unwrap();
     let path = Utf8PathBuf::from_path_buf(tmp.path().join("-------")).expect("Non Utf8 Path");
 
-    assert!(super::Creator::new(
-        super::NewOptions {
-            project_root: path.to_string(),
-            template: super::Template::Nix,
-            name: None,
-            skip_git: false,
-            skip_github: false,
-        },
-        "1.0.0-gleam",
-    )
-    .is_err());
+    assert!(
+        super::Creator::new(
+            super::NewOptions {
+                project_root: path.to_string(),
+                template: super::Template::Erlang,
+                name: None,
+                skip_git: false,
+                skip_github: false,
+            },
+            "1.0.0-gleam",
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -185,17 +187,19 @@ fn invalid_name() {
     let tmp = tempfile::tempdir().unwrap();
     let path = Utf8PathBuf::from_path_buf(tmp.path().join("projec")).expect("Non Utf8 Path");
 
-    assert!(super::Creator::new(
-        super::NewOptions {
-            project_root: path.to_string(),
-            template: super::Template::Nix,
-            name: Some("-".into()),
-            skip_git: false,
-            skip_github: false,
-        },
-        "1.0.0-gleam",
-    )
-    .is_err());
+    assert!(
+        super::Creator::new(
+            super::NewOptions {
+                project_root: path.to_string(),
+                template: super::Template::Erlang,
+                name: Some("-".into()),
+                skip_git: false,
+                skip_github: false,
+            },
+            "1.0.0-gleam",
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -208,7 +212,7 @@ fn existing_directory_no_files() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -232,17 +236,19 @@ fn existing_directory_with_one_existing_file() {
     let _ = std::fs::File::create(PathBuf::from(&path).join("README.md")).unwrap();
     let _ = std::fs::File::create(PathBuf::from(&path).join("my_project.gleam")).unwrap();
 
-    assert!(super::Creator::new(
-        super::NewOptions {
-            project_root: path.to_string(),
-            template: super::Template::Nix,
-            name: None,
-            skip_git: true,
-            skip_github: true,
-        },
-        "1.0.0-gleam",
-    )
-    .is_err());
+    assert!(
+        super::Creator::new(
+            super::NewOptions {
+                project_root: path.to_string(),
+                template: super::Template::Erlang,
+                name: None,
+                skip_git: true,
+                skip_github: true,
+            },
+            "1.0.0-gleam",
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -258,7 +264,7 @@ fn existing_directory_with_non_generated_file() {
     let creator = super::Creator::new(
         super::NewOptions {
             project_root: path.to_string(),
-            template: super::Template::Nix,
+            template: super::Template::Erlang,
             name: None,
             skip_git: true,
             skip_github: true,
@@ -270,9 +276,10 @@ fn existing_directory_with_non_generated_file() {
     creator.run().unwrap();
 
     assert!(path.join("README.md").exists());
-    assert!(path
-        .join("some_fake_thing_that_is_not_generated.md")
-        .exists());
+    assert!(
+        path.join("some_fake_thing_that_is_not_generated.md")
+            .exists()
+    );
 }
 
 #[test]
@@ -288,7 +295,7 @@ fn conflict_with_existing_files() {
         super::Creator::new(
             super::NewOptions {
                 project_root: path.to_string(),
-                template: super::Template::Nix,
+                template: super::Template::Erlang,
                 name: None,
                 skip_git: true,
                 skip_github: true,

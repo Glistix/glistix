@@ -4,7 +4,7 @@ use ecow::EcoString;
 
 use crate::type_::printer::{NameContextInformation, Names};
 
-use super::{missing_patterns::Term, Variable};
+use super::{Variable, missing_patterns::Term};
 
 #[derive(Debug)]
 pub struct Printer<'a> {
@@ -57,7 +57,7 @@ impl<'a> Printer<'a> {
                     NameContextInformation::Qualified(m, n) => (Some(m), n),
                     NameContextInformation::Unqualified(n) => (None, n),
                     NameContextInformation::Unimported(n) => {
-                        (Some(module.split('/').next_back().unwrap_or(module)), n)
+                        (Some(module.split('/').last().unwrap_or(module)), n)
                     }
                 };
 
@@ -167,8 +167,8 @@ mod tests {
     use std::{collections::HashMap, sync::Arc};
 
     use crate::{
-        exhaustiveness::{missing_patterns::Term, Variable},
-        type_::{printer::Names, Type},
+        exhaustiveness::{Variable, missing_patterns::Term},
+        type_::{Type, printer::Names},
     };
 
     /// Create a variable with a dummy type, for ease of writing tests

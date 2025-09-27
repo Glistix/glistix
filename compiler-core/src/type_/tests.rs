@@ -22,6 +22,7 @@ mod assert;
 mod assignments;
 mod conditional_compilation;
 mod custom_types;
+mod echo;
 mod errors;
 mod exhaustiveness;
 mod externals;
@@ -35,8 +36,6 @@ mod type_alias;
 mod use_;
 mod version_inference;
 mod warnings;
-
-mod nix;
 
 #[macro_export]
 macro_rules! assert_infer {
@@ -97,20 +96,6 @@ macro_rules! assert_js_module_infer {
 }
 
 #[macro_export]
-macro_rules! glistix_assert_nix_module_infer {
-    ($src:expr, $module:expr $(,)?) => {{
-        let constructors = $crate::type_::tests::infer_module_with_target(
-            "test_module",
-            $src,
-            vec![],
-            $crate::build::Target::Nix,
-        );
-        let expected = $crate::type_::tests::stringify_tuple_strs($module);
-        assert_eq!(($src, constructors), ($src, expected));
-    }};
-}
-
-#[macro_export]
 macro_rules! assert_module_error {
     ($src:expr) => {
         let error = $crate::type_::tests::module_error($src, vec![]);
@@ -142,19 +127,6 @@ macro_rules! assert_js_module_error {
 }
 
 #[macro_export]
-macro_rules! glistix_assert_nix_module_error {
-    ($src:expr) => {
-        let error = $crate::type_::tests::module_error_with_target(
-            $src,
-            vec![],
-            $crate::build::Target::Nix,
-        );
-        let output = format!("----- SOURCE CODE\n{}\n\n----- ERROR\n{}", $src, error);
-        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
-    };
-}
-
-#[macro_export]
 macro_rules! assert_module_syntax_error {
     ($src:expr) => {
         let error = $crate::type_::tests::syntax_error($src);
@@ -173,32 +145,6 @@ macro_rules! assert_error {
 
     ($src:expr) => {
         let (error, names) = $crate::type_::tests::compile_statement_sequence($src)
-            .expect_err("should infer an error");
-        let error = $crate::error::Error::Type {
-            names,
-            src: $src.into(),
-            path: camino::Utf8PathBuf::from("/src/one/two.gleam"),
-            errors: error,
-        };
-        let error_string = error.pretty_string();
-        let output = format!(
-            "----- SOURCE CODE\n{}\n\n----- ERROR\n{}",
-            $src, error_string
-        );
-        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
-    };
-}
-
-#[macro_export]
-macro_rules! glistix_assert_nix_error {
-    ($src:expr, $error:expr $(,)?) => {
-        let result = $crate::type_::tests::glistix_nix_compile_statement_sequence($src)
-            .expect_err("should infer an error");
-        assert_eq!(($src, sort_options($error)), ($src, sort_options(result)),);
-    };
-
-    ($src:expr) => {
-        let (error, names) = $crate::type_::tests::glistix_nix_compile_statement_sequence($src)
             .expect_err("should infer an error");
         let error = $crate::error::Error::Type {
             names,
@@ -286,7 +232,7 @@ fn get_warnings(
     warnings.take().into_iter().collect_vec()
 }
 
-fn get_printed_warnings(
+pub(crate) fn get_printed_warnings(
     src: &str,
     deps: Vec<DependencyModule<'_>>,
     target: Target,
@@ -311,7 +257,7 @@ macro_rules! assert_warnings_with_imports {
             vec![
                 $(("thepackage", $name, $module_src)),*
             ],
-            $crate::build::Target::Erlang,
+            crate::build::Target::Erlang,
             None
         );
 
@@ -327,7 +273,7 @@ macro_rules! assert_warnings_with_imports {
 #[macro_export]
 macro_rules! assert_warning {
     ($src:expr) => {
-        let warning = $crate::type_::tests::get_printed_warnings($src, vec![], $crate::build::Target::Erlang, None);
+        let warning = $crate::type_::tests::get_printed_warnings($src, vec![], crate::build::Target::Erlang, None);
         assert!(!warning.is_empty());
         let output = format!("----- SOURCE CODE\n{}\n\n----- WARNING\n{}", $src, warning);
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
@@ -364,7 +310,7 @@ macro_rules! assert_js_warning {
         let warning = $crate::type_::tests::get_printed_warnings(
             $src,
             vec![],
-            $crate::build::Target::JavaScript,
+            crate::build::Target::JavaScript,
             None,
         );
         assert!(!warning.is_empty());
@@ -379,7 +325,7 @@ macro_rules! assert_js_no_warnings {
         let warning = $crate::type_::tests::get_printed_warnings(
             $src,
             vec![],
-            $crate::build::Target::JavaScript,
+            crate::build::Target::JavaScript,
             None,
         );
         assert!(warning.is_empty());
@@ -392,7 +338,7 @@ macro_rules! assert_warnings_with_gleam_version {
         let warning = $crate::type_::tests::get_printed_warnings(
             $src,
             vec![],
-            $crate::build::Target::Erlang,
+            crate::build::Target::Erlang,
             Some($gleam_version),
         );
         assert!(!warning.is_empty());
@@ -402,9 +348,37 @@ macro_rules! assert_warnings_with_gleam_version {
 }
 
 #[macro_export]
+macro_rules! assert_js_warnings_with_gleam_version {
+    ($gleam_version:expr, $src:expr$(,)?) => {
+        let warning = $crate::type_::tests::get_printed_warnings(
+            $src,
+            vec![],
+            crate::build::Target::JavaScript,
+            Some($gleam_version),
+        );
+        assert!(!warning.is_empty());
+        let output = format!("----- SOURCE CODE\n{}\n\n----- WARNING\n{}", $src, warning);
+        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
+    };
+}
+
+#[macro_export]
+macro_rules! assert_js_no_warnings_with_gleam_version {
+    ($gleam_version:expr, $src:expr$(,)?) => {
+        let warning = $crate::type_::tests::get_printed_warnings(
+            $src,
+            vec![],
+            crate::build::Target::JavaScript,
+            Some($gleam_version),
+        );
+        assert!(warning.is_empty());
+    };
+}
+
+#[macro_export]
 macro_rules! assert_no_warnings {
     ($src:expr $(,)?) => {
-        let warnings = $crate::type_::tests::get_warnings($src, vec![], $crate::build::Target::Erlang, None);
+        let warnings = $crate::type_::tests::get_warnings($src, vec![], crate::build::Target::Erlang, None);
         assert_eq!(warnings, vec![]);
     };
     ($(($package:expr, $name:expr, $module_src:literal)),+, $src:expr $(,)?) => {
@@ -418,21 +392,8 @@ macro_rules! assert_no_warnings {
     };
 }
 
-fn glistix_nix_compile_statement_sequence(
-    src: &str,
-) -> Result<Vec1<TypedStatement>, (Vec1<crate::type_::Error>, Names)> {
-    glistix_generic_compile_statement_sequence(src, Target::Nix)
-}
-
 fn compile_statement_sequence(
     src: &str,
-) -> Result<Vec1<TypedStatement>, (Vec1<crate::type_::Error>, Names)> {
-    glistix_generic_compile_statement_sequence(src, Target::Erlang)
-}
-
-fn glistix_generic_compile_statement_sequence(
-    src: &str,
-    target: Target,
 ) -> Result<Vec1<TypedStatement>, (Vec1<crate::type_::Error>, Names)> {
     let ast = crate::parse::parse_statement_sequence(src).expect("syntax error");
     let mut modules = im::HashMap::new();
@@ -448,7 +409,7 @@ fn glistix_generic_compile_statement_sequence(
         "thepackage".into(),
         None,
         "themodule".into(),
-        target,
+        Target::Erlang,
         &modules,
         TargetSupport::Enforced,
     );
@@ -458,7 +419,6 @@ fn glistix_generic_compile_statement_sequence(
             has_body: true,
             has_erlang_external: false,
             has_javascript_external: false,
-            has_nix_external: false,
         },
         &mut problems,
     )
@@ -859,7 +819,6 @@ fn infer_module_type_retention_test() {
             package: "thepackage".into(),
             name: "ok".into(),
             is_internal: false,
-            // Core type constructors like String and Int are not included
             types: HashMap::new(),
             types_value_constructors: HashMap::from([
                 (
@@ -870,12 +829,15 @@ fn infer_module_type_retention_test() {
                             TypeValueConstructor {
                                 name: "True".into(),
                                 parameters: vec![],
+                                documentation: None,
                             },
                             TypeValueConstructor {
                                 name: "False".into(),
                                 parameters: vec![],
+                                documentation: None,
                             }
-                        ]
+                        ],
+                        opaque: Opaque::NotOpaque,
                     }
                 ),
                 (
@@ -887,15 +849,20 @@ fn infer_module_type_retention_test() {
                                 name: "Ok".into(),
                                 parameters: vec![TypeValueConstructorField {
                                     type_: generic_var(1),
-                                }]
+                                    label: None,
+                                }],
+                                documentation: None,
                             },
                             TypeValueConstructor {
                                 name: "Error".into(),
                                 parameters: vec![TypeValueConstructorField {
                                     type_: generic_var(2),
-                                }]
+                                    label: None,
+                                }],
+                                documentation: None,
                             }
-                        ]
+                        ],
+                        opaque: Opaque::NotOpaque,
                     }
                 ),
                 (
@@ -904,8 +871,10 @@ fn infer_module_type_retention_test() {
                         type_parameters_ids: vec![],
                         variants: vec![TypeValueConstructor {
                             name: "Nil".into(),
-                            parameters: vec![]
-                        }]
+                            parameters: vec![],
+                            documentation: None,
+                        }],
+                        opaque: Opaque::NotOpaque,
                     }
                 )
             ]),
@@ -914,6 +883,9 @@ fn infer_module_type_retention_test() {
             line_numbers: LineNumbers::new(""),
             src_path: "".into(),
             minimum_required_version: Version::new(0, 1, 0),
+            type_aliases: HashMap::new(),
+            documentation: Vec::new(),
+            contains_echo: false,
         }
     );
 }
@@ -2766,10 +2738,8 @@ fn assert_suitable_main_function_not_module_function() {
                 gleam: true,
                 uses_erlang_externals: false,
                 uses_javascript_externals: false,
-                uses_nix_externals: false,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
-                can_run_on_nix: true,
             },
         },
     };
@@ -2791,15 +2761,12 @@ fn assert_suitable_main_function_wrong_arity() {
             module: "module".into(),
             external_erlang: None,
             external_javascript: None,
-            external_nix: None,
             implementations: Implementations {
                 gleam: true,
                 uses_erlang_externals: false,
                 uses_javascript_externals: false,
-                uses_nix_externals: false,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
-                can_run_on_nix: true,
             },
         },
     };
@@ -2821,15 +2788,12 @@ fn assert_suitable_main_function_ok() {
             module: "module".into(),
             external_erlang: None,
             external_javascript: None,
-            external_nix: None,
             implementations: Implementations {
                 gleam: true,
                 uses_erlang_externals: false,
                 uses_javascript_externals: false,
-                uses_nix_externals: false,
                 can_run_on_erlang: true,
                 can_run_on_javascript: true,
-                can_run_on_nix: true,
             },
         },
     };
@@ -2851,15 +2815,12 @@ fn assert_suitable_main_function_erlang_not_supported() {
             module: "module".into(),
             external_erlang: Some(("wibble".into(), "wobble".into())),
             external_javascript: Some(("wobble".into(), "wibble".into())),
-            external_nix: None,
             implementations: Implementations {
                 gleam: false,
                 uses_erlang_externals: true,
                 uses_javascript_externals: true,
-                uses_nix_externals: false,
                 can_run_on_erlang: false,
                 can_run_on_javascript: true,
-                can_run_on_nix: false,
             },
         },
     };
@@ -2881,15 +2842,12 @@ fn assert_suitable_main_function_javascript_not_supported() {
             module: "module".into(),
             external_erlang: Some(("wibble".into(), "wobble".into())),
             external_javascript: Some(("wobble".into(), "wibble".into())),
-            external_nix: None,
             implementations: Implementations {
                 gleam: false,
                 uses_erlang_externals: true,
                 uses_javascript_externals: true,
-                uses_nix_externals: false,
                 can_run_on_erlang: true,
                 can_run_on_javascript: false,
-                can_run_on_nix: false,
             },
         },
     };

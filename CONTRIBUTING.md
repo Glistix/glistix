@@ -1,7 +1,3 @@
-# Contributing to Glistix
-
-See README. Leaving Gleam's own `CONTRIBUTING.md` below for reference.
-
 # Contributing to Gleam
 
 Thanks for contributing to Gleam!

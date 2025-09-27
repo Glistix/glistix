@@ -17,7 +17,7 @@ pub use self::project_compiler::{Built, Options, ProjectCompiler};
 pub use self::telemetry::{NullTelemetry, Telemetry};
 
 use crate::ast::{
-    CallArg, CustomType, DefinitionLocation, Pattern, TypeAst, TypedArg, TypedDefinition,
+    self, CallArg, CustomType, DefinitionLocation, Pattern, TypeAst, TypedArg, TypedDefinition,
     TypedExpr, TypedFunction, TypedPattern, TypedStatement,
 };
 use crate::type_::Type;
@@ -62,9 +62,6 @@ pub enum Target {
     #[strum(serialize = "javascript", serialize = "js")]
     #[serde(rename = "javascript", alias = "js")]
     JavaScript,
-    #[strum(serialize = "nix")]
-    #[serde(rename = "nix")]
-    Nix,
 }
 
 impl Target {
@@ -78,14 +75,6 @@ impl Target {
     #[must_use]
     pub fn is_javascript(&self) -> bool {
         matches!(self, Self::JavaScript)
-    }
-
-    /// Returns `true` if the target is [`Nix`].
-    ///
-    /// [`Nix`]: Target::Nix
-    #[must_use]
-    pub fn is_nix(&self) -> bool {
-        matches!(self, Self::Nix)
     }
 
     /// Returns `true` if the target is [`Erlang`].
@@ -151,9 +140,6 @@ impl Default for Runtime {
 
 #[derive(Debug)]
 pub enum TargetCodegenConfiguration {
-    Nix {
-        prelude_location: Utf8PathBuf,
-    },
     JavaScript {
         emit_typescript_definitions: bool,
         prelude_location: Utf8PathBuf,
@@ -166,7 +152,6 @@ pub enum TargetCodegenConfiguration {
 impl TargetCodegenConfiguration {
     pub fn target(&self) -> Target {
         match self {
-            Self::Nix { .. } => Target::Nix,
             Self::JavaScript { .. } => Target::JavaScript,
             Self::Erlang { .. } => Target::Erlang,
         }
@@ -230,6 +215,7 @@ fn mode_includes_tests() {
 pub struct Package {
     pub config: PackageConfig,
     pub modules: Vec<Module>,
+    pub cached_module_names: Vec<EcoString>,
 }
 
 impl Package {
@@ -282,6 +268,8 @@ impl Module {
             .iter()
             .map(|span| Comment::from((span, self.code.as_str())).content.into())
             .collect();
+
+        self.ast.type_info.documentation = self.ast.documentation.clone();
 
         // Order statements to avoid misassociating doc comments after the
         // order has changed during compilation.
@@ -356,6 +344,11 @@ pub enum Located<'a> {
     Annotation(SrcSpan, std::sync::Arc<Type>),
     UnqualifiedImport(UnqualifiedImport<'a>),
     Label(SrcSpan, std::sync::Arc<Type>),
+    ModuleName {
+        location: SrcSpan,
+        name: &'a EcoString,
+        layer: ast::Layer,
+    },
 }
 
 impl<'a> Located<'a> {
@@ -364,9 +357,9 @@ impl<'a> Located<'a> {
         &self,
         importable_modules: &'a im::HashMap<EcoString, type_::ModuleInterface>,
         type_: std::sync::Arc<Type>,
-    ) -> Option<DefinitionLocation<'_>> {
+    ) -> Option<DefinitionLocation> {
         type_constructor_from_modules(importable_modules, type_).map(|t| DefinitionLocation {
-            module: Some(&t.module),
+            module: Some(t.module.clone()),
             span: t.origin,
         })
     }
@@ -374,7 +367,7 @@ impl<'a> Located<'a> {
     pub fn definition_location(
         &self,
         importable_modules: &'a im::HashMap<EcoString, type_::ModuleInterface>,
-    ) -> Option<DefinitionLocation<'_>> {
+    ) -> Option<DefinitionLocation> {
         match self {
             Self::PatternSpread { .. } => None,
             Self::Pattern(pattern) => pattern.definition_location(),
@@ -382,7 +375,7 @@ impl<'a> Located<'a> {
             Self::FunctionBody(statement) => None,
             Self::Expression(expression) => expression.definition_location(),
             Self::ModuleStatement(Definition::Import(import)) => Some(DefinitionLocation {
-                module: Some(import.module.as_str()),
+                module: Some(import.module.clone()),
                 span: SrcSpan { start: 0, end: 0 },
             }),
             Self::ModuleStatement(statement) => Some(DefinitionLocation {
@@ -397,12 +390,12 @@ impl<'a> Located<'a> {
             }) => importable_modules.get(*module).and_then(|m| {
                 if *is_type {
                     m.types.get(*name).map(|t| DefinitionLocation {
-                        module: Some(&module),
+                        module: Some((*module).clone()),
                         span: t.origin,
                     })
                 } else {
                     m.values.get(*name).map(|v| DefinitionLocation {
-                        module: Some(&module),
+                        module: Some((*module).clone()),
                         span: v.definition_location().span,
                     })
                 }
@@ -410,7 +403,112 @@ impl<'a> Located<'a> {
             Self::Arg(_) => None,
             Self::Annotation(_, type_) => self.type_location(importable_modules, type_.clone()),
             Self::Label(_, _) => None,
+            Self::ModuleName { name, .. } => Some(DefinitionLocation {
+                module: Some((*name).clone()),
+                span: SrcSpan::new(0, 0),
+            }),
         }
+    }
+
+    pub(crate) fn type_(&self) -> Option<Arc<Type>> {
+        match self {
+            Located::Pattern(pattern) => Some(pattern.type_()),
+            Located::Statement(statement) => Some(statement.type_()),
+            Located::Expression(typed_expr) => Some(typed_expr.type_()),
+            Located::Arg(arg) => Some(arg.type_.clone()),
+            Located::Label(_, type_) | Located::Annotation(_, type_) => Some(type_.clone()),
+
+            Located::PatternSpread { .. } => None,
+            Located::ModuleStatement(definition) => None,
+            Located::FunctionBody(function) => None,
+            Located::UnqualifiedImport(unqualified_import) => None,
+            Located::ModuleName { .. } => None,
+        }
+    }
+
+    pub(crate) fn type_definition_locations(
+        &self,
+        importable_modules: &im::HashMap<EcoString, type_::ModuleInterface>,
+    ) -> Option<Vec<DefinitionLocation>> {
+        let type_ = self.type_()?;
+        Some(type_to_definition_locations(type_, importable_modules))
+    }
+}
+
+/// Returns the locations of all the types that one could reach starting from
+/// the given type (included). This includes all types that are part of a
+/// tuple/function type or that are used as args in a named type.
+///
+/// For example, given this type `Dict(Int, #(Wibble, Wobble))` all the
+/// "reachable" include: `Dict`, `Int`, `Wibble` and `Wobble`.
+///
+/// This is what powers the "go to type definition" capability of the language
+/// server.
+///
+fn type_to_definition_locations<'a>(
+    type_: Arc<Type>,
+    importable_modules: &'a im::HashMap<EcoString, type_::ModuleInterface>,
+) -> Vec<DefinitionLocation> {
+    match type_.as_ref() {
+        // For named types we start with the location of the named type itself
+        // followed by the locations of all types they reference in their args.
+        //
+        // For example with a `Dict(Wibble, Wobble)` we'd start with the
+        // definition of `Dict`, followed by the definition of `Wibble` and
+        // `Wobble`.
+        //
+        Type::Named {
+            module, name, args, ..
+        } => {
+            let Some(module) = importable_modules.get(module) else {
+                return vec![];
+            };
+
+            let Some(type_) = module.get_public_type(&name) else {
+                return vec![];
+            };
+
+            let mut locations = vec![DefinitionLocation {
+                module: Some(module.name.clone()),
+                span: type_.origin,
+            }];
+            for arg in args {
+                locations.extend(type_to_definition_locations(
+                    arg.clone(),
+                    importable_modules,
+                ));
+            }
+            locations
+        }
+
+        // For fn types we just get the locations of their arguments and return
+        // type.
+        //
+        Type::Fn { args, retrn } => args
+            .iter()
+            .flat_map(|arg| type_to_definition_locations(arg.clone(), importable_modules))
+            .chain(type_to_definition_locations(
+                retrn.clone(),
+                importable_modules,
+            ))
+            .collect_vec(),
+
+        // In case of a var we just follow it and get the locations of the type
+        // it points to.
+        //
+        Type::Var { type_ } => match type_.borrow().clone() {
+            type_::TypeVar::Unbound { .. } | type_::TypeVar::Generic { .. } => vec![],
+            type_::TypeVar::Link { type_ } => {
+                type_to_definition_locations(type_, importable_modules)
+            }
+        },
+
+        // In case of tuples we get the locations of the wrapped types.
+        //
+        Type::Tuple { elems } => elems
+            .iter()
+            .flat_map(|elem| type_to_definition_locations(elem.clone(), importable_modules))
+            .collect_vec(),
     }
 }
 

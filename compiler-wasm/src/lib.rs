@@ -4,7 +4,8 @@ mod tests;
 mod wasm_filesystem;
 
 use camino::Utf8PathBuf;
-use glistix_core::{
+use gleam_core::{
+    Error,
     analyse::TargetSupport,
     build::{
         Mode, NullTelemetry, PackageCompiler, StaleTracker, Target, TargetCodegenConfiguration,
@@ -13,7 +14,6 @@ use glistix_core::{
     io::{FileSystemReader, FileSystemWriter},
     uid::UniqueIdGenerator,
     warning::{VectorWarningEmitterIO, WarningEmitter},
-    Error,
 };
 use hexpm::version::Version;
 use im::HashMap;
@@ -117,10 +117,8 @@ pub fn compile_package(project_id: usize, target: &str) -> Result<(), String> {
     let target = match target.to_lowercase().as_str() {
         "erl" | "erlang" => Target::Erlang,
         "js" | "javascript" => Target::JavaScript,
-        "nix" => Target::Nix,
         _ => {
-            let msg =
-                format!("Unknown target `{target}`, expected `erlang`, `javascript` or `nix`");
+            let msg = format!("Unknown target `{target}`, expected `erlang` or `javascript`");
             return Err(msg);
         }
     };
@@ -150,17 +148,6 @@ pub fn read_compiled_erlang(project_id: usize, module_name: &str) -> Option<Stri
         "/build/_gleam_artefacts/{}.erl",
         module_name.replace('/', "@")
     );
-    fs.read(&Utf8PathBuf::from(path)).ok()
-}
-
-/// Get the compiled Nix output for a given module.
-///
-/// You need to call `compile_package` before calling this function.
-///
-#[wasm_bindgen]
-pub fn read_compiled_nix(project_id: usize, module_name: &str) -> Option<String> {
-    let fs = get_filesystem(project_id);
-    let path = format!("/build/{}.nix", module_name);
     fs.read(&Utf8PathBuf::from(path)).ok()
 }
 
@@ -196,9 +183,6 @@ fn do_compile_package(project: Project, target: Target) -> Result<(), Error> {
         Target::JavaScript => TargetCodegenConfiguration::JavaScript {
             emit_typescript_definitions: false,
             prelude_location: Utf8PathBuf::from("./gleam_prelude.mjs"),
-        },
-        Target::Nix => TargetCodegenConfiguration::Nix {
-            prelude_location: Utf8PathBuf::from("./gleam_prelude.nix"),
         },
     };
 

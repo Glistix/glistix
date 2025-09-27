@@ -7,7 +7,7 @@ use crate::type_::error::{
     UnsafeRecordUpdateReason,
 };
 use crate::type_::printer::{Names, Printer};
-use crate::type_::{error::PatternMatchKind, FieldAccessUsage};
+use crate::type_::{FieldAccessUsage, error::PatternMatchKind};
 use crate::{ast::BinOp, parse::error::ParseErrorType, type_::Type};
 use crate::{bit_array, diagnostic::Level, javascript, type_::UnifyErrorSituation};
 use ecow::EcoString;
@@ -41,9 +41,6 @@ macro_rules! wrap_format {
         wrap(&format!($($tts)*))
     }
 }
-
-#[allow(unused)]
-const GLISTIX_BOOK_LINK: &str = "https://glistix.github.io/book";
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct UnknownImportDetails {
@@ -161,7 +158,7 @@ pub enum Error {
     #[error("shell program `{program}` failed")]
     ShellCommand {
         program: String,
-        err: Option<std::io::ErrorKind>,
+        reason: ShellCommandFailureReason,
     },
 
     #[error("{name} is not a valid project name")]
@@ -236,9 +233,6 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     #[error("{0}")]
     Http(String),
 
-    #[error("Git dependencies are currently unsupported")]
-    GitDependencyUnsupported,
-
     #[error("Failed to create canonical path for package {0}")]
     DependencyCanonicalizationFailed(String),
 
@@ -293,29 +287,15 @@ file_names.iter().map(|x| x.as_str()).join(", "))]
     #[error("The --javascript-prelude flag must be given when compiling to JavaScript")]
     JavaScriptPreludeRequired,
 
-    #[error("nix codegen failed")]
-    Nix {
-        path: Utf8PathBuf,
-        src: EcoString,
-        error: crate::nix::Error,
-    },
-
-    #[error("The --nix-prelude flag must be given when compiling to Nix")]
-    NixPreludeRequired,
-
-    #[error("Cannot patch Hex dependency {name} through [glistix.preview.hex-patch]")]
-    CannotPatchHexWithHex { name: EcoString },
-
-    #[error("Conflict between patches for \"{package}\" and \"{conflicting_rename}\" in [glistix.preview.patch]")]
-    GlistixConflictingPatches {
-        package: EcoString,
-        conflicting_rename: EcoString,
-    },
-
     #[error("The modules {unfinished:?} contain todo expressions and so cannot be published")]
     CannotPublishTodo { unfinished: Vec<EcoString> },
 
-    #[error("The modules {unfinished:?} contain internal types in their public API so cannot be published")]
+    #[error("The modules {unfinished:?} contain todo expressions and so cannot be published")]
+    CannotPublishEcho { unfinished: Vec<EcoString> },
+
+    #[error(
+        "The modules {unfinished:?} contain internal types in their public API so cannot be published"
+    )]
     CannotPublishLeakedInternalType { unfinished: Vec<EcoString> },
 
     #[error("Publishing packages to reserve names is not permitted")]
@@ -402,6 +382,16 @@ pub fn parse_linux_distribution(distro: &str) -> Distro {
     }
 }
 
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum ShellCommandFailureReason {
+    /// When we don't have any context about the failure
+    Unknown,
+    /// When the actual running of the command failed for some reason.
+    IoError(std::io::ErrorKind),
+    /// When the shell command returned an error status
+    ShellCommandError(String),
+}
+
 impl Error {
     pub fn http<E>(error: E) -> Error
     where
@@ -470,13 +460,18 @@ impl Error {
                 let mut conflicting_packages = HashSet::new();
                 collect_conflicting_packages(&derivation_tree, &mut conflicting_packages);
 
-                wrap_format!("Unable to find compatible versions for \
+                wrap_format!(
+                    "Unable to find compatible versions for \
 the version constraints in your gleam.toml. \
 The conflicting packages are:
 
 {}
 ",
-                    conflicting_packages.into_iter().map(|s| format!("- {s}")).join("\n"))
+                    conflicting_packages
+                        .into_iter()
+                        .map(|s| format!("- {s}"))
+                        .join("\n")
+                )
             }
 
             ResolutionError::ErrorRetrievingDependencies {
@@ -491,9 +486,7 @@ The conflicting packages are:
                 package,
                 version,
                 dependent,
-            } => format!(
-                "{package}@{version} has an impossible dependency on {dependent}",
-            ),
+            } => format!("{package}@{version} has an impossible dependency on {dependent}",),
 
             ResolutionError::SelfDependency { package, version } => {
                 format!("{package}@{version} somehow depends on itself.")
@@ -507,9 +500,9 @@ The conflicting packages are:
                 format!("Dependency resolution was cancelled. {err}")
             }
 
-            ResolutionError::Failure(err) => format!(
-                "An unrecoverable error happened while solving dependencies: {err}"
-            ),
+            ResolutionError::Failure(err) => {
+                format!("An unrecoverable error happened while solving dependencies: {err}")
+            }
         })
     }
 
@@ -796,7 +789,7 @@ fn edit_distance_with_substrings(a: &str, b: &str, limit: usize) -> Option<usize
         1 // Exact substring match, but not a total word match so return non-zero
     } else if !big_len_diff {
         // Not a big difference in length, discount cost of length difference
-        score + len_diff.div_ceil(2)
+        score + (len_diff + 1) / 2
     } else {
         // A big difference in length, add back the difference in length to the score
         score + len_diff
@@ -1035,6 +1028,25 @@ Please remove them and try again.
                 location: None,
             }],
 
+            Error::CannotPublishEcho { unfinished } => vec![Diagnostic {
+                title: "Cannot publish unfinished code".into(),
+                text: format!(
+                    "These modules contain echo expressions and cannot be published:
+
+{}
+
+`echo` is only meant for debug printing, please remove them and try again.
+",
+                    unfinished
+                        .iter()
+                        .map(|name| format!("  - {}", name.as_str()))
+                        .join("\n")
+                ),
+                level: Level::Error,
+                hint: None,
+                location: None,
+            }],
+
             Error::CannotPublishWrongVersion { minimum_required_version, wrongfully_allowed_version } => vec![Diagnostic {
                 title: "Cannot publish package with wrong Gleam version range".into(),
                 text: wrap(&format!(
@@ -1189,8 +1201,8 @@ https://git-scm.com/book/en/v2/Getting-Started-Installing-Git",
 
             Error::ShellCommand {
                 program: command,
-                err: None,
-            } => {
+                reason: ShellCommandFailureReason::Unknown,
+            }  => {
                 let text =
                     format!("There was a problem when running the shell command `{command}`.");
                 vec![Diagnostic {
@@ -1204,7 +1216,7 @@ https://git-scm.com/book/en/v2/Getting-Started-Installing-Git",
 
             Error::ShellCommand {
                 program: command,
-                err: Some(err),
+                reason: ShellCommandFailureReason::IoError(err),
             } => {
                 let text = format!(
                     "There was a problem when running the shell command `{}`.
@@ -1214,6 +1226,28 @@ The error from the shell command library was:
     {}",
                     command,
                     std_io_error_kind_text(err)
+                );
+                vec![Diagnostic {
+                    title: "Shell command failure".into(),
+                    text,
+                    hint: None,
+                    level: Level::Error,
+                    location: None,
+                }]
+            }
+
+            Error::ShellCommand {
+                program: command,
+                reason: ShellCommandFailureReason::ShellCommandError(err),
+            } => {
+                let text = format!(
+                    "There was a problem when running the shell command `{}`.
+
+The error from the shell command was:
+
+    {}",
+                    command,
+                    err
                 );
                 vec![Diagnostic {
                     title: "Shell command failure".into(),
@@ -1506,45 +1540,6 @@ Erlang's floating point type. To avoid this error float values must be in the ra
                     }),
                 },
 
-                TypeError::GlistixNixFloatUnsafe {
-                     location,  ..
-                } => Diagnostic {
-                        title: "Float is outside Nix's floating point range".into(),
-                        text: wrap("This float value is too large to be represented by \
-Nix's floating point type. To avoid this error float values must be in the range \
--1.7976931348623157e308 - 1.7976931348623157e308."),
-                    hint: None,
-                    level: Level::Error,
-                    location: Some(Location {
-                        label: Label {
-                            text: None,
-                                span: *location,
-                            },
-                        path: path.clone(),
-                        src: src.clone(),
-                        extra_labels: vec![],
-                    }),
-                },
-
-                TypeError::GlistixNixIntUnsafe { location } => Diagnostic {
-                    title: "Int is outside Nix's integer range".into(),
-                    text: wrap(
-                        "This integer value is too large to be represented by \
-Nix's integer type. To avoid this error integer values must be in the range \
--(2^63 - 1) - (2^63 - 1).",
-                    ),
-                    hint: None,
-                    level: Level::Error,
-                    location: Some(Location {
-                        path: path.to_path_buf(),
-                        src: src.clone(),
-                        label: Label {
-                            text: None,
-                            span: *location,
-                        },
-                        extra_labels: Vec::new(),
-                    }),
-                },
 
                 TypeError::SrcImportingTest {
                     location,
@@ -2297,7 +2292,7 @@ but no type in scope with that name."
                     Diagnostic {
                         title: "Unknown type".into(),
                         text,
-                        hint: glistix_maybe_forgot_patch_hint(path),
+                        hint: None,
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -2331,7 +2326,7 @@ but no type in scope with that name."
                     Diagnostic {
                         title: "Unknown variable".into(),
                         text,
-                        hint: glistix_maybe_forgot_patch_hint(path),
+                        hint: None,
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -2453,7 +2448,7 @@ Private types can only be used within the module that defines them.",
                     Diagnostic {
                         title: "Unknown module value".into(),
                         text,
-                        hint: glistix_maybe_forgot_patch_hint(path),
+                        hint: None,
                         level: Level::Error,
                         location: Some(Location {
                             label: Label {
@@ -3090,62 +3085,6 @@ implementation but the function name `{function}` is not valid."
                     }
                 }
 
-                TypeError::InvalidExternalNixModule {
-                    location,
-                    name,
-                    module,
-                } => {
-                    let text = wrap_format!(
-                        "The function `{name}` has an external Nix \
-implementation but the module path `{module}` is not valid. Currently, it \
-must be a relative path (`./here.nix` or `../top.nix`) with a restricted set \
-of ASCII characters. To import from unsupported paths, re-export them in an \
-auxiliary Nix file in your project instead."
-                    );
-                    Diagnostic {
-                        title: "Invalid Nix module".into(),
-                        text,
-                        hint: None,
-                        level: Level::Error,
-                        location: Some(Location {
-                            label: Label {
-                                text: None,
-                                span: *location,
-                            },
-                            path: path.clone(),
-                            src: src.clone(),
-                            extra_labels: vec![],
-                        }),
-                    }
-                }
-
-                TypeError::InvalidExternalNixFunction {
-                    location,
-                    name,
-                    function,
-                } => {
-                    let text = wrap_format!(
-                        "The function `{name}` has an external Nix \
-implementation but the function name `{function}` is not valid, as it must be \
-a valid Nix identifier."
-                    );
-                    Diagnostic {
-                        title: "Invalid Nix function".into(),
-                        text,
-                        hint: None,
-                        level: Level::Error,
-                        location: Some(Location {
-                            label: Label {
-                                text: None,
-                                span: *location,
-                            },
-                            path: path.clone(),
-                            src: src.clone(),
-                            extra_labels: vec![],
-                        }),
-                    }
-                }
-
                 TypeError::InexhaustiveLetAssignment { location, missing } => {
                     let mut text =wrap(
                         "This assignment uses a pattern that does not \
@@ -3236,14 +3175,13 @@ and there is no implementation for the {} target.\n",
                         match current_target {
                             Target::Erlang => "Erlang",
                             Target::JavaScript => "JavaScript",
-                            Target::Nix => "Nix",
                         }
                     );
                     let hint = wrap("Did you mean to build for a different target?");
                     Diagnostic {
                         title: "Unsupported target".into(),
                         text,
-                        hint: glistix_maybe_forgot_patch_hint(path).or(Some(hint)),
+                        hint: Some(hint),
                         level: Level::Error,
                         location: Some(Location {
                             path: path.clone(),
@@ -3265,7 +3203,6 @@ and there is no implementation for the {} target.\n",
                     let target = match target {
                         Target::Erlang => "Erlang",
                         Target::JavaScript => "JavaScript",
-                        Target::Nix => "Nix",
                     };
                     let text = wrap_format!(
                         "The `{name}` function is public but doesn't have an \
@@ -3540,6 +3477,7 @@ Try: _{}", kind_str.to_title_case(), name.to_snake_case()),
                         }),
                     }
                 },
+
                         TypeError::AllVariantsDeprecated { location } => {
                             let text = String::from("Consider deprecating the type as a whole.
 
@@ -3586,6 +3524,22 @@ Consider removing the deprecation attribute on the variant.");
                                 })
                             }
                         }
+
+                TypeError::EchoWithNoFollowingExpression { location } => Diagnostic {
+                    title: "Invalid echo use".to_string(),
+                    text: wrap("The `echo` keyword should be followed by a value to print."),
+                    hint: None,
+                    level: Level::Error,
+                    location: Some(Location {
+                        label: Label {
+                            text: Some("I was expecting a value after this".into()),
+                            span: *location,
+                        },
+                        path: path.clone(),
+                        src: src.clone(),
+                        extra_labels: vec![],
+                    }),
+                },
             }
         }).collect_vec(),
 
@@ -3778,24 +3732,6 @@ Fix the warnings and try again."
                 }],
             },
 
-            Error::Nix { src, path, error } => match error {
-                crate::nix::Error::Unsupported { feature, location } => vec![Diagnostic {
-                    title: "Unsupported feature for compilation target".into(),
-                    text: format!("{feature} is not supported for Nix compilation."),
-                    hint: glistix_maybe_forgot_patch_hint(path),
-                    level: Level::Error,
-                    location: Some(Location {
-                        label: Label {
-                            text: None,
-                            span: *location,
-                        },
-                        path: path.clone(),
-                        src: src.clone(),
-                        extra_labels: vec![],
-                    }),
-                }],
-            },
-
             Error::DownloadPackageError {
                 package_name,
                 package_version,
@@ -3878,14 +3814,6 @@ The error from the version resolver library was:
                 }]
             }
 
-            Error::GitDependencyUnsupported => vec![Diagnostic {
-                title: "Git dependencies are not currently supported".into(),
-                text: "Please remove all git dependencies from the gleam.toml file".into(),
-                hint: None,
-                location: None,
-                level: Level::Error,
-            }],
-
             Error::WrongDependencyProvided {
                 path,
                 expected,
@@ -3910,10 +3838,7 @@ The error from the version resolver library was:
                 source_2,
             } => {
                 let text = format!(
-                    "The package `{package}` is provided as both `{source_1}` and `{source_2}`. \
-If your root project has a dependency on `{package}`, you can temporarily work around this by \
-adding `{package} = {{ path = \"(desired path)\" }}` under `[glistix.preview.patch]` to its `gleam.toml` \
-to ensure the root project's dependency overrides that of transitive dependencies.",
+                    "The package `{package}` is provided as both `{source_1}` and `{source_2}`.",
                 );
 
                 vec![Diagnostic {
@@ -4053,10 +3978,6 @@ satisfying {required_version} but you are using v{gleam_version}.",
                         "You can not set a runtime for Erlang. Did you mean to target JavaScript?"
                             .into(),
                     ),
-                    Target::Nix => Some(
-                        "You can not set a runtime for Nix. Did you mean to target JavaScript?"
-                            .into(),
-                    ),
                 };
 
                 vec![Diagnostic {
@@ -4076,44 +3997,6 @@ satisfying {required_version} but you are using v{gleam_version}.",
                 location: None,
                 hint: None,
             }],
-
-            Error::NixPreludeRequired => vec![Diagnostic {
-                title: "Nix prelude required".into(),
-                text: "The --nix-prelude flag must be given when compiling to Nix.".into(),
-                level: Level::Error,
-                location: None,
-                hint: None,
-            }],
-
-            Error::CannotPatchHexWithHex { name } => vec![Diagnostic {
-                title: "Cannot patch a Hex dependency through [glistix.preview.hex-patch]".into(),
-                text: format!(
-                    "Your project cannot depend on a Hex version of `{name}` and at the same time \
-patch it with another Hex version through [glistix.preview.hex-patch]. You can only use \
-[glistix.preview.hex-patch] to replace local dependencies with Hex packages when publishing."
-                ),
-                level: Level::Error,
-                location: None,
-                hint: None,
-            }],
-
-            Error::GlistixConflictingPatches { package, conflicting_rename } => vec![Diagnostic {
-                title: format!("Conflict between patches for \"{package}\" and \"{conflicting_rename}\" in [glistix.preview.patch]"),
-                text: wrap_format!(
-                    "Package \"{package}\" was patched to a certain version, local path or even renamed, whereas \
-package \"{conflicting_rename}\" is being patched precisely to \"{package}\" but in a different way (e.g. to a different version \
-than the one it was patched to), so the two patches conflict (should we apply the first patch to the second package or not?).
-
-As such, please manually apply the first patch on top of the second one, such that \"{conflicting_rename}\" is patched to \
-the exact same package (name and version / local path / Git repository) as \"{package}\".
-
-Check the Glistix handbook at {GLISTIX_BOOK_LINK} for more information."
-                ),
-                level: Level::Error,
-                location: None,
-                hint: None,
-            }],
-
             Error::CorruptManifest => vec![Diagnostic {
                 title: "Corrupt manifest.toml".into(),
                 text: "The `manifest.toml` file is corrupt.".into(),
@@ -4147,25 +4030,6 @@ or you can publish it using a different version number"),
                 hint: Some("Please add the --replace flag if you want to replace the release.".into()),
             }]
         }
-    }
-}
-
-fn glistix_maybe_forgot_patch_hint(path: &Utf8PathBuf) -> Option<String> {
-    if path.as_str().contains("gleam_stdlib") {
-        Some(wrap_format!(
-            "You may have forgotten to patch 'gleam_stdlib' with 'glistix_stdlib' \
-as per the Glistix handbook's instructions (see {GLISTIX_BOOK_LINK} for details)."
-        ))
-    } else if path.as_str().contains("build/packages") {
-        Some(wrap_format!("If this error occurs in a dependency, check if it supports the Nix target. \
-If it doesn't, try patching it with a fork implementing Nix support (see {GLISTIX_BOOK_LINK} for details).
-
-If the package does support the Nix target (or is target-agnostic), this error might also indicate your \
-project is applying a patch through [glistix.preview.patch] which this package is not compatible with. \
-For example, this package might depend on `gleam_stdlib` v0.44 whereas you could be patching it with \
-`glistix_stdlib` v0.38. In that case, you may have to pick different versions for patches or dependencies."))
-    } else {
-        None
     }
 }
 

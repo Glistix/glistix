@@ -1,14 +1,18 @@
 use crate::{
+    Error, Result, Warning,
     analyse::TargetSupport,
     build::{
-        package_compiler, package_compiler::PackageCompiler, package_loader::StaleTracker,
-        project_compiler, telemetry::Telemetry, Mode, Module, Origin, Package, Target,
+        Mode, Module, Origin, Package, Target,
+        package_compiler::{self, PackageCompiler},
+        package_loader::StaleTracker,
+        project_compiler,
+        telemetry::Telemetry,
     },
     codegen::{self, ErlangApp},
     config::PackageConfig,
     dep_tree,
-    error::{FileIoAction, FileKind},
-    io::{BeamCompiler, CommandExecutor, FileSystemReader, FileSystemWriter, Stdio},
+    error::{FileIoAction, FileKind, ShellCommandFailureReason},
+    io::{BeamCompiler, Command, CommandExecutor, FileSystemReader, FileSystemWriter, Stdio},
     manifest::{ManifestPackage, ManifestPackageSource},
     metadata,
     paths::{self, ProjectPaths},
@@ -16,7 +20,6 @@ use crate::{
     uid::UniqueIdGenerator,
     version::COMPILER_VERSION,
     warning::{self, WarningEmitter, WarningEmitterIO},
-    Error, Result, Warning,
 };
 use ecow::EcoString;
 use hexpm::version::Version;
@@ -33,8 +36,9 @@ use std::{
 };
 
 use super::{
-    elixir_libraries::ElixirLibraries, package_compiler::CachedWarnings, Codegen, Compile,
-    ErlangAppCodegenConfiguration, Outcome,
+    Codegen, Compile, ErlangAppCodegenConfiguration, Outcome,
+    elixir_libraries::ElixirLibraries,
+    package_compiler::{CachedWarnings, Compiled},
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -65,7 +69,7 @@ pub struct Options {
 #[derive(Debug)]
 pub struct Built {
     pub root_package: Package,
-    module_interfaces: im::HashMap<EcoString, type_::ModuleInterface>,
+    pub module_interfaces: im::HashMap<EcoString, type_::ModuleInterface>,
     compiled_dependency_modules: Vec<Module>,
 }
 
@@ -208,7 +212,16 @@ where
     pub fn compile_root_package(&mut self) -> Outcome<Package, Error> {
         let config = self.config.clone();
         self.compile_gleam_package(&config, true, self.paths.root().to_path_buf())
-            .map(|modules| Package { config, modules })
+            .map(
+                |Compiled {
+                     modules,
+                     cached_module_names,
+                 }| Package {
+                    config,
+                    modules,
+                    cached_module_names,
+                },
+            )
     }
 
     /// Checks that version file found in the build directory matches the
@@ -256,25 +269,23 @@ where
     }
 
     fn write_prelude(&self) -> Result<()> {
-        // Only the JavaScript and Nix targets have a prelude to write.
-        let (prelude, prelude_filename) = match self.target() {
-            Target::Erlang => return Ok(()),
-            Target::JavaScript => (crate::javascript::PRELUDE, "prelude.mjs"),
-            Target::Nix => (crate::nix::PRELUDE, "prelude.nix"),
-        };
+        // Only the JavaScript target has a prelude to write.
+        if !self.target().is_javascript() {
+            return Ok(());
+        }
 
         let build = self
             .paths
             .build_directory_for_target(self.mode(), self.target());
 
-        // Write the prelude
-        let path = build.join(prelude_filename);
+        // Write the JavaScript prelude
+        let path = build.join("prelude.mjs");
         if !self.io.is_file(&path) {
-            self.io.write(&path, prelude)?;
+            self.io.write(&path, crate::javascript::PRELUDE)?;
         }
 
         // Write the TypeScript prelude, if asked for
-        if self.target().is_javascript() && self.config.javascript.typescript_declarations {
+        if self.config.javascript.typescript_declarations {
             let path = build.join("prelude.d.mts");
             if !self.io.is_file(&path) {
                 self.io.write(&path, crate::javascript::PRELUDE_TS_DEF)?;
@@ -301,7 +312,7 @@ where
                 return Err(Error::UnsupportedBuildTool {
                     package: package.name.to_string(),
                     build_tools: package.build_tools.clone(),
-                })
+                });
             }
         };
 
@@ -360,34 +371,37 @@ where
         self.io.mkdir(&package_build)?;
         self.io.copy_dir(&package, &package_build)?;
 
-        let env = [
-            ("ERL_LIBS", "../*/ebin".into()),
-            ("REBAR_BARE_COMPILER_OUTPUT_DIR", package_build.to_string()),
-            ("REBAR_PROFILE", "prod".into()),
-            ("REBAR_SKIP_PROJECT_PLUGINS", "true".into()),
-            ("TERM", "dumb".into()),
+        let env = vec![
+            ("ERL_LIBS".to_string(), "../*/ebin".to_string()),
+            (
+                "REBAR_BARE_COMPILER_OUTPUT_DIR".to_string(),
+                package_build.to_string(),
+            ),
+            ("REBAR_PROFILE".to_string(), "prod".to_string()),
+            ("REBAR_SKIP_PROJECT_PLUGINS".to_string(), "true".to_string()),
+            ("TERM".to_string(), "dumb".to_string()),
         ];
-        let args = [
+        let args = vec![
             "bare".into(),
             "compile".into(),
             "--paths".into(),
             "../*/ebin".into(),
         ];
 
-        let status = self.io.exec(
-            REBAR_EXECUTABLE,
-            &args,
-            &env,
-            Some(&package_build),
-            self.subprocess_stdio,
-        )?;
+        let status = self.io.exec(Command {
+            program: REBAR_EXECUTABLE.into(),
+            args,
+            env,
+            cwd: Some(package_build),
+            stdio: self.subprocess_stdio,
+        })?;
 
         if status == 0 {
             Ok(())
         } else {
             Err(Error::ShellCommand {
                 program: "rebar3".into(),
-                err: None,
+                reason: ShellCommandFailureReason::Unknown,
             })
         }
     }
@@ -450,29 +464,30 @@ where
             }
         }
 
-        let env = [
-            ("MIX_BUILD_PATH", mix_path(&mix_build_dir)),
-            ("MIX_ENV", mix_target.into()),
-            ("MIX_QUIET", "1".into()),
-            ("TERM", "dumb".into()),
+        let env = vec![
+            ("MIX_BUILD_PATH".to_string(), mix_path(&mix_build_dir)),
+            ("MIX_ENV".to_string(), mix_target.to_string()),
+            ("MIX_QUIET".to_string(), "1".to_string()),
+            ("TERM".to_string(), "dumb".to_string()),
         ];
-        let args = [
-            "-pa".into(),
+        let args = vec![
+            "-pa".to_string(),
             mix_path(&ebins),
-            "-S".into(),
-            "mix".into(),
-            "compile".into(),
-            "--no-deps-check".into(),
-            "--no-load-deps".into(),
-            "--no-protocol-consolidation".into(),
+            "-S".to_string(),
+            "mix".to_string(),
+            "compile".to_string(),
+            "--no-deps-check".to_string(),
+            "--no-load-deps".to_string(),
+            "--no-protocol-consolidation".to_string(),
         ];
-        let status = self.io.exec(
-            ELIXIR_EXECUTABLE,
-            &args,
-            &env,
-            Some(&project_dir),
-            self.subprocess_stdio,
-        )?;
+
+        let status = self.io.exec(Command {
+            program: ELIXIR_EXECUTABLE.into(),
+            args,
+            env,
+            cwd: Some(project_dir),
+            stdio: self.subprocess_stdio,
+        })?;
 
         if status == 0 {
             // TODO: unit test
@@ -485,7 +500,7 @@ where
         } else {
             Err(Error::ShellCommand {
                 program: "mix".into(),
-                err: None,
+                reason: ShellCommandFailureReason::Unknown,
             })
         }
     }
@@ -514,17 +529,10 @@ where
             }
         };
         let config_path = package_root.join("gleam.toml");
-        let config = PackageConfig::read(config_path, &self.io).map(|mut c| {
-            // Apply root config's patches to dependency
-            self.config
-                .glistix
-                .preview
-                .patch
-                .patch_config(&mut c, self.paths.root());
-            c
-        })?;
+        let config = PackageConfig::read(config_path, &self.io)?;
         self.compile_gleam_package(&config, false, package_root)
             .into_result()
+            .map(|compiled| compiled.modules)
     }
 
     fn compile_gleam_package(
@@ -532,7 +540,7 @@ where
         config: &PackageConfig,
         is_root: bool,
         root_path: Utf8PathBuf,
-    ) -> Outcome<Vec<Module>, Error> {
+    ) -> Outcome<Compiled, Error> {
         let out_path =
             self.paths
                 .build_directory_for_package(self.mode(), self.target(), &config.name);
@@ -562,11 +570,6 @@ where
                 emit_typescript_definitions: self.config.javascript.typescript_declarations,
                 // This path is relative to each package output directory
                 prelude_location: Utf8PathBuf::from("../prelude.mjs"),
-            },
-
-            Target::Nix => super::TargetCodegenConfiguration::Nix {
-                // This path is relative to each package output directory
-                prelude_location: Utf8PathBuf::from("../prelude.nix"),
             },
         };
 

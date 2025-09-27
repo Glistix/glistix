@@ -248,7 +248,7 @@ utf16_codepoint, utf32_codepoint, signed, unsigned, big, little, native, size, u
             ),
             ParseErrorType::UnknownTarget => (
                 "I don't recognise this target",
-                vec!["Try `erlang`, `javascript`, `nix`.".into()],
+                vec!["Try `erlang`, `javascript`.".into()],
             ),
             ParseErrorType::ExpectedFunctionBody => ("This function does not have a body", vec![]),
             ParseErrorType::RedundantInternalAttribute => (

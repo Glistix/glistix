@@ -21,20 +21,20 @@ use itertools::Itertools;
 use lsp_types::{Position, TextDocumentIdentifier, TextDocumentPositionParams, Url};
 
 use crate::{
+    Result,
     config::PackageConfig,
     io::{
-        memory::InMemoryFileSystem, BeamCompiler, CommandExecutor, FileSystemReader,
-        FileSystemWriter, ReadDir, WrappedReader,
+        BeamCompiler, Command, CommandExecutor, FileSystemReader, FileSystemWriter, ReadDir,
+        WrappedReader, memory::InMemoryFileSystem,
     },
     language_server::{
-        engine::LanguageServerEngine, files::FileSystemProxy, progress::ProgressReporter,
-        DownloadDependencies, LockGuard, Locker, MakeLocker,
+        DownloadDependencies, LockGuard, Locker, MakeLocker, engine::LanguageServerEngine,
+        files::FileSystemProxy, progress::ProgressReporter,
     },
     line_numbers::LineNumbers,
     manifest::{Base16Checksum, Manifest, ManifestPackage, ManifestPackageSource},
     paths::ProjectPaths,
     requirement::Requirement,
-    Result,
 };
 
 pub const LSP_TEST_ROOT_PACKAGE_NAME: &str = "app";
@@ -67,7 +67,6 @@ impl LanguageServerTestIO {
             manifest: Manifest {
                 requirements: HashMap::new(),
                 packages: vec![],
-                glistix: Default::default(),
             },
         }
     }
@@ -210,14 +209,14 @@ impl DownloadDependencies for LanguageServerTestIO {
 }
 
 impl CommandExecutor for LanguageServerTestIO {
-    fn exec(
-        &self,
-        program: &str,
-        args: &[String],
-        env: &[(&str, String)],
-        cwd: Option<&Utf8Path>,
-        stdio: crate::io::Stdio,
-    ) -> Result<i32> {
+    fn exec(&self, command: Command) -> Result<i32> {
+        let Command {
+            program,
+            args,
+            env,
+            cwd,
+            stdio,
+        } = command;
         panic!("exec({program:?}, {args:?}, {env:?}, {cwd:?}, {stdio:?}) is not implemented")
     }
 }
@@ -229,7 +228,7 @@ impl BeamCompiler for LanguageServerTestIO {
         lib: &Utf8Path,
         modules: &HashSet<Utf8PathBuf>,
         stdio: crate::io::Stdio,
-    ) -> Result<()> {
+    ) -> Result<Vec<String>> {
         panic!(
             "compile_beam({:?}, {:?}, {:?}, {:?}) is not implemented",
             out, lib, modules, stdio
@@ -306,7 +305,13 @@ fn add_package_from_manifest<B>(
                 version: Range::new("1.0.0".into()),
             },
             ManifestPackageSource::Local { ref path } => Requirement::Path { path: path.into() },
-            ManifestPackageSource::Git { ref repo, .. } => Requirement::Git { git: repo.clone() },
+            ManifestPackageSource::Git {
+                ref repo,
+                ref commit,
+            } => Requirement::Git {
+                git: repo.clone(),
+                ref_: commit.clone(),
+            },
         },
     );
     write_toml_from_manifest(engine, toml_path, package);
@@ -325,7 +330,13 @@ fn add_dev_package_from_manifest<B>(
                 version: Range::new("1.0.0".into()),
             },
             ManifestPackageSource::Local { ref path } => Requirement::Path { path: path.into() },
-            ManifestPackageSource::Git { ref repo, .. } => Requirement::Git { git: repo.clone() },
+            ManifestPackageSource::Git {
+                ref repo,
+                ref commit,
+            } => Requirement::Git {
+                git: repo.clone(),
+                ref_: commit.clone(),
+            },
         },
     );
     write_toml_from_manifest(engine, toml_path, package);
